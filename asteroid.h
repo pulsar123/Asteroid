@@ -20,16 +20,20 @@ const int MAX_LINE_LENGTH = 128;
 // Maximum number of filters:
 const int MAX_FILTERS = 100;
 
-// Seed of light (au/day):
+// Speed of light (au/day):
 const double light_speed = 173.144632674;
 const double Pi = acos(-1.0);
 const double Rad = 180.0 / Pi;
 
+#define PI 3.141592653589793238L
+#define RAD 180.0L / PI
 
 // Function declarations
 int read_data(char *, int *, int *);
 int chi2 (int, int, double *);
 int quadratic_interpolation(double, double *,double *,double *, double *,double *,double *);
+
+
 
 
 
@@ -45,23 +49,29 @@ int quadratic_interpolation(double, double *,double *,double *, double *,double 
 EXTERN char all_filters[MAX_FILTERS];
 
 // Observational data arrays:
-EXTERN double *V;  // visual magnitude array, mag
-EXTERN double *sgm2;  // 1-sgm error bar squared for V array, mag
-EXTERN double *E_x, *E_y, *E_z;  // asteroid->Earth vector in barycentric FoR array, au
-EXTERN double *S_x, *S_y, *S_z;  // asteroid->Sun vector in barycentric FoR array, au
-EXTERN double *MJD_obs;  // observational time (with light delay)
-EXTERN double *MJD;  // asteroid time (without time delay)
-EXTERN int *Filter;  // Filter code array
-// CUDA version of the arrays:
-EXTERN double *dV;  // visual magnitude array, mag
-EXTERN double *dsgm2;  // 1-sgm error bar squared for V array, mag
-EXTERN double *dE_x, *dE_y, *dE_z;  // asteroid->Earth vector in barycentric FoR array, au
-EXTERN double *dS_x, *dS_y, *dS_z;  // asteroid->Sun vector in barycentric FoR array, au
-EXTERN double *dMJD;  // modified JD array, days
-EXTERN int *dFilter;  // Filter code array
+struct obs_data {
+double V;  // visual magnitude array, mag
+double w;  // 1-sgm error bar squared for V array, mag
+double E_x;  // asteroid->Earth vector in barycentric FoR array, au
+double E_y;  // asteroid->Earth vector in barycentric FoR array, au
+double E_z;  // asteroid->Earth vector in barycentric FoR array, au
+double S_x;  // asteroid->Sun vector in barycentric FoR array, au
+double S_y;  // asteroid->Sun vector in barycentric FoR array, au
+double S_z;  // asteroid->Sun vector in barycentric FoR array, au
+double MJD;  // asteroid time (without time delay)
+int Filter;  // Filter code array
+
+};
+
+EXTERN struct obs_data *hData;
+
+// CUDA version of the data:
+EXTERN struct obs_data *dData;
 
 // Arrays used for ephemerides interpolation:
 EXTERN double E_x0[3],E_y0[3],E_z0[3], S_x0[3],S_y0[3],S_z0[3], MJD0[3];    
+EXTERN double *MJD_obs;  // observational time (with light delay)
+EXTERN double hMJD0;
 
 #endif
 

@@ -1,7 +1,7 @@
 OPT=-O2
 
 
-objects = asteroid.o read_data.o chi2.o misc.o
+objects = asteroid.o read_data.o chi2.o misc.o cuda.o
 
 all: $(objects)
 	nvcc $(OPT) -arch=sm_20 $(objects) -o ../asteroid

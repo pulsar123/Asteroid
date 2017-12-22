@@ -25,6 +25,10 @@ int main (int argc,char **argv)
     
     // Reading all input data files, allocating and initializing observational data arrays   
     read_data("obs.dat", &N_data, &N_filters);
+
+#ifdef GPU    
+    gpu_allocate(Ndata, N_filters);
+#endif    
     
     // CPU based chi^2:
     chi2(N_data, N_filters, &chi2tot);

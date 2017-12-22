@@ -34,29 +34,11 @@ fclose(fp);
 *N_data = *N_data - 1;
 
  // Allocating the data arrays:
-ERR(cudaMallocHost(&V, *N_data * sizeof(double)));
-ERR(cudaMallocHost(&sgm2, *N_data * sizeof(double)));
-ERR(cudaMallocHost(&E_x, *N_data * sizeof(double)));
-ERR(cudaMallocHost(&E_y, *N_data * sizeof(double)));
-ERR(cudaMallocHost(&E_z, *N_data * sizeof(double)));
-ERR(cudaMallocHost(&S_x, *N_data * sizeof(double)));
-ERR(cudaMallocHost(&S_y, *N_data * sizeof(double)));
-ERR(cudaMallocHost(&S_z, *N_data * sizeof(double)));
+ERR(cudaMallocHost(&hData, *N_data * sizeof(struct obs_data)));
 ERR(cudaMallocHost(&MJD_obs, *N_data * sizeof(double)));
-ERR(cudaMallocHost(&MJD, *N_data * sizeof(double)));
-ERR(cudaMallocHost(&Filter, *N_data * sizeof(int)));
 
 #ifdef GPU
-ERR(cudaMalloc(&dV, *N_data * sizeof(double)));
-ERR(cudaMalloc(&dsgm2, *N_data * sizeof(double)));
-ERR(cudaMalloc(&dE_x, *N_data * sizeof(double)));
-ERR(cudaMalloc(&dE_y, *N_data * sizeof(double)));
-ERR(cudaMalloc(&dE_z, *N_data * sizeof(double)));
-ERR(cudaMalloc(&dS_x, *N_data * sizeof(double)));
-ERR(cudaMalloc(&dS_y, *N_data * sizeof(double)));
-ERR(cudaMalloc(&dS_z, *N_data * sizeof(double)));
-ERR(cudaMalloc(&dMJD, *N_data * sizeof(double)));
-ERR(cudaMalloc(&dFilter, *N_data * sizeof(int)));
+ERR(cudaMallocHost(&dData, *N_data * sizeof(struct obs_data)));
 #endif 
 
 // Reading the input data file
@@ -75,8 +57,8 @@ while (fgets(line, sizeof(line), fp))
     {
         sscanf(line, "%c %lf %lf %lf", &filter, &MJD1, &V1, &sgm);
         MJD_obs[i] = MJD1;
-        V[i] = V1;
-        sgm2[i] = sgm*sgm;
+        hData[i].V = V1;
+        hData[i].w = 1.0/(sgm*sgm);
         // Finding all unique filters:
         int found = 1;
         for (k=0; k<j; k++)
@@ -100,7 +82,7 @@ while (fgets(line, sizeof(line), fp))
         for (k=0; k<j; k++)
         {
             if (filter == all_filters[k])
-                Filter[i] = k;
+                hData[i].Filter = k;
         }
     }
 }
@@ -191,7 +173,14 @@ while (fgets(lineA, sizeof(lineA), fpA))
                 // We just found the MJD0[1-2] interval bracketing the i-th data point
             {
                 // Using the quadratic Lagrange polynomial to do second degree interpolation for E and S vector components
-                quadratic_interpolation(MJD_obs[i], &E_x[i], &E_y[i], &E_z[i], &S_x[i], &S_y[i], &S_z[i]);
+                double E_x1, E_y1, E_z1, S_x1, S_y1, S_z1;
+                quadratic_interpolation(MJD_obs[i], &E_x1, &E_y1, &E_z1, &S_x1, &S_y1, &S_z1);
+                hData[i].E_x = E_x1;
+                hData[i].E_y = E_y1;
+                hData[i].E_z = E_z1;
+                hData[i].S_x = S_x1;
+                hData[i].S_y = S_y1;
+                hData[i].S_z = S_z1;
 //printf("%20.12lf %20.12lf %20.12lf %20.12lf %20.12lf %20.12lf %20.12lf\n", (*MJD)[i], (*E_x)[i],(*E_y)[i],(*E_z)[i],(*S_x)[i],(*S_y)[i],(*S_z)[i]);                
                 // Switching to the next data point:
                 i++;
@@ -210,27 +199,30 @@ fclose(fpS);
 double E, S, E0, S0;
 for (i=0; i<*N_data; i++)
 {
-    E = sqrt(E_x[i]*E_x[i] + E_y[i]*E_y[i]+ E_z[i]*E_z[i]);
-    S = sqrt(S_x[i]*S_x[i] + S_y[i]*S_y[i]+ S_z[i]*S_z[i]);
+    E = sqrt(hData[i].E_x*hData[i].E_x + hData[i].E_y*hData[i].E_y+ hData[i].E_z*hData[i].E_z);
+    S = sqrt(hData[i].S_x*hData[i].S_x + hData[i].S_y*hData[i].S_y+ hData[i].S_z*hData[i].S_z);
     if (i == 0)
     {
         E0 = E;
         S0 = S;
     }
     // Convertimg visual magnitudes to the asteroid/Earth/Sun distances at the first observed moment:
-    if (Filter[i] != p_filter)
-        V[i] = V[i] + 5.0*log10(E0/E * S0/S);
+    if (hData[i].Filter != p_filter)
+        hData[i].V = hData[i].V + 5.0*log10(E0/E * S0/S);
     // Computing the delay (light time), in days:
     delay = E / light_speed;
     // Converting to asteroidal time (minus light time):
-    MJD[i] = MJD_obs[i] - delay;
+    hData[i].MJD = MJD_obs[i] - delay;
+    if (i == 0)
+        hMJD0 = hData[i].MJD;
+    hData[i].MJD = hData[i].MJD - hMJD0;
     // Making S,E a unit vector:
-    E_x[i] = E_x[i] / E;
-    E_y[i] = E_y[i] / E;
-    E_z[i] = E_z[i] / E;
-    S_x[i] = S_x[i] / S;
-    S_y[i] = S_y[i] / S;
-    S_z[i] = S_z[i] / S;
+    hData[i].E_x = hData[i].E_x / E;
+    hData[i].E_y = hData[i].E_y / E;
+    hData[i].E_z = hData[i].E_z / E;
+    hData[i].S_x = hData[i].S_x / S;
+    hData[i].S_y = hData[i].S_y / S;
+    hData[i].S_z = hData[i].S_z / S;
 }
 
 return 0;

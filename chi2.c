@@ -32,18 +32,18 @@ int chi2 (int N_data, int N_filters, double *chi2tot)
     fpm = fopen("model.dat", "w");
     
     // Free parameters:
-    b = 1.01;
-    c = 0.155;
-    cos_n_phi = cos(4/Rad);
-    n_theta = 63 / Rad;
+    b = 0.2;
+    c = 0.2;
+    cos_n_phi = cos(10/Rad);
+    n_theta = 0.001 / Rad;
     theta_a = 90 / Rad;
-    cos_phi_b = 0.03;
+    cos_phi_b = 0.0;
     //    P = 7.35 / 24.0; // 7.34
     // P interval (days):
-    const double P1 = 7.535 / 24.0;
-    const double P2 = P1;
+    const double P1 = 7.4 / 24.0;
+    const double P2 = 7.5 /24.0;
     // Number of points for P (period):
-    const int N_P = 1;
+    const int N_P = 100;
 
     
     // Disk: 1, 0.165, 5, 60, 90, 0.03, 7.35: 12.11:
@@ -143,34 +143,34 @@ int chi2 (int N_data, int N_filters, double *chi2tot)
                 for (i=0; i<N; i++)
                 {            
                     //!!!!
-                    P = (double)i/(double)N * (P2 - P1) + P1;
                     /*
+                    P = (double)i/(double)N * (P2 - P1) + P1;
                     double bp = 7.184 / 24.0; // 7.15037
                     double ap = 0.357 / 24.0;
                     double tp = 58051.66; //58052.44
                     double Pp = 4.242; // 4.13043
-                    P = ap * sin((MJD[i]-tp)*2.0*Pi/Pp) + bp;
+                    P = ap * sin((hData[i].MJD-tp)*2.0*Pi/Pp) + bp;
                     */
                     // Rotational phase angle:
                     if (l == 0)
                     {
 //!!!
-                                                phi_a = phi_a0 + (MJD[i]-MJD[0])/P * 2*Pi;
-//                        phi_a = phi_a0 + 2.0*Pp/sqrt(bp*bp-ap*ap) * atan((ap-bp*tan(Pi/Pp*(tp-MJD[i]))) / sqrt(bp*bp-ap*ap));
+                                                phi_a = phi_a0 + hData[i].MJD/P * 2*Pi;
+//                        phi_a = phi_a0 + 2.0*Pp/sqrt(bp*bp-ap*ap) * atan((ap-bp*tan(Pi/Pp*(tp-hData[i].MJD))) / sqrt(bp*bp-ap*ap));
                         
-                        E_x1 = E_x[i];
-                        E_y1 = E_y[i];
-                        E_z1 = E_z[i];
-                        S_x1 = S_x[i];
-                        S_y1 = S_y[i];
-                        S_z1 = S_z[i];
+                        E_x1 = hData[i].E_x;
+                        E_y1 = hData[i].E_y;
+                        E_z1 = hData[i].E_z;
+                        S_x1 = hData[i].S_x;
+                        S_y1 = hData[i].S_y;
+                        S_z1 = hData[i].S_z;
                     }
                     else
   
                     //!!!
                     {
-                        phi_a = phi_a0 + (double)i/(double)N * 2*Pi * (MJD[N_data-1]-MJD[0])/P;
-                        MJD1 = (double)i/(double)N * (MJD[N_data-1] - MJD[0]) + MJD[0];
+                        phi_a = phi_a0 + (double)i/(double)N * 2*Pi * hData[N_data-1].MJD/P;
+                        MJD1 = (double)i/(double)N * hData[N_data-1].MJD + hMJD0;
 //                        phi_a = phi_a0 + 2.0*Pp/sqrt(bp*bp-ap*ap) * atan((ap-bp*tan(Pi/Pp*(tp-MJD1))) / sqrt(bp*bp-ap*ap));
                         MJD1_obs = (double)i/(double)N * (MJD_obs[N_data-1] - MJD_obs[0]) + MJD_obs[0];
                         quadratic_interpolation(MJD1_obs, &E_x1, &E_y1, &E_z1, &S_x1, &S_y1, &S_z1);
@@ -186,7 +186,7 @@ int chi2 (int N_data, int N_filters, double *chi2tot)
                     }
                     
                     // Solar phase angle:  
-                    //            double alpha = acos(S_x[i]*E_x[i] + S_y[i]*E_y[i] + S_z[i]*E_z[i]);
+                    //            double alpha = acos(hData[i].S_x*hData[i].E_x + hData[i].S_y*hData[i].E_y + hData[i].S_z*hData[i].E_z);
                     
                     cos_phi_a = cos(phi_a);
                     sin_phi_a = sin(phi_a);
@@ -243,20 +243,20 @@ int chi2 (int N_data, int N_filters, double *chi2tot)
                     if (l == 0)
                     {
                         // Filter:
-                        int m = Filter[i];
+                        int m = hData[i].Filter;
                         // Difference between the observational and model magnitudes:
-                        double y = V[i] - Vmod;                    
-                        sum_y2[m] = sum_y2[m] + y*y/sgm2[i];
-                        sum_y[m] = sum_y[m] + y/sgm2[i];
-                        sum_w[m] = sum_w[m] + 1.0/sgm2[i];
+                        double y = hData[i].V - Vmod;                    
+                        sum_y2[m] = sum_y2[m] + y*y*hData[i].w;
+                        sum_y[m] = sum_y[m] + y*hData[i].w;
+                        sum_w[m] = sum_w[m] + hData[i].w;
                     }
                     else
                     {
                         //                    if (m==0)
-                        //                    fprintf(fp, "%20.12lf %20.12lf %20.12lf %f %d\n", MJD1, Vmod+y_avr_min[0], V[i]+y_avr_min[0]-y_avr_min[m], sqrt(sgm2[i]), Filter[i]);
-                        fprintf(fpm, "%20.12lf %20.12lf %20.12lf\n", MJD1, Vmod+y_avr_min[0], (MJD1-MJD[0])/P);
+                        //                    fprintf(fp, "%20.12lf %20.12lf %20.12lf %f %d\n", MJD1, Vmod+y_avr_min[0], hData[i].V+y_avr_min[0]-y_avr_min[m], sqrt(sgm2[i]), hData[i].Filter);
+                        fprintf(fpm, "%20.12lf %20.12lf %20.12lf\n", MJD1, Vmod+y_avr_min[0], (MJD1-hMJD0)/P);
                         if (i < N_data)
-                            fprintf(fpd, "%20.12lf %20.12lf %f %c %20.12lf\n", MJD[i], V[i]+y_avr_min[0]-y_avr_min[Filter[i]], sqrt(sgm2[i]), all_filters[Filter[i]], (MJD[i]-MJD[0])/P);                    
+                            fprintf(fpd, "%20.12lf %20.12lf %f %c %20.12lf\n", hData[i].MJD+hMJD0, hData[i].V+y_avr_min[0]-y_avr_min[hData[i].Filter], 1.0/sqrt(hData[i].w), all_filters[hData[i].Filter], hData[i].MJD/P);                    
                     }
                     
                     
