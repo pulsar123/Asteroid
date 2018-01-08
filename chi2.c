@@ -40,10 +40,10 @@ int chi2 (int N_data, int N_filters, double *chi2tot)
     cos_phi_b = 0.0;
     //    P = 7.35 / 24.0; // 7.34
     // P interval (days):
-    const double P1 = 7.4 / 24.0;
+    const double P1 = 7.5 / 24.0;
     const double P2 = 7.5 /24.0;
     // Number of points for P (period):
-    const int N_P = 100;
+    const int N_P = 1;
 
     
     // Disk: 1, 0.165, 5, 60, 90, 0.03, 7.35: 12.11:

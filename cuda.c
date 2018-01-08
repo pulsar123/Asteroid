@@ -5,14 +5,16 @@
  */
 #include <stdio.h>
 #include <stdlib.h>
-#include <cuda.h>
 #include "asteroid.h"
+
+
 
 __global__ void chi2_gpu (struct obs_data *dData, int N_data, int N_filters)
 {        
     __shared__ struct obs_data sData;
+    __shared__ float s_chi2_min;
     
-    int i, m, l, N;
+    int i, m;
     double phi_a, cos_n_phi, n_theta, theta_a, cos_phi_b, b, c, P;
     double n_phi, n_x, n_y, n_z;
     double cos_phi_a, sin_phi_a, cos_alpha_p, sin_alpha_p, scalar_Sun, scalar_Earth, scalar;
@@ -25,21 +27,23 @@ __global__ void chi2_gpu (struct obs_data *dData, int N_data, int N_filters)
     double * sum_y = (double *)malloc(N_filters*sizeof(double));
     double * sum_w = (double *)malloc(N_filters*sizeof(double));
     
+    s_chi2_min = 1e30;
+    
     chi2_min = 1e30;
     
     // Free parameters:
     b = 0.2;
     c = 0.2;
-    cos_n_phi = cos(10/RAD);
+    cos_n_phi = cos((double)(10.0/RAD));
     n_theta = 0.001 / RAD;
-    theta_a = 90 / RAD;
+    theta_a = 90.0 / RAD;
     cos_phi_b = 0.0;
     //    P = 7.35 / 24.0; // 7.34
     // P interval (days):
-    const double P1 = 7.4 / 24.0;
+    const double P1 = 7.5 / 24.0;
     const double P2 = 7.5 /24.0;
     // Number of points for P (period):
-    const int N_P = 100;
+    const int N_P = 1;
     
     
     // Disk: 1, 0.165, 5, 60, 90, 0.03, 7.35: 12.11:
@@ -119,7 +123,7 @@ __global__ void chi2_gpu (struct obs_data *dData, int N_data, int N_filters)
             phi_a0 = (double)i_phi_a/(double)N_PHI_A * 2*PI;
             
             // The loop over all data points    
-            for (i=0; i<N; i++)
+            for (i=0; i<N_data; i++)
             {            
                 // The expensive step - copying observational data for this momemt of time from device to shared memory:
                 sData = dData[i];
@@ -203,11 +207,23 @@ __global__ void chi2_gpu (struct obs_data *dData, int N_data, int N_filters)
             if (chi2a < chi2_min)
             {
                 chi2_min = chi2a;
-                i_phi_a_min = i_phi_a;
-                i_P_min = i_P;
+//                i_phi_a_min = i_phi_a;
+//                i_P_min = i_P;
             }
             
             
         } // i_phi_a loop
     } // i_P loop
+    
+    
+//    atomicMin(&s_chi2_min, (float)chi2_min);
+    
+    __syncthreads();
+    if (threadIdx.x == 0)
+    {
+//        atomicMin(&d_chi2_min, s_chi2_min);
+        d_chi2_min = chi2_min;
+    }
+    
+    return;
 }

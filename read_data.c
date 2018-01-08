@@ -1,5 +1,4 @@
 #include "asteroid.h"
-#include "cuda_errors.h"
 
 /*  Reading input data files - ephemerides for asteroid, earth, sun, and the brightness curve data.  
 */
@@ -10,13 +9,13 @@ int read_data(char *data_file, int *N_data, int *N_filters)
  FILE *fpA;
  FILE *fpE;
  FILE *fpS;
- char filename[MAX_FILE_NAME];
+// char filename[MAX_FILE_NAME];
  char line[MAX_LINE_LENGTH];
  char lineA[MAX_LINE_LENGTH];
  char lineE[MAX_LINE_LENGTH];
  char lineS[MAX_LINE_LENGTH];
  char ch;
- int N;
+// int N;
   
  // Number of brightness data points:
  fp = fopen(data_file, "r");
@@ -36,10 +35,6 @@ fclose(fp);
  // Allocating the data arrays:
 ERR(cudaMallocHost(&hData, *N_data * sizeof(struct obs_data)));
 ERR(cudaMallocHost(&MJD_obs, *N_data * sizeof(double)));
-
-#ifdef GPU
-ERR(cudaMallocHost(&dData, *N_data * sizeof(struct obs_data)));
-#endif 
 
 // Reading the input data file
 fp = fopen(data_file, "r");
@@ -173,14 +168,17 @@ while (fgets(lineA, sizeof(lineA), fpA))
                 // We just found the MJD0[1-2] interval bracketing the i-th data point
             {
                 // Using the quadratic Lagrange polynomial to do second degree interpolation for E and S vector components
-                double E_x1, E_y1, E_z1, S_x1, S_y1, S_z1;
-                quadratic_interpolation(MJD_obs[i], &E_x1, &E_y1, &E_z1, &S_x1, &S_y1, &S_z1);
+//                double E_x1, E_y1, E_z1, S_x1, S_y1, S_z1;
+                quadratic_interpolation(MJD_obs[i], &(hData[i].E_x), &(hData[i].E_y), &(hData[i].E_z), &(hData[i].S_x), &(hData[i].S_y), &(hData[i].S_z));
+                //                quadratic_interpolation(MJD_obs[i], &E_x1, &E_y1, &E_z1, &S_x1, &S_y1, &S_z1);
+                /*
                 hData[i].E_x = E_x1;
                 hData[i].E_y = E_y1;
                 hData[i].E_z = E_z1;
                 hData[i].S_x = S_x1;
                 hData[i].S_y = S_y1;
                 hData[i].S_z = S_z1;
+                */
 //printf("%20.12lf %20.12lf %20.12lf %20.12lf %20.12lf %20.12lf %20.12lf\n", (*MJD)[i], (*E_x)[i],(*E_y)[i],(*E_z)[i],(*S_x)[i],(*S_y)[i],(*S_z)[i]);                
                 // Switching to the next data point:
                 i++;

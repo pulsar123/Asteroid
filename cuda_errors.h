@@ -1,5 +1,6 @@
 #ifndef _CUDA_ERRORS
 #define _CUDA_ERRORS
+
 #define ERR(ans) { gpuAssert((ans), __FILE__, __LINE__); }
 
 inline void gpuAssert(cudaError_t code, const char *file, int line, bool abort=true)
@@ -11,6 +12,7 @@ inline void gpuAssert(cudaError_t code, const char *file, int line, bool abort=t
    }
 }
 
+#ifdef MAIN
 void Is_GPU_present()
 {
   int devid, devcount;
@@ -34,5 +36,6 @@ void Is_GPU_present()
     }
   return;
 }
+#endif
 
 #endif

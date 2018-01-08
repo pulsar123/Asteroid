@@ -4,6 +4,8 @@
 #ifndef ASTEROID_H
 #define ASTEROID_H
 #include <stdio.h>
+#include <cuda.h>
+#include "cuda_errors.h"
 
 // Constants:
 // Number of free parameters for chi^2 (excludes filters):
@@ -26,14 +28,20 @@ const double Pi = acos(-1.0);
 const double Rad = 180.0 / Pi;
 
 #define PI 3.141592653589793238L
-#define RAD 180.0L / PI
+#define RAD (180.0L / PI)
 
 // Function declarations
 int read_data(char *, int *, int *);
 int chi2 (int, int, double *);
 int quadratic_interpolation(double, double *,double *,double *, double *,double *,double *);
 
+#ifdef GPU
+//__device__ float d_chi2_min;
 
+int gpu_prepare(int, int);
+
+__global__ void chi2_gpu(struct obs_data *, int, int);
+#endif
 
 
 
@@ -72,6 +80,8 @@ EXTERN struct obs_data *dData;
 EXTERN double E_x0[3],E_y0[3],E_z0[3], S_x0[3],S_y0[3],S_z0[3], MJD0[3];    
 EXTERN double *MJD_obs;  // observational time (with light delay)
 EXTERN double hMJD0;
+
+EXTERN __device__ float d_chi2_min;
 
 #endif
 
