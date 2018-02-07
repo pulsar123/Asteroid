@@ -3,6 +3,7 @@
 
 #define ERR(ans) { gpuAssert((ans), __FILE__, __LINE__); }
 
+
 inline void gpuAssert(cudaError_t code, const char *file, int line, bool abort=true)
 {
    if (code != cudaSuccess) 
@@ -13,6 +14,7 @@ inline void gpuAssert(cudaError_t code, const char *file, int line, bool abort=t
 }
 
 #ifdef MAIN
+cudaDeviceProp deviceProp; 
 void Is_GPU_present()
 {
   int devid, devcount;
@@ -26,7 +28,6 @@ void Is_GPU_present()
     }
   else
     { 
-      cudaDeviceProp deviceProp; 
       cudaGetDeviceProperties (&deviceProp, devid);
       printf ("Device count, devid: %d %d\n", devcount, devid);
       printf ("Device: %s\n", deviceProp.name);

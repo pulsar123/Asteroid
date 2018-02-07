@@ -21,6 +21,10 @@ int chi2 (int N_data, int N_filters, double *chi2tot)
     double chi2a, chi2_min;
     double E_x1, E_y1, E_z1, S_x1, S_y1, S_z1;
     double MJD1_obs, MJD1;
+
+    struct timeval  tdr0, tdr1;
+    double cputime;
+    gettimeofday (&tdr0, NULL);
     
     double * sum_y2 = (double *)malloc(N_filters*sizeof(double));
     double * sum_y = (double *)malloc(N_filters*sizeof(double));
@@ -40,10 +44,10 @@ int chi2 (int N_data, int N_filters, double *chi2tot)
     cos_phi_b = 0.0;
     //    P = 7.35 / 24.0; // 7.34
     // P interval (days):
-    const double P1 = 7.5 / 24.0;
+    const double P1 = 7.4 / 24.0;
     const double P2 = 7.5 /24.0;
     // Number of points for P (period):
-    const int N_P = 1;
+    const int N_P = 10;
 
     
     // Disk: 1, 0.165, 5, 60, 90, 0.03, 7.35: 12.11:
@@ -54,6 +58,7 @@ int chi2 (int N_data, int N_filters, double *chi2tot)
     
     // Calculations which are time independent:
     
+
     // Spin vector (barycentric FoR); https://stackoverflow.com/questions/5408276/sampling-uniformly-distributed-random-points-inside-a-spherical-volume
     n_phi = acos(cos_n_phi);
     n_x = sin(n_theta)*cos_n_phi;
@@ -107,7 +112,9 @@ int chi2 (int N_data, int N_filters, double *chi2tot)
     for (l=0; l<2; l++)
     {
         if (l == 0)
+        {
             N = N_data;
+        }
         else
             N = 3000;
         
@@ -289,6 +296,12 @@ int chi2 (int N_data, int N_filters, double *chi2tot)
             if (l == 1)
                 break;
         } // i_P loop
+        if (l == 0)
+        {
+            gettimeofday (&tdr1, NULL);
+            timeval_subtract (&cputime, &tdr1, &tdr0);
+            printf ("CPU time: %.2f ms\n", cputime*1000);
+        }
     }  // l loop
     
     fclose (fpd);
