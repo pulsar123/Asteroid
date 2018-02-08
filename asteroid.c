@@ -10,7 +10,8 @@
 
 int main (int argc,char **argv)
 {
-    double chi2_tot=1e32;
+    FILE *fp;
+    float chi2_tot=1e32;
     long int iloc_tot;
     int i;
     
@@ -25,8 +26,11 @@ int main (int argc,char **argv)
     
     // Reading all input data files, allocating and initializing observational data arrays   
     read_data("obs.dat", &N_data, &N_filters);
+
     
     #ifdef GPU    
+    fp = fopen("results.dat", "w");
+
     long int Nloc = N_THETA * N_COS_PHI * N_PHI_A;
     int Nglob = N_B * N_P;
     
@@ -68,10 +72,11 @@ int main (int argc,char **argv)
             // The kernel:
             chi2_gpu<<<N_BLOCKS, BSIZE>>>(dData, N_data, N_filters, Nloc, iglob, N_serial, d_chi2_min, d_iloc_min);
             // Copying the results (one per block) to CPU:
-            cudaMemcpy(h_chi2_min, d_chi2_min, N_BLOCKS * sizeof(double), cudaMemcpyDeviceToHost);
-            cudaMemcpy(h_iloc_min, d_iloc_min, N_BLOCKS * sizeof(long int), cudaMemcpyDeviceToHost);
+            ERR(cudaMemcpy(h_chi2_min, d_chi2_min, N_BLOCKS * sizeof(float), cudaMemcpyDeviceToHost));
+            ERR(cudaMemcpy(h_iloc_min, d_iloc_min, N_BLOCKS * sizeof(long int), cudaMemcpyDeviceToHost));
+            ERR(cudaDeviceSynchronize());
             
-            double chi2_loc = 1e31;
+            float chi2_loc = 1e31;
             long int iloc = 0;
 
 // Finding the best result between all the blocks:            
@@ -83,7 +88,8 @@ int main (int argc,char **argv)
                     iloc = h_iloc_min[i];
                 }
             }
-
+printf("iglob=%d, chi2=%lf\n",iglob,chi2_loc);
+            
             // Globally the best result:
             if (chi2_loc < chi2_tot)
             {
@@ -102,25 +108,34 @@ int main (int argc,char **argv)
                 printf("GPU time: %.2f ms\n", elapsed);
             }
             
-            init = 0;
+        struct parameters_struct params;
+        iloc_to_params(&iloc, &params);
+        iglob_to_params(&iglob, &params);
+        fprintf(fp,"%e %7d %9lu %10.5lf %10.5lf %10.5lf %10.5lf %10.5lf %10.5lf %10.5lf\n",
+            chi2_loc, iglob, iloc, params.b, params.P*24, params.c, params.cos_phi_b, params.theta, params.cos_phi, params.phi_a0);
+            
+//            init = 0;
         } // i_P
     }  // i_b
     
-    cudaDeviceSynchronize();
+    cudaDeviceSynchronize();    
     struct parameters_struct params;
     iloc_to_params(&iloc_tot, &params);
     iglob_to_params(&iglob_tot, &params);
-    printf("GPU chi2_min=%lf, iglob=%d, iloc=%lu\n", chi2_tot, iglob_tot, iloc_tot);
+
+    printf("GPU chi2_min=%e, iglob=%d, iloc=%lu\n", chi2_tot, iglob_tot, iloc_tot);
     printf("b=%lf\n", params.b);
-    printf("P=%lf\n", params.P);
+    printf("P=%lf\n", params.P*24);
     printf("theta=%lf\n", params.theta);
     printf("cos_phi=%lf\n", params.cos_phi);
     printf("phi_a0=%lf\n", params.phi_a0);
     
+    fclose(fp);
     #endif    
     
     // CPU based chi^2:
-    chi2(N_data, N_filters, &chi2_tot);    
+    double chi2_cpu;
+    chi2(N_data, N_filters, &chi2_cpu);    
     
     return 0;  
 }

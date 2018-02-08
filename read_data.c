@@ -82,6 +82,12 @@ while (fgets(line, sizeof(line), fp))
     }
 }
 *N_filters = j;
+if (*N_filters > N_FILTERS)
+{
+    printf("Too many filters - increase N_FILTERS parameter! %d\n", *N_filters);
+    exit (1);
+}
+
 fclose(fp);
 
 // Reading the three ephemerides files and computing the data values:

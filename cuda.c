@@ -9,11 +9,13 @@
 
 
 
-__global__ void chi2_gpu (struct obs_data *dData, int N_data, int N_filters, long int Nloc, int iglob, int N_serial, double * d_chi2_min, long int * d_iloc_min)
+__global__ void chi2_gpu (struct obs_data *dData, int N_data, int N_filters, long int Nloc, int iglob, int N_serial, float * d_chi2_min, long int * d_iloc_min)
 {        
-    __shared__ struct obs_data sData[N_WARPS];
-    __shared__ double s_chi2_min[BSIZE];
-    __shared__ long int s_iloc_min[BSIZE];
+//    __shared__ struct obs_data sData[N_WARPS];
+//    struct obs_data sData;
+    __shared__ struct obs_data sData;
+    __shared__ float s_chi2_min[BSIZE];
+    __shared__ int s_thread_id[BSIZE];
     
     int i, m, j;
     double theta_a, n_phi, phi_a;
@@ -22,15 +24,18 @@ __global__ void chi2_gpu (struct obs_data *dData, int N_data, int N_filters, lon
     double cos_lambda_p, sin_lambda_p, Vmod, alpha_p, lambda_p;
     double a_x,a_y,a_z,b_x,b_y,b_z,c_x,c_y,c_z;
     double Ep_x, Ep_y, Ep_z, Sp_x, Sp_y, Sp_z;
-    double chi2a, chi2_min;
+    float chi2a, chi2_min;
     struct parameters_struct params;
-    //    int iglob;
     long int iloc, iloc_min;
     
+/*    
     double * sum_y2 = (double *)malloc(N_filters*sizeof(double));
     double * sum_y = (double *)malloc(N_filters*sizeof(double));
     double * sum_w = (double *)malloc(N_filters*sizeof(double));
-    
+*/
+    double sum_y2[N_FILTERS];
+    double sum_y[N_FILTERS];
+    double sum_w[N_FILTERS];
     
     chi2_min = 1e30;
     
@@ -45,7 +50,7 @@ __global__ void chi2_gpu (struct obs_data *dData, int N_data, int N_filters, lon
     if (iloc < Nloc)
     {
         
-        int warpID = threadIdx.x / warpSize;
+//        int warpID = threadIdx.x / warpSize;
         
         // Outer serial loop:
         for (j=0; j<N_serial; j++)
@@ -114,10 +119,10 @@ __global__ void chi2_gpu (struct obs_data *dData, int N_data, int N_filters, lon
             for (i=0; i<N_data; i++)
             {            
                 // The expensive step - copying observational data for this momemt of time from device to shared memory:
-                // As execution is only synchronous within a warp, storing the data in a warp-specific element of the shared array sData:
-                sData[warpID] = dData[i];
-                //__syncthreads();            
-                phi_a = params.phi_a0 + sData[warpID].MJD/params.P * 2*PI;
+                sData = dData[i];
+//                __syncthreads();            
+                
+                phi_a = params.phi_a0 + sData.MJD/params.P * 2*PI;
                 
                 cos_phi_a = cos(phi_a);
                 sin_phi_a = sin(phi_a);
@@ -139,14 +144,14 @@ __global__ void chi2_gpu (struct obs_data *dData, int N_data, int N_filters, lon
                 c_z = a_x*b_y - a_y*b_x;
                 
                 // Earth vector in the new (a,b,c) basis:
-                Ep_x = a_x*sData[warpID].E_x + a_y*sData[warpID].E_y + a_z*sData[warpID].E_z;
-                Ep_y = b_x*sData[warpID].E_x + b_y*sData[warpID].E_y + b_z*sData[warpID].E_z;
-                Ep_z = c_x*sData[warpID].E_x + c_y*sData[warpID].E_y + c_z*sData[warpID].E_z;
+                Ep_x = a_x*sData.E_x + a_y*sData.E_y + a_z*sData.E_z;
+                Ep_y = b_x*sData.E_x + b_y*sData.E_y + b_z*sData.E_z;
+                Ep_z = c_x*sData.E_x + c_y*sData.E_y + c_z*sData.E_z;
                 
                 // Sun vector in the new (a,b,c) basis:
-                Sp_x = a_x*sData[warpID].S_x + a_y*sData[warpID].S_y + a_z*sData[warpID].S_z;
-                Sp_y = b_x*sData[warpID].S_x + b_y*sData[warpID].S_y + b_z*sData[warpID].S_z;
-                Sp_z = c_x*sData[warpID].S_x + c_y*sData[warpID].S_y + c_z*sData[warpID].S_z;
+                Sp_x = a_x*sData.S_x + a_y*sData.S_y + a_z*sData.S_z;
+                Sp_y = b_x*sData.S_x + b_y*sData.S_y + b_z*sData.S_z;
+                Sp_z = c_x*sData.S_x + c_y*sData.S_y + c_z*sData.S_z;
                 
                 // Now that we converted the Earth and Sun vectors to the internal asteroidal basis (a,b,c),
                 // we can apply the formalism of Muinonen & Lumme, 2015 to calculate the brightness of the asteroid.
@@ -172,18 +177,18 @@ __global__ void chi2_gpu (struct obs_data *dData, int N_data, int N_filters, lon
                 
                 
                 // Filter:
-                int m = sData[warpID].Filter;
+                int m = sData.Filter;
                 // Difference between the observational and model magnitudes:
-                double y = sData[warpID].V - Vmod;                    
-                sum_y2[m] = sum_y2[m] + y*y*sData[warpID].w;
-                sum_y[m] = sum_y[m] + y*sData[warpID].w;
-                sum_w[m] = sum_w[m] + sData[warpID].w;
+                double y = sData.V - Vmod;                    
+                sum_y2[m] = sum_y2[m] + y*y*sData.w;
+                sum_y[m] = sum_y[m] + y*sData.w;
+                sum_w[m] = sum_w[m] + sData.w;
                 
-                
+                __syncthreads(); // Needed to ensure consistancy of sData shared memory structure across all threads               
             } // data points loop
             
             
-            double chi2m;
+            float chi2m;
             chi2a=0.0;    
             for (m=0; m<N_filters; m++)
             {
@@ -207,7 +212,7 @@ __global__ void chi2_gpu (struct obs_data *dData, int N_data, int N_filters, lon
     }
     
     s_chi2_min[threadIdx.x] = chi2_min;
-    s_iloc_min[threadIdx.x] = iloc_min;
+    s_thread_id[threadIdx.x] = threadIdx.x;
     
     __syncthreads();
     
@@ -218,11 +223,11 @@ __global__ void chi2_gpu (struct obs_data *dData, int N_data, int N_filters, lon
         int halfPoint = nTotalThreads / 2; // Number of active threads
         if (threadIdx.x < halfPoint) {
             int thread2 = threadIdx.x + halfPoint; // the second element index
-            double temp = s_chi2_min[thread2];
+            float temp = s_chi2_min[thread2];
             if (temp < s_chi2_min[threadIdx.x])
             {
                 s_chi2_min[threadIdx.x] = temp;
-                s_iloc_min[threadIdx.x] = s_iloc_min[thread2];
+                s_thread_id[threadIdx.x] = s_thread_id[thread2];
             }
         }
         __syncthreads();
@@ -234,8 +239,18 @@ __global__ void chi2_gpu (struct obs_data *dData, int N_data, int N_filters, lon
     {
         // Copying the found minimum to device memory:
         d_chi2_min[blockIdx.x] = s_chi2_min[0];
-        d_iloc_min[blockIdx.x] = s_iloc_min[0];
     }
+    if (threadIdx.x == s_thread_id[0])
+    {
+        // Copying the found minimum to device memory:
+        d_iloc_min[blockIdx.x] = iloc_min;
+    }
+    
+/*    
+    free(sum_y2);
+    free(sum_y);
+    free(sum_w);
+    */
     
     return;
 }

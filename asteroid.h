@@ -14,16 +14,19 @@
 
 // Constants:
 // Number of free parameters for chi^2 (excludes filters):
-const int N_PARAMS = 7;
+const int N_PARAMS = 5;
+
+// Maximum number of filters:
+const int N_FILTERS = 8;
 
 // Parameter #1: b/a
-const double B1 = 0.2;
-const double B2 = 0.2;
+const double B1 = 0.08;
+const double B2 = 0.28;
 const int N_B = 1;
 
 // Parameter #2: period P, days
-const double P1 = 7.46/24;
-const double P2 = 7.46/24;
+const double P1 = 6.5/24;
+const double P2 = 8.5/24;
 const int N_P = 1;
 
 // Fixed spin vector n params (barycentric FoR)
@@ -44,10 +47,10 @@ const double PHI_A2 = 1.0;
 const int N_PHI_A = 360*4;
 
 // GPU optimization parameters:
-const int BSIZE = 256;   // Threads in a block (64 ... 1024, step of 64)
-const int N_BLOCKS = 56; // Should be proprtional to the number of SMs (56 for P100)
+const int BSIZE = 384;   // Threads in a block (64 ... 1024, step of 64)
+const int N_BLOCKS = 8*56; // Should be proportional to the number of SMs (56 for P100)
 //const int N_SERIAL = 1; // number of serial iglob loops inside the kernel (>=1)
-const int N_WARPS = BSIZE / 32;
+//const int N_WARPS = BSIZE / 32;
 
 
 
@@ -101,7 +104,7 @@ __device__ __host__ void iloc_to_params(long int *, struct parameters_struct *);
 
 int gpu_prepare(int, int);
 
-__global__ void chi2_gpu(struct obs_data *, int, int, long int, int, int, double *, long int *);
+__global__ void chi2_gpu(struct obs_data *, int, int, long int, int, int, float *, long int *);
 #endif
 
 
@@ -129,8 +132,8 @@ EXTERN double E_x0[3],E_y0[3],E_z0[3], S_x0[3],S_y0[3],S_z0[3], MJD0[3];
 EXTERN double *MJD_obs;  // observational time (with light delay)
 EXTERN double hMJD0;
 
-EXTERN double * d_chi2_min;
-EXTERN double * h_chi2_min;
+EXTERN float * d_chi2_min;
+EXTERN float * h_chi2_min;
 EXTERN long int * d_iloc_min;
 EXTERN long int * h_iloc_min;
 
