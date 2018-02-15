@@ -13,7 +13,11 @@ __device__ __host__ void iglob_to_params(int * iglob, struct parameters_struct *
     rest = *iglob / N_P;
 
     params->b = (double)rest/(double)N_B * (B2 - B1) + B1;
+
     params->c = params->b;
+    
+// Disk geometry (cigar geometry if commented):    
+    params->b = 1.0;
     
     return;   
 }

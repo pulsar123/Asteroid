@@ -1,5 +1,6 @@
 #OPT=-O2 -DGPU -arch=sm_60 --ptxas-options=-v
 OPT=-O2 -DGPU -arch=sm_60
+#OPT=-g -O0
 INC=-I/usr/include/cuda -I.
 
 

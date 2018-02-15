@@ -17,17 +17,17 @@
 const int N_PARAMS = 5;
 
 // Maximum number of filters:
-const int N_FILTERS = 8;
+const int N_FILTERS = 11;
 
 // Parameter #1: b/a
 const double B1 = 0.08;
 const double B2 = 0.28;
-const int N_B = 1;
+const int N_B = 100;
 
 // Parameter #2: period P, days
 const double P1 = 6.5/24;
 const double P2 = 8.5/24;
-const int N_P = 1;
+const int N_P = 100;
 
 // Fixed spin vector n params (barycentric FoR)
 // The parameters are such that a uniform distribution in both results in a uniform spin vector distribution on a unit sphere
@@ -42,8 +42,8 @@ const double COS_PHI2 = 0.999;
 const int N_COS_PHI = 100;
 
 // Parameter #5:  rotation (phase angle), phi_a; range [0,360[
-const double PHI_A1 = 1.0;
-const double PHI_A2 = 1.0;
+const double PHI_A1 = 0.0;
+const double PHI_A2 = 2.0*PI;
 const int N_PHI_A = 360*4;
 
 // GPU optimization parameters:
@@ -94,7 +94,7 @@ int Filter;  // Filter code array
 
 // Function declarations
 int read_data(char *, int *, int *);
-int chi2 (int, int, double *);
+int chi2 (int, int, struct parameters_struct, double *);
 int quadratic_interpolation(double, double *,double *,double *, double *,double *,double *);
 int timeval_subtract (double *, struct timeval *, struct timeval *);
 __device__ __host__ void iglob_to_params(int *, struct parameters_struct *);
