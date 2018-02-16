@@ -20,14 +20,14 @@ const int N_PARAMS = 5;
 const int N_FILTERS = 11;
 
 // Parameter #1: b/a
-const double B1 = 0.08;
-const double B2 = 0.28;
-const int N_B = 100;
+const double B1 = 0.1;
+const double B2 = 0.1;
+const int N_B = 1;
 
 // Parameter #2: period P, days
-const double P1 = 6.5/24;
-const double P2 = 8.5/24;
-const int N_P = 100;
+const double P1 = 7.5/24;
+const double P2 = 7.5/24;
+const int N_P = 1;
 
 // Fixed spin vector n params (barycentric FoR)
 // The parameters are such that a uniform distribution in both results in a uniform spin vector distribution on a unit sphere
@@ -48,7 +48,7 @@ const int N_PHI_A = 360*4;
 
 // GPU optimization parameters:
 const int BSIZE = 384;   // Threads in a block (64 ... 1024, step of 64)
-const int N_BLOCKS = 8*56; // Should be proportional to the number of SMs (56 for P100)
+const int N_BLOCKS = 56; // Should be proportional to the number of SMs (56 for P100)
 //const int N_SERIAL = 1; // number of serial iglob loops inside the kernel (>=1)
 //const int N_WARPS = BSIZE / 32;
 
@@ -60,6 +60,8 @@ const int MAX_FILE_NAME = 256;
 const int MAX_LINE_LENGTH = 128;
 // Maximum number of filters:
 const int MAX_FILTERS = 100;
+// Maximum number nof data points:
+const int MAX_DATA = 400;
 
 // Speed of light (au/day):
 const double light_speed = 173.144632674;
@@ -79,8 +81,8 @@ struct parameters_struct {
 
 // Observational data arrays:
 struct obs_data {
-double V;  // visual magnitude array, mag
-double w;  // 1-sgm error bar squared for V array, mag
+float V;  // visual magnitude array, mag
+float w;  // 1-sgm error bar squared for V array, mag
 double E_x;  // asteroid->Earth vector in barycentric FoR array, au
 double E_y;  // asteroid->Earth vector in barycentric FoR array, au
 double E_z;  // asteroid->Earth vector in barycentric FoR array, au

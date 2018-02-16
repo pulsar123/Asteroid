@@ -32,6 +32,12 @@ fclose(fp);
 // Minus one header line:
 *N_data = *N_data - 1;
 
+if (*N_data > MAX_DATA)
+{
+    fprintf(stderr,"Error: N_data (%d) > MAX_DATA!\n", *N_data);
+    exit(1);
+}
+
  // Allocating the data arrays:
 ERR(cudaMallocHost(&hData, *N_data * sizeof(struct obs_data)));
 ERR(cudaMallocHost(&MJD_obs, *N_data * sizeof(double)));
@@ -84,7 +90,7 @@ while (fgets(line, sizeof(line), fp))
 *N_filters = j;
 if (*N_filters > N_FILTERS)
 {
-    printf("Too many filters - increase N_FILTERS parameter! %d\n", *N_filters);
+    fprintf(stderr,"Too many filters - increase N_FILTERS parameter! %d\n", *N_filters);
     exit (1);
 }
 

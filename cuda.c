@@ -8,57 +8,21 @@
 #include "asteroid.h"
 
 
-
-__global__ void chi2_gpu (struct obs_data *dData, int N_data, int N_filters, long int Nloc, int iglob, int N_serial, float * d_chi2_min, long int * d_iloc_min)
-{        
-//    __shared__ struct obs_data sData[N_WARPS];
-//    struct obs_data sData;
-    __shared__ struct obs_data sData;
-    __shared__ float s_chi2_min[BSIZE];
-    __shared__ int s_thread_id[BSIZE];
-    
-    int i, m, j;
+__device__ float chi2one(struct parameters_struct params, struct obs_data *sData, int N_data, int N_filters)
+{
+    int i, m;
     double theta_a, n_phi, phi_a;
     double n_x, n_y, n_z;
     double cos_phi_a, sin_phi_a, cos_alpha_p, sin_alpha_p, scalar_Sun, scalar_Earth, scalar;
     double cos_lambda_p, sin_lambda_p, Vmod, alpha_p, lambda_p;
     double a_x,a_y,a_z,b_x,b_y,b_z,c_x,c_y,c_z;
     double Ep_x, Ep_y, Ep_z, Sp_x, Sp_y, Sp_z;
-    float chi2a, chi2_min;
-    struct parameters_struct params;
-    long int iloc, iloc_min;
-    
-/*    
-    double * sum_y2 = (double *)malloc(N_filters*sizeof(double));
-    double * sum_y = (double *)malloc(N_filters*sizeof(double));
-    double * sum_w = (double *)malloc(N_filters*sizeof(double));
-*/
+    float chi2a;
     double sum_y2[N_FILTERS];
     double sum_y[N_FILTERS];
     double sum_w[N_FILTERS];
-    
-    chi2_min = 1e30;
-    
-    // Global index (for the parameters for which we compute separate Chi^2_min)
-    // It only changes with blockIds
-    //    iglob = blockIdx.y + gridDim.y*blockIdx.z;
-    iglob_to_params(&iglob, &params);
-    
-    // Local index (for parameters over which chi2_min is computed)
-    // Changes with blockId.x, thread ID, and serial loop index j
-    iloc = N_serial * ((long int)threadIdx.x + blockDim.x*(long int)blockIdx.x);
-    if (iloc < Nloc)
-    {
         
-//        int warpID = threadIdx.x / warpSize;
-        
-        // Outer serial loop:
-        for (j=0; j<N_serial; j++)
-        {
-            
-            iloc_to_params(&iloc, &params);
-            
-            theta_a = 90.0 / RAD;    
+    theta_a = 90.0 / RAD;    
             
             // Calculations which are time independent:
             
@@ -119,10 +83,10 @@ __global__ void chi2_gpu (struct obs_data *dData, int N_data, int N_filters, lon
             for (i=0; i<N_data; i++)
             {            
                 // The expensive step - copying observational data for this momemt of time from device to shared memory:
-                sData = dData[i];
+//                sData = dData[i];
 //                __syncthreads();            
                 
-                phi_a = params.phi_a0 + sData.MJD/params.P * 2*PI;
+                phi_a = params.phi_a0 + sData[i].MJD/params.P * 2*PI;
                 
                 cos_phi_a = cos(phi_a);
                 sin_phi_a = sin(phi_a);
@@ -144,14 +108,14 @@ __global__ void chi2_gpu (struct obs_data *dData, int N_data, int N_filters, lon
                 c_z = a_x*b_y - a_y*b_x;
                 
                 // Earth vector in the new (a,b,c) basis:
-                Ep_x = a_x*sData.E_x + a_y*sData.E_y + a_z*sData.E_z;
-                Ep_y = b_x*sData.E_x + b_y*sData.E_y + b_z*sData.E_z;
-                Ep_z = c_x*sData.E_x + c_y*sData.E_y + c_z*sData.E_z;
+                Ep_x = a_x*sData[i].E_x + a_y*sData[i].E_y + a_z*sData[i].E_z;
+                Ep_y = b_x*sData[i].E_x + b_y*sData[i].E_y + b_z*sData[i].E_z;
+                Ep_z = c_x*sData[i].E_x + c_y*sData[i].E_y + c_z*sData[i].E_z;
                 
                 // Sun vector in the new (a,b,c) basis:
-                Sp_x = a_x*sData.S_x + a_y*sData.S_y + a_z*sData.S_z;
-                Sp_y = b_x*sData.S_x + b_y*sData.S_y + b_z*sData.S_z;
-                Sp_z = c_x*sData.S_x + c_y*sData.S_y + c_z*sData.S_z;
+                Sp_x = a_x*sData[i].S_x + a_y*sData[i].S_y + a_z*sData[i].S_z;
+                Sp_y = b_x*sData[i].S_x + b_y*sData[i].S_y + b_z*sData[i].S_z;
+                Sp_z = c_x*sData[i].S_x + c_y*sData[i].S_y + c_z*sData[i].S_z;
                 
                 // Now that we converted the Earth and Sun vectors to the internal asteroidal basis (a,b,c),
                 // we can apply the formalism of Muinonen & Lumme, 2015 to calculate the brightness of the asteroid.
@@ -177,14 +141,14 @@ __global__ void chi2_gpu (struct obs_data *dData, int N_data, int N_filters, lon
                 
                 
                 // Filter:
-                int m = sData.Filter;
+                int m = sData[i].Filter;
                 // Difference between the observational and model magnitudes:
-                double y = sData.V - Vmod;                    
-                sum_y2[m] = sum_y2[m] + y*y*sData.w;
-                sum_y[m] = sum_y[m] + y*sData.w;
-                sum_w[m] = sum_w[m] + sData.w;
+                double y = sData[i].V - Vmod;                    
+                sum_y2[m] = sum_y2[m] + y*y*sData[i].w;
+                sum_y[m] = sum_y[m] + y*sData[i].w;
+                sum_w[m] = sum_w[m] + sData[i].w;
                 
-                __syncthreads(); // Needed to ensure consistancy of sData shared memory structure across all threads               
+//                __syncthreads(); // Needed to ensure consistancy of sData shared memory structure across all threads               
             } // data points loop
             
             
@@ -198,6 +162,54 @@ __global__ void chi2_gpu (struct obs_data *dData, int N_data, int N_filters, lon
             }   
             
             chi2a = chi2a / (N_data - N_PARAMS - N_filters);
+            return chi2a;
+}           
+
+
+//--------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+
+__global__ void chi2_gpu (struct obs_data *dData, int N_data, int N_filters, long int Nloc, int iglob, int N_serial, float * d_chi2_min, long int * d_iloc_min)
+{        
+    __shared__ struct obs_data sData[MAX_DATA];
+    __shared__ float s_chi2_min[BSIZE];
+    __shared__ int s_thread_id[BSIZE];
+    
+    int i, j;
+    float chi2a, chi2_min;
+    struct parameters_struct params;
+    long int iloc, iloc_min;
+    
+    chi2_min = 1e30;
+    
+    // Not efficient, for now:
+    if (threadIdx.x == 0)
+    {
+        for (i=0; i<N_data; i++)
+            sData[i] = dData[i];
+    }
+    __syncthreads();
+    
+    // Global index (for the parameters for which we compute separate Chi^2_min)
+    // It only changes with blockIds
+    //    iglob = blockIdx.y + gridDim.y*blockIdx.z;
+    iglob_to_params(&iglob, &params);
+    
+    // Local index (for parameters over which chi2_min is computed)
+    // Changes with blockId.x, thread ID, and serial loop index j
+    iloc = N_serial * ((long int)threadIdx.x + blockDim.x*(long int)blockIdx.x);
+    if (iloc < Nloc)
+    {
+        
+//        int warpID = threadIdx.x / warpSize;
+        
+        // Outer serial loop:
+        for (j=0; j<N_serial; j++)
+        {
+            
+            iloc_to_params(&iloc, &params);
+            
+            chi2a = chi2one(params, sData, N_data, N_filters);
+                                            
             if (chi2a < chi2_min)
             {
                 chi2_min = chi2a;
@@ -245,12 +257,6 @@ __global__ void chi2_gpu (struct obs_data *dData, int N_data, int N_filters, lon
         // Copying the found minimum to device memory:
         d_iloc_min[blockIdx.x] = iloc_min;
     }
-    
-/*    
-    free(sum_y2);
-    free(sum_y);
-    free(sum_w);
-    */
     
     return;
 }
