@@ -2,9 +2,11 @@
  *   The goal is to simulate the brigntess curve of the first interstellar asteroid  1I/2017 U1.   
  */
 
+#include <sys/time.h>
 #include <math.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <curand_kernel.h>
 #define MAIN
 #include "asteroid.h"
 
@@ -57,17 +59,97 @@ int main (int argc,char **argv)
     if (useGPU)
     {
         fp = fopen("results.dat", "w");
+
+        int N_threads = N_BLOCKS * BSIZE;
         
         long int Nloc = N_THETA * N_COS_PHI * N_PHI_A;
         int Nglob = N_B * N_P;
         
-        gpu_prepare(N_data, N_filters);
+        gpu_prepare(N_data, N_filters, N_threads);
         
+
+
+#ifdef SIMPLEX
+        
+        float hLimits[2,N_PARAMS];
+        int iparam;
+        // Limits for each parameter during optimization:
+        // b
+        iparam = 0;
+        hLimits[0,iparam] = 0.08;
+        hLimits[1,iparam] = 0.28;
+        
+        // P
+        iparam = 1;
+        hLimits[0,iparam] = 6.5/24;
+        hLimits[1,iparam] = 8.5/24;
+        
+        // Theta
+        iparam = 2;
+        hLimits[0,iparam] = 0.001/RAD;
+        hLimits[1,iparam] = 180.0/RAD;
+        
+        // cos_phi
+        iparam = 3;
+        hLimits[0,iparam] = -1.0;
+        hLimits[1,iparam] = 0.999;
+        
+        // phi_a
+        iparam = 4;
+        hLimits[0,iparam] = 0.0;
+        hLimits[1,iparam] = 2.0*PI;
+        
+// Normalizing parameters to delta=1 range: ???
+        /*
+        float delta;
+        for (i=0; i<N_PARAMS; i++)
+        {
+            delta = hLimits[1,i] - hLimits[0,i];
+            hLimits[2,i] = delta;
+            hLimits[0,i] = hLimits[0,i] / delta;
+            hLimits[1,i] = hLimits[1,i] / delta;
+        }
+        */
+
+        ERR(cudaMemcpyToSymbol(dLimits, hLimits, 3*N_PARAMS*sizeof(float), 0, cudaMemcpyHostToDevice));                
+        
+   // Initializing the device random number generator:
+        curandState* d_states;
+        cudaMalloc ( &d_states, N_threads*sizeof( curandState ) );
+    // setup seeds, initialize d_f
+        setup_kernel <<< N_BLOCKS, BSIZE >>> ( d_states, time(NULL), d_f );
+
+        // The kernel:
+        chi2_gpu<<<N_BLOCKS, BSIZE>>>(dData, N_data, N_filters, globalState, d_f, d_params);
+
+// Copying the results from GPU:
+        ERR(cudaMemcpy(h_f, d_f, N_threads * sizeof(float), cudaMemcpyDeviceToHost));
+        ERR(cudaMemcpy(h_params, d_params, N_threads * sizeof(struct parameters_struct), cudaMemcpyDeviceToHost));
+
+// Finding the best result between all threads:        
+        int i_best;
+        for (i=0; i<N_threads; i++)
+        {
+            if (h_f[i] < chi2_tot)
+            {
+                chi2_tot = h_f[i];
+                i_best = i;
+            }
+        }
+        
+// Writing the best result to file:
+        params = h_params[i_best];
+        fprintf(fp,"b=%lf\n", params.b);
+        fprintf(fp,"P=%lf\n", params.P*24);
+        fprintf(fp,"theta=%lf\n", params.theta);
+        fprintf(fp,"cos_phi=%lf\n", params.cos_phi);
+        fprintf(fp,"phi_a0=%lf\n", params.phi_a0);
+        
+#else        
         cudaEvent_t start, stop;
         float elapsed;
         cudaEventCreate(&start);
         cudaEventCreate(&stop);
-        
         
         // We use Y and Z grid dimensions to store iglob:
         //    int Z_dim = Nglob / deviceProp.maxGridSize[1];
@@ -78,7 +160,6 @@ int main (int argc,char **argv)
         //    int X_dim = (Nloc/N_SERIAL+BSIZE-1) / BSIZE;
         //    dim3 Dims(X_dim, Y_dim, Z_dim);
         
-        int N_threads = N_BLOCKS * BSIZE;
         int N_serial = (Nloc+N_threads-1) / N_threads;
         printf ("N_threads=%d; N_serial=%d\n", N_threads, N_serial);
         
@@ -155,6 +236,7 @@ int main (int argc,char **argv)
         printf("theta=%lf\n", params.theta);
         printf("cos_phi=%lf\n", params.cos_phi);
         printf("phi_a0=%lf\n", params.phi_a0);
+#endif        
         
         fclose(fp);
     }

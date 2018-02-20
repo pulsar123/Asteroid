@@ -6,6 +6,7 @@
 #include <stdio.h>
 #include <cuda.h>
 #include <sys/time.h>
+#include <curand_kernel.h>
 #include "cuda_errors.h"
 
 #define PI 3.141592653589793238L
@@ -52,7 +53,17 @@ const int N_BLOCKS = 56; // Should be proportional to the number of SMs (56 for 
 //const int N_SERIAL = 1; // number of serial iglob loops inside the kernel (>=1)
 //const int N_WARPS = BSIZE / 32;
 
+// Simplex parameters:
+const unsigned int N_STEPS = 1000; // Number of simplex steps (for each thread)
+const float DX_INI = 0.01;  // Scale-free initial step
+const float SIZE_MIN = 1e-5; // Scale-free smallest simplex size (convergence criterion)
+// Dimensionless simplex constants:
+const float ALPHA_SIM = 1.0;
+const float GAMMA_SIM = 2.0;
+const float RHO_SIM   = 0.5;
+const float SIGMA_SIM = 0.5;
 
+const float SIZE_MIN2 = SIZE_MIN * SIZE_MIN;
 
 // Maximum number of chars in a file name:
 const int MAX_FILE_NAME = 256;
@@ -104,9 +115,13 @@ __device__ __host__ void iloc_to_params(long int *, struct parameters_struct *);
 
 #ifdef GPU
 
-int gpu_prepare(int, int);
+int gpu_prepare(int, int, int);
 
-__global__ void chi2_gpu(struct obs_data *, int, int, long int, int, int, float *, long int *);
+#endif SIMPLEX
+//__global__ void chi2_gpu(struct obs_data *, int, int, long int, int, int, float *, long int *, curandState*);
+#else
+//__global__ void chi2_gpu(struct obs_data *, int, int, long int, int, int, float *, long int *);
+#endif
 #endif
 
 
@@ -138,6 +153,14 @@ EXTERN float * d_chi2_min;
 EXTERN float * h_chi2_min;
 EXTERN long int * d_iloc_min;
 EXTERN long int * h_iloc_min;
+
+#ifdef SIMPLEX
+    EXTERN __device__ float dLimits[2,N_PARAMS];
+    EXTERN __device__ float *d_f;
+    EXTERN __device__ struct parameters_struct *d_params;
+    EXTERN float *h_f;
+    EXTERN struct parameters_struct *h_params;
+#endif                
 
 
 #endif
