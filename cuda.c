@@ -9,20 +9,6 @@
 #include "asteroid.h"
 
 
-__global__ void setup_kernel ( curandState * state, unsigned long seed, float *d_f )
-// This probably best to keep in a separate kernel, as curand_init consumes a lot of resources.
-{
-    // Global thread index:
-    int id = blockIdx.x*blockDim.x + threadIdx.x;
-    // Generating initial states for all threads in a kernel:
-    curand_init ( seed, id, 0, &state[id] );
-    
-    d_f[id] = 1e30;
-    
-    return;
-} 
-
-
 __device__ float chi2one(struct parameters_struct params, struct obs_data *sData, int N_data, int N_filters)
 // Computung chi^2 for a single model parameters combination, on GPU, by a single thread
 {
@@ -180,14 +166,38 @@ __device__ float chi2one(struct parameters_struct params, struct obs_data *sData
 
 //--------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 #ifdef SIMPLEX
-__device__ void x2params(float *x, struct parameters_struct *params)
+__global__ void setup_kernel ( curandState * state, unsigned long seed, float *d_f )
 {
+    // Global thread index:
+    int id = blockIdx.x*blockDim.x + threadIdx.x;
+    // Generating initial states for all threads in a kernel:
+    curand_init ( seed, id, 0, &state[id] );
+    
+    d_f[id] = 1e30;
+    
+    return;
+} 
+
+__device__ int x2params(float *x, struct parameters_struct *params)
+{
+    // Checking if we went beyond the limits:
+    int failed = 0;
+    for (int i=0; i<N_PARAMS; i++)
+    {
+        if (x[i]<=0.0 || x[i]>=1.0)
+            failed = 1;
+    }
+    if (failed)
+        return failed;
+            
     params->b =       x[0] * (dLimits[1,0]-dLimits[0,0]) + dLimits[0,0];
     params->c = params->b; // !!! Just for testing!
     params->P =       x[1] * (dLimits[1,1]-dLimits[0,1]) + dLimits[0,1];
     params->theta =   x[2] * (dLimits[1,2]-dLimits[0,2]) + dLimits[0,2]; 
     params->cos_phi = x[3] * (dLimits[1,3]-dLimits[0,3]) + dLimits[0,3];
     params->phi_a =   x[4] * (dLimits[1,4]-dLimits[0,4]) + dLimits[0,4];
+    
+    return 0;
 }
 #endif
 
@@ -217,12 +227,15 @@ __global__ void chi2_gpu (struct obs_data *dData, int N_data, int N_filters, lon
     #ifdef SIMPLEX
     // Downhill simplex optimization approach
     
+    __syncthreads();
+    
+    // Global thread index:
+    int id = threadIdx.x + blockDim.x*blockIdx.x;
+    
     // Reading the global states from device memory:
     curandState localState = globalState[id];
     
     unsigned int l = 0;  // Using non-long int limits code kernel run to ~2 months
-    
-    __syncthreads();
     
     float x[N_PARAMS+1,N_PARAMS];  // simplex points (point index, coordinate)
     float f[N_PARAMS+1]; // chi2 values for the simplex edges (point index)
@@ -235,8 +248,8 @@ __global__ void chi2_gpu (struct obs_data *dData, int N_data, int N_filters, lon
         // Initial random point
         for (i=0; i<N_PARAMS; i++)
         {
-            // The DX_INI business is to prevent the initial simplex going beyong the limits:
-            x[0,i] = (1.0-DX_INI)*curand_uniform(&localState);
+            // The DX_INI business is to prevent the initial simplex going beyong the limits
+            x[0,i] = 1e-6 + (1.0-DX_INI-2e-6)*curand_uniform(&localState);
         }
         
         // Simplex initialization
@@ -251,13 +264,14 @@ __global__ void chi2_gpu (struct obs_data *dData, int N_data, int N_filters, lon
             }
         }
         
-        // Computing the initial function values (chi2):
+        // Computing the initial function values (chi2):        
         for (j=0; j<N_PARAMS+1; j++)
         {
             x2params(x[j],&params);
             f[j] = chi2one(params, sData, N_data, N_filters);    
         }
         
+        bool failed = 0;
         
         // The main simplex loop
         while (1)
@@ -265,9 +279,10 @@ __global__ void chi2_gpu (struct obs_data *dData, int N_data, int N_filters, lon
             l++;  // Incrementing the global (for the whole lifetime of the thread) simplex steps counter by one
             
             // Sorting the simplex:
+            bool ind2[N_PARAMS+1];
             for (j=0; j<N_PARAMS+1; j++)
             {
-                ind[j] = -1;  // Uninitialized flag
+                ind2[j] = 0;  // Uninitialized flag
             }
             float fmin;
             int jmin, j2;
@@ -276,30 +291,31 @@ __global__ void chi2_gpu (struct obs_data *dData, int N_data, int N_filters, lon
                 fmin = 1e30;
                 for (j2=0; j2<N_PARAMS+1; j2++)
                 {
-                    if (ind[j2]==-1 && f[j2] < fmin)
+                    if (ind2[j2]==0 && f[j2] <= fmin)
                     {
                         fmin = f[j2];
                         jmin = j2;
                     }            
                 }
                 ind[j] = jmin;
+                ind2[jmin] = 1;
             }    
             
             // Simplex centroid:
             float x0[N_PARAMS];
             for (i=0; i<N_PARAMS; i++)
             {
-                float sum = 0.0
+                float sum = 0.0;
                 for (j=0; j<N_PARAMS+1; j++)
                     sum = sum + x[j,i];
-                x0[i] = sum / N_PARAMS;
+                x0[i] = sum / (N_PARAMS+1);
             }           
             
             // Simplex size squared:
             float size2 = 0.0;
             for (j=0; j<N_PARAMS+1; j++)
             {
-                float sum = 0.0
+                float sum = 0.0;
                 for (i=0; i<N_PARAMS; i++)
                 {
                     float dx = x[j,i] - x0[i];
@@ -307,10 +323,10 @@ __global__ void chi2_gpu (struct obs_data *dData, int N_data, int N_filters, lon
                 }
                 size2 = size2 + sum;
             }
-            size2 = size2 / (N_PARAMS - 1);  // Normalizing the simplex size^2 by the number of dimensions
+            size2 = size2 / N_PARAMS;  // Computing the std square of the simplex points relative to the centroid point
             
             // Simplex convergence criterion, plus the end of thread life criterion:
-            if (size2 < SIZE_MIN2 || l > N_STEPS)
+            if (size2 < SIZE2_MIN || l > N_STEPS)
                 break;
             
             // Reflection
@@ -319,8 +335,11 @@ __global__ void chi2_gpu (struct obs_data *dData, int N_data, int N_filters, lon
             {
                 x_r[i] = x0[i] + ALPHA_SIM*(x0[i] - x[ind[N_PARAMS],i]);
             }
-            x2params(x_r,&params);
-            float f_r = chi2one(params, sData, N_data, N_filters);
+            float f_r;
+            if (x2params(x_r,&params))
+                f_r = 1e30;
+            else
+                f_r = chi2one(params, sData, N_data, N_filters);
             if (f_r >= f[ind[0]] && f_r < f[ind[N_PARAMS-1]])
             {
                 // Replacing the worst point with the reflected point:
@@ -340,8 +359,11 @@ __global__ void chi2_gpu (struct obs_data *dData, int N_data, int N_filters, lon
                 {
                     x_e[i] = x0[i] + GAMMA_SIM*(x_r[i] - x0[i]);
                 }
-                x2params(x_e,&params);
-                float f_e = chi2one(params, sData, N_data, N_filters);
+                float f_e;
+                if (x2params(x_e,&params))
+                    f_e = 1e30;
+                else
+                    f_e = chi2one(params, sData, N_data, N_filters);
                 if (f_e < f_r)
                 {
                     // Replacing the worst point with the expanded point:
@@ -369,8 +391,10 @@ __global__ void chi2_gpu (struct obs_data *dData, int N_data, int N_filters, lon
             {
                 x_r[i] = x0[i] + RHO_SIM*(x[ind[N_PARAMS],i] - x0[i]);
             }
-            x2params(x_r,&params);
-            f_r = chi2one(params, sData, N_data, N_filters);
+            if (x2params(x_r,&params))
+                f_r = 1e30;
+            else
+                f_r = chi2one(params, sData, N_data, N_filters);
             if (f_r < f[ind[N_PARAMS]])
             {
                 // Replacing the worst point with the contracted point:
@@ -389,23 +413,31 @@ __global__ void chi2_gpu (struct obs_data *dData, int N_data, int N_filters, lon
                 {
                     x[ind[j],i] = x[ind[0],i] + SIGMA_SIM*(x[ind[j],i] - x[ind[0],i]);
                 }           
-                x2params(x[ind[j]],&params);
-                f[ind[j]] = chi2one(params, sData, N_data, N_filters);
+                if (x2params(x[ind[j]],&params))
+                    failed = 1;
+                else
+                    f[ind[j]] = chi2one(params, sData, N_data, N_filters);
             }
+            // We failed the optimization; restarting from the beginning
+            if (failed)
+                break;
             
-        }  // l loop
-        
-        // Updating the best result so far for the thread to device memory:
-        // Global thread index:
-        unsigned int i_thread = threadIdx.x + blockDim.x*blockIdx.x;
-        // Previously best result:
-        float f_old = d_f[i_thread];
-        if (f[ind[0]] < f_old)
-            // We found a better solution; updating the device values
+        }  // inner while loop
+
+        if (!failed)            
         {
-            x2params(x[ind[0]],&params);
-            d_params[i_thread] = params;
-            d_f[i_thread] = f[ind[0]];
+            // Updating the best result so far for the thread to device memory:
+            // Global thread index:
+            int id = threadIdx.x + blockDim.x*blockIdx.x;
+            // Previously best result:
+            float f_old = d_f[id];
+            if (f[ind[0]] < f_old)
+                // We found a better solution; updating the device values
+            {
+                x2params(x[ind[0]],&params);
+                d_params[id] = params;
+                d_f[id] = f[ind[0]];
+            }
         }
         
         if (l >= N_STEPS)

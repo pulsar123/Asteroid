@@ -63,7 +63,7 @@ const float GAMMA_SIM = 2.0;
 const float RHO_SIM   = 0.5;
 const float SIGMA_SIM = 0.5;
 
-const float SIZE_MIN2 = SIZE_MIN * SIZE_MIN;
+const float SIZE2_MIN = SIZE_MIN * SIZE_MIN;
 
 // Maximum number of chars in a file name:
 const int MAX_FILE_NAME = 256;
@@ -118,9 +118,10 @@ __device__ __host__ void iloc_to_params(long int *, struct parameters_struct *);
 int gpu_prepare(int, int, int);
 
 #endif SIMPLEX
-//__global__ void chi2_gpu(struct obs_data *, int, int, long int, int, int, float *, long int *, curandState*);
+__global__ void setup_kernel ( curandState *, unsigned long, float *);
+__global__ void chi2_gpu(struct obs_data *, int, int, long int, int, int, float*, long int*, curandState*, float*, struct parameters_struct*);
 #else
-//__global__ void chi2_gpu(struct obs_data *, int, int, long int, int, int, float *, long int *);
+__global__ void chi2_gpu(struct obs_data *, int, int, long int, int, int, float*, long int*);
 #endif
 #endif
 

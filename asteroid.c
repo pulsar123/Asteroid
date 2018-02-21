@@ -111,23 +111,25 @@ int main (int argc,char **argv)
         }
         */
 
-        ERR(cudaMemcpyToSymbol(dLimits, hLimits, 3*N_PARAMS*sizeof(float), 0, cudaMemcpyHostToDevice));                
+        ERR(cudaMemcpyToSymbol(dLimits, hLimits, 2*N_PARAMS*sizeof(float), 0, cudaMemcpyHostToDevice));                
         
    // Initializing the device random number generator:
         curandState* d_states;
         cudaMalloc ( &d_states, N_threads*sizeof( curandState ) );
     // setup seeds, initialize d_f
-        setup_kernel <<< N_BLOCKS, BSIZE >>> ( d_states, time(NULL), d_f );
+//        setup_kernel <<< N_BLOCKS, BSIZE >>> ( d_states, time(NULL), d_f );
+        //!!!
+        setup_kernel <<< N_BLOCKS, BSIZE >>> ( d_states, 0, d_f );
 
         // The kernel:
-        chi2_gpu<<<N_BLOCKS, BSIZE>>>(dData, N_data, N_filters, globalState, d_f, d_params);
+        chi2_gpu<<<N_BLOCKS, BSIZE>>>(dData, N_data, N_filters, d_states, d_f, d_params);
 
 // Copying the results from GPU:
         ERR(cudaMemcpy(h_f, d_f, N_threads * sizeof(float), cudaMemcpyDeviceToHost));
         ERR(cudaMemcpy(h_params, d_params, N_threads * sizeof(struct parameters_struct), cudaMemcpyDeviceToHost));
 
 // Finding the best result between all threads:        
-        int i_best;
+        int i_best = 0;
         for (i=0; i<N_threads; i++)
         {
             if (h_f[i] < chi2_tot)
