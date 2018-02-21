@@ -15,7 +15,6 @@ int main (int argc,char **argv)
     FILE *fp;
     struct parameters_struct params;
     float chi2_tot=1e32;
-    long int iloc_tot;
     int i;
     int useGPU = 1;
     
@@ -61,43 +60,40 @@ int main (int argc,char **argv)
         fp = fopen("results.dat", "w");
 
         int N_threads = N_BLOCKS * BSIZE;
-        
-        long int Nloc = N_THETA * N_COS_PHI * N_PHI_A;
-        int Nglob = N_B * N_P;
-        
+                
         gpu_prepare(N_data, N_filters, N_threads);
         
 
 
 #ifdef SIMPLEX
         
-        float hLimits[2,N_PARAMS];
+        float hLimits[2][N_PARAMS];
         int iparam;
         // Limits for each parameter during optimization:
         // b
         iparam = 0;
-        hLimits[0,iparam] = 0.08;
-        hLimits[1,iparam] = 0.28;
+        hLimits[0][iparam] = 0.08;
+        hLimits[1][iparam] = 0.28;
         
         // P
         iparam = 1;
-        hLimits[0,iparam] = 6.5/24;
-        hLimits[1,iparam] = 8.5/24;
+        hLimits[0][iparam] = 6.5/24;
+        hLimits[1][iparam] = 8.5/24;
         
         // Theta
         iparam = 2;
-        hLimits[0,iparam] = 0.001/RAD;
-        hLimits[1,iparam] = 180.0/RAD;
+        hLimits[0][iparam] = 0.001/RAD;
+        hLimits[1][iparam] = 180.0/RAD;
         
         // cos_phi
         iparam = 3;
-        hLimits[0,iparam] = -1.0;
-        hLimits[1,iparam] = 0.999;
+        hLimits[0][iparam] = -1.0;
+        hLimits[1][iparam] = 0.999;
         
         // phi_a
         iparam = 4;
-        hLimits[0,iparam] = 0.0;
-        hLimits[1,iparam] = 2.0*PI;
+        hLimits[0][iparam] = 0.0;
+        hLimits[1][iparam] = 2.0*PI;
         
 // Normalizing parameters to delta=1 range: ???
         /*
@@ -162,12 +158,14 @@ int main (int argc,char **argv)
         //    int X_dim = (Nloc/N_SERIAL+BSIZE-1) / BSIZE;
         //    dim3 Dims(X_dim, Y_dim, Z_dim);
         
+        long int Nloc = N_THETA * N_COS_PHI * N_PHI_A;
+        long int iloc_tot;
         int N_serial = (Nloc+N_threads-1) / N_threads;
         printf ("N_threads=%d; N_serial=%d\n", N_threads, N_serial);
         
         int iglob = 0;
         int iglob_tot = 0;
-        int i_b, i_P, i_b_min, i_P_min;
+        int i_b, i_P;
         int init = 1;
         
         for (i_b=0; i_b<N_B; i_b++)

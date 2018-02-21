@@ -190,12 +190,12 @@ __device__ int x2params(float *x, struct parameters_struct *params)
     if (failed)
         return failed;
             
-    params->b =       x[0] * (dLimits[1,0]-dLimits[0,0]) + dLimits[0,0];
+    params->b =       x[0] * (dLimits[1][0]-dLimits[0][0]) + dLimits[0][0];
     params->c = params->b; // !!! Just for testing!
-    params->P =       x[1] * (dLimits[1,1]-dLimits[0,1]) + dLimits[0,1];
-    params->theta =   x[2] * (dLimits[1,2]-dLimits[0,2]) + dLimits[0,2]; 
-    params->cos_phi = x[3] * (dLimits[1,3]-dLimits[0,3]) + dLimits[0,3];
-    params->phi_a =   x[4] * (dLimits[1,4]-dLimits[0,4]) + dLimits[0,4];
+    params->P =       x[1] * (dLimits[1][1]-dLimits[0][1]) + dLimits[0][1];
+    params->theta =   x[2] * (dLimits[1][2]-dLimits[0][2]) + dLimits[0][2]; 
+    params->cos_phi = x[3] * (dLimits[1][3]-dLimits[0][3]) + dLimits[0][3];
+    params->phi_a0 =   x[4] * (dLimits[1][4]-dLimits[0][4]) + dLimits[0][4];
     
     return 0;
 }
@@ -237,7 +237,7 @@ __global__ void chi2_gpu (struct obs_data *dData, int N_data, int N_filters, lon
     
     unsigned int l = 0;  // Using non-long int limits code kernel run to ~2 months
     
-    float x[N_PARAMS+1,N_PARAMS];  // simplex points (point index, coordinate)
+    float x[N_PARAMS+1][N_PARAMS];  // simplex points (point index, coordinate)
     float f[N_PARAMS+1]; // chi2 values for the simplex edges (point index)
     int ind[N_PARAMS+1]; // Indexes to the sorted array (point index)
     
@@ -249,7 +249,7 @@ __global__ void chi2_gpu (struct obs_data *dData, int N_data, int N_filters, lon
         for (i=0; i<N_PARAMS; i++)
         {
             // The DX_INI business is to prevent the initial simplex going beyong the limits
-            x[0,i] = 1e-6 + (1.0-DX_INI-2e-6)*curand_uniform(&localState);
+            x[0][i] = 1e-6 + (1.0-DX_INI-2e-6)*curand_uniform(&localState);
         }
         
         // Simplex initialization
@@ -258,9 +258,9 @@ __global__ void chi2_gpu (struct obs_data *dData, int N_data, int N_filters, lon
             for (i=0; i<N_PARAMS; i++)
             {
                 if (i == j-1)
-                    x[j,i] = x[0,i] + DX_INI;
+                    x[j][i] = x[0][i] + DX_INI;
                 else
-                    x[j,i] = x[0,i];
+                    x[j][i] = x[0][i];
             }
         }
         
@@ -307,7 +307,7 @@ __global__ void chi2_gpu (struct obs_data *dData, int N_data, int N_filters, lon
             {
                 float sum = 0.0;
                 for (j=0; j<N_PARAMS+1; j++)
-                    sum = sum + x[j,i];
+                    sum = sum + x[j][i];
                 x0[i] = sum / (N_PARAMS+1);
             }           
             
@@ -318,7 +318,7 @@ __global__ void chi2_gpu (struct obs_data *dData, int N_data, int N_filters, lon
                 float sum = 0.0;
                 for (i=0; i<N_PARAMS; i++)
                 {
-                    float dx = x[j,i] - x0[i];
+                    float dx = x[j][i] - x0[i];
                     sum = sum + dx*dx;
                 }
                 size2 = size2 + sum;
@@ -333,7 +333,7 @@ __global__ void chi2_gpu (struct obs_data *dData, int N_data, int N_filters, lon
             float x_r[N_PARAMS];
             for (i=0; i<N_PARAMS; i++)
             {
-                x_r[i] = x0[i] + ALPHA_SIM*(x0[i] - x[ind[N_PARAMS],i]);
+                x_r[i] = x0[i] + ALPHA_SIM*(x0[i] - x[ind[N_PARAMS]][i]);
             }
             float f_r;
             if (x2params(x_r,&params))
@@ -345,7 +345,7 @@ __global__ void chi2_gpu (struct obs_data *dData, int N_data, int N_filters, lon
                 // Replacing the worst point with the reflected point:
                 for (i=0; i<N_PARAMS; i++)
                 {
-                    x[ind[N_PARAMS],i] = x_r[i];
+                    x[ind[N_PARAMS]][i] = x_r[i];
                 }
                 f[ind[N_PARAMS]] = f_r;
                 continue;  // Going to the next simplex step
@@ -369,7 +369,7 @@ __global__ void chi2_gpu (struct obs_data *dData, int N_data, int N_filters, lon
                     // Replacing the worst point with the expanded point:
                     for (i=0; i<N_PARAMS; i++)
                     {
-                        x[ind[N_PARAMS],i] = x_e[i];
+                        x[ind[N_PARAMS]][i] = x_e[i];
                     }
                     f[ind[N_PARAMS]] = f_e;
                 }
@@ -378,7 +378,7 @@ __global__ void chi2_gpu (struct obs_data *dData, int N_data, int N_filters, lon
                     // Replacing the worst point with the reflected point:
                     for (i=0; i<N_PARAMS; i++)
                     {
-                        x[ind[N_PARAMS],i] = x_r[i];
+                        x[ind[N_PARAMS]][i] = x_r[i];
                     }
                     f[ind[N_PARAMS]] = f_r;
                 }
@@ -389,7 +389,7 @@ __global__ void chi2_gpu (struct obs_data *dData, int N_data, int N_filters, lon
             // (Here we repurpose x_r and f_r for the contraction stuff)
             for (i=0; i<N_PARAMS; i++)
             {
-                x_r[i] = x0[i] + RHO_SIM*(x[ind[N_PARAMS],i] - x0[i]);
+                x_r[i] = x0[i] + RHO_SIM*(x[ind[N_PARAMS]][i] - x0[i]);
             }
             if (x2params(x_r,&params))
                 f_r = 1e30;
@@ -400,18 +400,18 @@ __global__ void chi2_gpu (struct obs_data *dData, int N_data, int N_filters, lon
                 // Replacing the worst point with the contracted point:
                 for (i=0; i<N_PARAMS; i++)
                 {
-                    x[ind[N_PARAMS],i] = x_r[i];
+                    x[ind[N_PARAMS]][i] = x_r[i];
                 }
                 f[ind[N_PARAMS]] = f_r;
                 continue;  // Going to the next simplex step
             }
             
             // If all else fails - shrink
-            for (j=1,N_PARAMS+1)           
+            for (j=1; j<N_PARAMS+1; j++)
             {
                 for (i=0; i<N_PARAMS; i++)
                 {
-                    x[ind[j],i] = x[ind[0],i] + SIGMA_SIM*(x[ind[j],i] - x[ind[0],i]);
+                    x[ind[j]][i] = x[ind[0]][i] + SIGMA_SIM*(x[ind[j]][i] - x[ind[0]][i]);
                 }           
                 if (x2params(x[ind[j]],&params))
                     failed = 1;
@@ -527,9 +527,11 @@ __global__ void chi2_gpu (struct obs_data *dData, int N_data, int N_filters, lon
         // Copying the found minimum to device memory:
         d_iloc_min[blockIdx.x] = iloc_min;
     }
+
+    return;
+    
     #endif
     
     
-    return;
 }
 

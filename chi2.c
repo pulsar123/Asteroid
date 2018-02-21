@@ -43,7 +43,7 @@ int chi2 (int N_data, int N_filters, struct parameters_struct params, double *ch
     n_theta = params.theta;
     cos_n_phi = params.cos_phi;
     phi_a0 = params.phi_a0;
-    theta_a = 90 / Rad;
+    theta_a = 90 / RAD;
     
     
     // Disk: 1, 0.165, 5, 60, 90, 0.03, 7.35: 12.11:
@@ -127,7 +127,7 @@ int chi2 (int N_data, int N_filters, struct parameters_struct params, double *ch
             // Rotational phase angle:
             if (l == 0)
             {
-                phi_a = phi_a0 + hData[i].MJD/P * 2*Pi;
+                phi_a = phi_a0 + hData[i].MJD/P * 2*PI;
                 
                 E_x1 = hData[i].E_x;
                 E_y1 = hData[i].E_y;
@@ -139,7 +139,7 @@ int chi2 (int N_data, int N_filters, struct parameters_struct params, double *ch
             else
                 
             {
-                phi_a = phi_a0 + (double)i/(double)N * 2*Pi * hData[N_data-1].MJD/P;
+                phi_a = phi_a0 + (double)i/(double)N * 2*PI * hData[N_data-1].MJD/P;
                 MJD1 = (double)i/(double)N * hData[N_data-1].MJD + hMJD0;
                 MJD1_obs = (double)i/(double)N * (MJD_obs[N_data-1] - MJD_obs[0]) + MJD_obs[0];
                 quadratic_interpolation(MJD1_obs, &E_x1, &E_y1, &E_z1, &S_x1, &S_y1, &S_z1);

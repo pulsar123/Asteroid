@@ -9,8 +9,10 @@
 #include <curand_kernel.h>
 #include "cuda_errors.h"
 
-#define PI 3.141592653589793238L
-#define RAD (180.0L / PI)
+#define PI 3.141592653589793238
+#define RAD (180.0 / PI)
+
+#define SIMPLEX
 
 
 // Constants:
@@ -76,8 +78,6 @@ const int MAX_DATA = 400;
 
 // Speed of light (au/day):
 const double light_speed = 173.144632674;
-const double Pi = acos(-1.0);
-const double Rad = 180.0 / Pi;
 
 // Parameters structure:
 struct parameters_struct {
@@ -117,9 +117,9 @@ __device__ __host__ void iloc_to_params(long int *, struct parameters_struct *);
 
 int gpu_prepare(int, int, int);
 
-#endif SIMPLEX
+#ifdef SIMPLEX
 __global__ void setup_kernel ( curandState *, unsigned long, float *);
-__global__ void chi2_gpu(struct obs_data *, int, int, long int, int, int, float*, long int*, curandState*, float*, struct parameters_struct*);
+__global__ void chi2_gpu(struct obs_data *, int, int, curandState*, float*, struct parameters_struct*);
 #else
 __global__ void chi2_gpu(struct obs_data *, int, int, long int, int, int, float*, long int*);
 #endif
@@ -156,9 +156,9 @@ EXTERN long int * d_iloc_min;
 EXTERN long int * h_iloc_min;
 
 #ifdef SIMPLEX
-    EXTERN __device__ float dLimits[2,N_PARAMS];
-    EXTERN __device__ float *d_f;
-    EXTERN __device__ struct parameters_struct *d_params;
+    EXTERN __device__ float dLimits[2][N_PARAMS];
+    EXTERN float *d_f;
+    EXTERN struct parameters_struct *d_params;
     EXTERN float *h_f;
     EXTERN struct parameters_struct *h_params;
 #endif                
