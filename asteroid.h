@@ -12,8 +12,6 @@
 #define PI 3.141592653589793238
 #define RAD (180.0 / PI)
 
-#define SIMPLEX
-
 
 // Constants:
 // Number of free parameters for chi^2 (excludes filters):
@@ -50,13 +48,13 @@ const double PHI_A2 = 2.0*PI;
 const int N_PHI_A = 360*4;
 
 // GPU optimization parameters:
-const int BSIZE = 384;   // Threads in a block (64 ... 1024, step of 64)
-const int N_BLOCKS = 56; // Should be proportional to the number of SMs (56 for P100)
+const int BSIZE = 256;   // Threads in a block (64 ... 1024, step of 64); 384
+const int N_BLOCKS = 56*4; // Should be proportional to the number of SMs (56 for P100);  56
 //const int N_SERIAL = 1; // number of serial iglob loops inside the kernel (>=1)
 //const int N_WARPS = BSIZE / 32;
 
 // Simplex parameters:
-const unsigned int N_STEPS = 1000; // Number of simplex steps (for each thread)
+const unsigned int N_STEPS = 5000; // Number of simplex steps (for each thread)
 const float DX_INI = 0.01;  // Scale-free initial step
 const float SIZE_MIN = 1e-5; // Scale-free smallest simplex size (convergence criterion)
 // Dimensionless simplex constants:

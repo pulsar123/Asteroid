@@ -24,6 +24,7 @@ __device__ float chi2one(struct parameters_struct params, struct obs_data *sData
     double sum_y[N_FILTERS];
     double sum_w[N_FILTERS];
     
+
     theta_a = 90.0 / RAD;    
     
     // Calculations which are time independent:
@@ -191,12 +192,15 @@ __device__ int x2params(float *x, struct parameters_struct *params)
         return failed;
             
     params->b =       x[0] * (dLimits[1][0]-dLimits[0][0]) + dLimits[0][0];
-    params->c = params->b; // !!! Just for testing!
     params->P =       x[1] * (dLimits[1][1]-dLimits[0][1]) + dLimits[0][1];
     params->theta =   x[2] * (dLimits[1][2]-dLimits[0][2]) + dLimits[0][2]; 
     params->cos_phi = x[3] * (dLimits[1][3]-dLimits[0][3]) + dLimits[0][3];
     params->phi_a0 =   x[4] * (dLimits[1][4]-dLimits[0][4]) + dLimits[0][4];
     
+// !!! For testing only:
+    params->c = params->b;
+    params->cos_phi_b = 0.0;
+
     return 0;
 }
 #endif

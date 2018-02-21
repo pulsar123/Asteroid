@@ -66,6 +66,8 @@ int main (int argc,char **argv)
 
 
 #ifdef SIMPLEX
+        printf("\n*** Simplex optimization ***\n\n");
+        printf("  N_threads = %d\n", N_threads);
         
         float hLimits[2][N_PARAMS];
         int iparam;
@@ -115,7 +117,7 @@ int main (int argc,char **argv)
     // setup seeds, initialize d_f
 //        setup_kernel <<< N_BLOCKS, BSIZE >>> ( d_states, time(NULL), d_f );
         //!!!
-        setup_kernel <<< N_BLOCKS, BSIZE >>> ( d_states, 0, d_f );
+        setup_kernel <<< N_BLOCKS, BSIZE >>> ( d_states, 1, d_f );
 
         // The kernel:
         chi2_gpu<<<N_BLOCKS, BSIZE>>>(dData, N_data, N_filters, d_states, d_f, d_params);
@@ -137,11 +139,14 @@ int main (int argc,char **argv)
         
 // Writing the best result to file:
         params = h_params[i_best];
-        fprintf(fp,"b=%lf\n", params.b);
-        fprintf(fp,"P=%lf\n", params.P*24);
-        fprintf(fp,"theta=%lf\n", params.theta);
-        fprintf(fp,"cos_phi=%lf\n", params.cos_phi);
-        fprintf(fp,"phi_a0=%lf\n", params.phi_a0);
+        fprintf(fp,"%13.6e ",  h_f[i_best]);
+        fprintf(fp,"%10.6f ",  params.b);
+        fprintf(fp,"%10.6f ",  params.P*24);
+        fprintf(fp,"%10.6f ",  params.c);
+        fprintf(fp,"%10.6f ",  params.cos_phi_b);
+        fprintf(fp,"%10.6f ",  params.theta);
+        fprintf(fp,"%10.6f ",  params.cos_phi);
+        fprintf(fp,"%10.6f\n", params.phi_a0);
         
 #else        
         cudaEvent_t start, stop;
