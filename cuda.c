@@ -195,12 +195,20 @@ __device__ int x2params(float *x, struct parameters_struct *params)
     params->P =       x[1] * (dLimits[1][1]-dLimits[0][1]) + dLimits[0][1];
     params->theta =   x[2] * (dLimits[1][2]-dLimits[0][2]) + dLimits[0][2]; 
     params->cos_phi = x[3] * (dLimits[1][3]-dLimits[0][3]) + dLimits[0][3];
-    params->phi_a0 =   x[4] * (dLimits[1][4]-dLimits[0][4]) + dLimits[0][4];
-    
-// !!! For testing only:
-    params->c = params->b;
-    params->cos_phi_b = 0.0;
+    params->phi_a0 =  x[4] * (dLimits[1][4]-dLimits[0][4]) + dLimits[0][4];
+// &&&    
+    params->c =       x[5] * (dLimits[1][5]-dLimits[0][5]) + dLimits[0][5];
+    params->cos_phi_b=x[6] * (dLimits[1][6]-dLimits[0][6]) + dLimits[0][6];
 
+#ifdef FORCE_BC
+    if (params->c > params->b)
+        return 1;
+#endif    
+#ifdef LOG_BC
+    params->b = exp(params->b);
+    params->c = exp(params->c);
+#endif    
+    
     return 0;
 }
 #endif
@@ -240,6 +248,7 @@ __global__ void chi2_gpu (struct obs_data *dData, int N_data, int N_filters, lon
     curandState localState = globalState[id];
     
     unsigned int l = 0;  // Using non-long int limits code kernel run to ~2 months
+    unsigned int l0 = 0;
     
     float x[N_PARAMS+1][N_PARAMS];  // simplex points (point index, coordinate)
     float f[N_PARAMS+1]; // chi2 values for the simplex edges (point index)
@@ -253,9 +262,13 @@ __global__ void chi2_gpu (struct obs_data *dData, int N_data, int N_filters, lon
         for (i=0; i<N_PARAMS; i++)
         {
             // The DX_INI business is to prevent the initial simplex going beyong the limits
-            x[0][i] = 1e-6 + (1.0-DX_INI-2e-6)*curand_uniform(&localState);
+                x[0][i] = 1e-6 + (1.0-DX_INI-2e-6)*curand_uniform(&localState);
         }
-        
+#ifdef FORCE_BC
+        // Enforcing c<b initially (not perfect - for very small b might fail at the beginning)
+        x[0][5] = x[0][5] * x[0][0];
+#endif                    
+                    
         // Simplex initialization
         for (j=1; j<N_PARAMS+1; j++)
         {
@@ -330,8 +343,11 @@ __global__ void chi2_gpu (struct obs_data *dData, int N_data, int N_filters, lon
             size2 = size2 / N_PARAMS;  // Computing the std square of the simplex points relative to the centroid point
             
             // Simplex convergence criterion, plus the end of thread life criterion:
-            if (size2 < SIZE2_MIN || l > N_STEPS)
+            if (size2 < SIZE2_MIN || l-l0>NS_STEPS || l > N_STEPS)
+            {
+                l0 = l;
                 break;
+            }
             
             // Reflection
             float x_r[N_PARAMS];

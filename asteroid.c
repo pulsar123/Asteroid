@@ -3,6 +3,7 @@
  */
 
 #include <sys/time.h>
+#include <unistd.h>
 #include <math.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -17,6 +18,7 @@ int main (int argc,char **argv)
     float chi2_tot=1e32;
     int i;
     int useGPU = 1;
+    cudaStream_t  ID[2];
     
     // Observational data:
     int N_data; // Number of data points
@@ -33,9 +35,9 @@ int main (int argc,char **argv)
         params.phi_a0 = atof(argv[7]);
         useGPU = 0;
     }
-    else if (argc != 1)
+    else if (argc != 3)
     {
-        printf("Wrong arguments!\n");
+        printf("Arguments: obs_file  results_file\n");
         exit(1);
     }
     
@@ -51,13 +53,13 @@ int main (int argc,char **argv)
     //    read_input_params();
     
     // Reading all input data files, allocating and initializing observational data arrays   
-    read_data("obs.dat", &N_data, &N_filters);
+    read_data(argv[1], &N_data, &N_filters);
     
     
     #ifdef GPU    
     if (useGPU)
     {
-        fp = fopen("results.dat", "w");
+//        fp = fopen(argv[2], "w");
 
         int N_threads = N_BLOCKS * BSIZE;
                 
@@ -67,19 +69,28 @@ int main (int argc,char **argv)
 
 #ifdef SIMPLEX
         printf("\n*** Simplex optimization ***\n\n");
-        printf("  N_threads = %d\n", N_threads);
+        printf("  N_threads = %d\n", N_threads);        
         
+// &&&        
         float hLimits[2][N_PARAMS];
         int iparam;
         // Limits for each parameter during optimization:
         // b
         iparam = 0;
-        hLimits[0][iparam] = 0.08;
-        hLimits[1][iparam] = 0.28;
+// Cigar:        
+        hLimits[0][iparam] = 0.02;
+        hLimits[1][iparam] = 50.0;
+// Disk:        
+//        hLimits[0][iparam] = 0.3;
+//        hLimits[1][iparam] = 3.333;
+#ifdef LOG_BC
+        hLimits[0][iparam] = log(hLimits[0][iparam]);
+        hLimits[1][iparam] = log(hLimits[1][iparam]);
+#endif        
         
         // P
         iparam = 1;
-        hLimits[0][iparam] = 6.5/24;
+        hLimits[0][iparam] = 3.25/24;
         hLimits[1][iparam] = 8.5/24;
         
         // Theta
@@ -97,6 +108,18 @@ int main (int argc,char **argv)
         hLimits[0][iparam] = 0.0;
         hLimits[1][iparam] = 2.0*PI;
         
+        // c
+        iparam = 5;
+        hLimits[0][iparam] = hLimits[0][0];
+        hLimits[1][iparam] = hLimits[1][0];
+        
+        // cos_phi_b
+        iparam = 6;
+        hLimits[0][iparam] = -1.0;
+        hLimits[1][iparam] = 0.999;
+
+
+        
 // Normalizing parameters to delta=1 range: ???
         /*
         float delta;
@@ -113,40 +136,110 @@ int main (int argc,char **argv)
         
    // Initializing the device random number generator:
         curandState* d_states;
-        cudaMalloc ( &d_states, N_threads*sizeof( curandState ) );
+        ERR(cudaMalloc ( &d_states, N_threads*sizeof( curandState ) ));
     // setup seeds, initialize d_f
-//        setup_kernel <<< N_BLOCKS, BSIZE >>> ( d_states, time(NULL), d_f );
+        setup_kernel <<< N_BLOCKS, BSIZE >>> ( d_states, time(NULL), d_f );
         //!!!
-        setup_kernel <<< N_BLOCKS, BSIZE >>> ( d_states, 1, d_f );
+//        setup_kernel <<< N_BLOCKS, BSIZE >>> ( d_states, 1, d_f );
 
-        // The kernel:
-        chi2_gpu<<<N_BLOCKS, BSIZE>>>(dData, N_data, N_filters, d_states, d_f, d_params);
+        ERR(cudaDeviceSynchronize());    
 
-// Copying the results from GPU:
-        ERR(cudaMemcpy(h_f, d_f, N_threads * sizeof(float), cudaMemcpyDeviceToHost));
-        ERR(cudaMemcpy(h_params, d_params, N_threads * sizeof(struct parameters_struct), cudaMemcpyDeviceToHost));
-
-// Finding the best result between all threads:        
-        int i_best = 0;
-        for (i=0; i<N_threads; i++)
-        {
-            if (h_f[i] < chi2_tot)
-            {
-                chi2_tot = h_f[i];
-                i_best = i;
-            }
-        }
+// Creating streams:
+        for (i = 0; i < 2; ++i)
+            ERR(cudaStreamCreate (&ID[i]));
         
-// Writing the best result to file:
-        params = h_params[i_best];
-        fprintf(fp,"%13.6e ",  h_f[i_best]);
-        fprintf(fp,"%10.6f ",  params.b);
-        fprintf(fp,"%10.6f ",  params.P*24);
-        fprintf(fp,"%10.6f ",  params.c);
-        fprintf(fp,"%10.6f ",  params.cos_phi_b);
-        fprintf(fp,"%10.6f ",  params.theta);
-        fprintf(fp,"%10.6f ",  params.cos_phi);
-        fprintf(fp,"%10.6f\n", params.phi_a0);
+        // The kernel (using stream 0):
+        chi2_gpu<<<N_BLOCKS, BSIZE, 0, ID[0]>>>(dData, N_data, N_filters, d_states, d_f, d_params);
+
+        int not_done = 1;
+        int count = 0;
+        do
+        {
+            not_done = cudaStreamQuery(ID[0]);
+            if (not_done)
+                sleep(DT_DUMP);
+            
+            // Copying the results from GPU:
+            ERR(cudaMemcpyAsync(h_f, d_f, N_threads * sizeof(float), cudaMemcpyDeviceToHost, ID[1]));
+            ERR(cudaMemcpyAsync(h_params, d_params, N_threads * sizeof(struct parameters_struct), cudaMemcpyDeviceToHost, ID[1]));
+            ERR(cudaStreamSynchronize(ID[1]));
+            
+            count++;
+            if (count == N_WRITE || not_done==0)
+            {
+                count = 0;
+                fp = fopen(argv[2], "w");
+                for (i=0; i<N_threads; i++)
+                {
+                    params = h_params[i];
+                    fprintf(fp,"%13.6e ",  h_f[i]);
+                    fprintf(fp,"%10.6f ",  params.b);
+                    fprintf(fp,"%10.6f ",  params.P*24);
+                    fprintf(fp,"%10.6f ",  params.c);
+                    fprintf(fp,"%10.6f ",  params.cos_phi_b);
+                    fprintf(fp,"%10.6f ",  params.theta);
+                    fprintf(fp,"%10.6f ",  params.cos_phi);
+                    fprintf(fp,"%10.6f\n", params.phi_a0);
+                }
+                fclose(fp);
+            }
+            
+            // Finding the best result between all threads:        
+            int i_best = 0;
+            chi2_tot = 1e32;
+            for (i=0; i<N_threads; i++)
+            {
+                if (h_f[i] < chi2_tot)
+                {
+                    chi2_tot = h_f[i];
+                    i_best = i;
+                }
+            }
+            
+            // Priting the best result:
+            params = h_params[i_best];
+            printf("%13.6e ",  h_f[i_best]);
+            printf("%10.6f ",  params.b);
+            printf("%10.6f ",  params.P*24);
+            printf("%10.6f ",  params.c);
+            printf("%10.6f ",  params.cos_phi_b);
+            printf("%10.6f ",  params.theta);
+            printf("%10.6f ",  params.cos_phi);
+            printf("%10.6f\n", params.phi_a0);
+            fflush(stdout);
+        }
+        while(not_done != 0);
+        
+
+
+
+/*
+        for (i = 0; i < 2; ++i)
+            ERR(cudaStreamDestroy (&ID[i]));
+        ERR(cudaMemcpy(h_f, d_f, N_threads * sizeof(float), cudaMemcpyDeviceToHost);
+        ERR(cudaMemcpy(h_params, d_params, N_threads * sizeof(struct parameters_struct), cudaMemcpyDeviceToHost);
+        ERR(cudaDeviceSynchronize());
+            
+            for (i=0; i<N_threads; i++)
+            {
+                params = h_params[i];
+                fprintf(fp,"%13.6e ",  h_f[i]);
+                fprintf(fp,"%10.6f ",  params.b);
+                fprintf(fp,"%10.6f ",  params.P*24);
+                fprintf(fp,"%10.6f ",  params.c);
+                fprintf(fp,"%10.6f ",  params.cos_phi_b);
+                fprintf(fp,"%10.6f ",  params.theta);
+                fprintf(fp,"%10.6f ",  params.cos_phi);
+                fprintf(fp,"%10.6f\n", params.phi_a0);
+            }
+            fflush(fp);
+*/
+
+
+
+
+
+
         
 #else        
         cudaEvent_t start, stop;
@@ -241,15 +334,17 @@ int main (int argc,char **argv)
         printf("theta=%lf\n", params.theta);
         printf("cos_phi=%lf\n", params.cos_phi);
         printf("phi_a0=%lf\n", params.phi_a0);
+        fclose(fp);
 #endif        
         
-        fclose(fp);
     }
     #endif    
     
+#ifndef SIMPLEX
     // CPU based chi^2:
     double chi2_cpu;
     chi2(N_data, N_filters, params, &chi2_cpu);    
+#endif    
     
     return 0;  
 }

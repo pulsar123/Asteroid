@@ -15,7 +15,13 @@
 
 // Constants:
 // Number of free parameters for chi^2 (excludes filters):
-const int N_PARAMS = 5;
+// &&&
+const int N_PARAMS = 7;
+
+// Enforcing the c<b condition if defined:
+//#define FORCE_BC
+// Log scale for b and c if defined:
+#define LOG_BC
 
 // Maximum number of filters:
 const int N_FILTERS = 11;
@@ -54,7 +60,10 @@ const int N_BLOCKS = 56*4; // Should be proportional to the number of SMs (56 fo
 //const int N_WARPS = BSIZE / 32;
 
 // Simplex parameters:
-const unsigned int N_STEPS = 5000; // Number of simplex steps (for each thread)
+const unsigned int N_STEPS = 300000; // Number of simplex steps (for each thread) 27,000 per hour (N=7; BS=256; NB=56*4)
+const unsigned int NS_STEPS = 100000; // Maximum number of steps per simplex
+const unsigned int DT_DUMP = 180; // Time in seconds between results dump (to stdout)
+const int N_WRITE = 1; // Every N_WRITE dumps make a dump to results.dat file
 const float DX_INI = 0.01;  // Scale-free initial step
 const float SIZE_MIN = 1e-5; // Scale-free smallest simplex size (convergence criterion)
 // Dimensionless simplex constants:
@@ -80,12 +89,12 @@ const double light_speed = 173.144632674;
 // Parameters structure:
 struct parameters_struct {
     double b; 
-    double c;
     double P;
     double theta;
     double cos_phi;
-    double cos_phi_b;
     double phi_a0;
+    double c;
+    double cos_phi_b;
 };
 
 // Observational data arrays:
