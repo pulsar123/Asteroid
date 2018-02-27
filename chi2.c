@@ -54,53 +54,23 @@ int chi2 (int N_data, int N_filters, struct parameters_struct params, double *ch
     
     // Calculations which are time independent:
     
+    #ifdef TUMBLE    
+    // In tumbling mode, the fixed vector pr is the precession vector
+    double pr_phi = acos(params.cos_phi);
+    double pr_x = sin(params.theta)*params.cos_phi;
+    double pr_y = sin(params.theta)*sin(pr_phi);
+    double pr_z = cos(params.theta);
     
-    // Spin vector (barycentric FoR); https://stackoverflow.com/questions/5408276/sampling-uniformly-distributed-random-points-inside-a-spherical-volume
-    n_phi = acos(cos_n_phi);
-    n_x = sin(n_theta)*cos_n_phi;
-    n_y = sin(n_theta)*sin(n_phi);
-    n_z = cos(n_theta);
+    double cos_theta_pr = cos(params.theta_pr);
+    double sin_theta_pr = sin(params.theta_pr);
     
-    double cos_theta_a = cos(theta_a);
-    double sin_theta_a = sin(theta_a);
-    double a0_x, a0_y, a0_z;
+    // Initial (phase=0) vector n orientation; it is in pr-0-pp plane, where pp=[z x pr], made a unit vector
+    double n0_x = pr_x*cos_theta_pr - pr_y/sqrt(pr_y*pr_y+pr_x*pr_x)*sin_theta_pr;
+    double n0_y = pr_y*cos_theta_pr + pr_x/sqrt(pr_y*pr_y+pr_x*pr_x)*sin_theta_pr;
+    double n0_z = pr_z*cos_theta_pr;
+    #endif    
     
-    // Initial (phase=0) vector a0 orientation; it is in n-0-p plane, where p=[z x n], made a unit vector
-    a0_x = n_x*cos_theta_a - n_y/sqrt(n_y*n_y+n_x*n_x)*sin_theta_a;
-    a0_y = n_y*cos_theta_a + n_x/sqrt(n_y*n_y+n_x*n_x)*sin_theta_a;
-    a0_z = n_z*cos_theta_a;
     
-    // Vector b_i (axis b before applying the phi_b rotation), vector product [a_0 x n]:
-    double bi_x = a0_y*n_z - a0_z*n_y;
-    double bi_y = a0_z*n_x - a0_x*n_z;
-    double bi_z = a0_x*n_y - a0_y*n_x;
-    // Making it a unit vector:
-    double bi = sqrt(bi_x*bi_x + bi_y*bi_y + bi_z*bi_z);
-    bi_x = bi_x / bi;
-    bi_y = bi_y / bi;
-    bi_z = bi_z / bi;
-    
-    // Vector t=[a0 x bi]:
-    double t_x = a0_y*bi_z - a0_z*bi_y;
-    double t_y = a0_z*bi_x - a0_x*bi_z;
-    double t_z = a0_x*bi_y - a0_y*bi_x;
-    // Making it a unit vector:
-    double t = sqrt(t_x*t_x + t_y*t_y + t_z*t_z);
-    t_x = t_x / t;
-    t_y = t_y / t;
-    t_z = t_z / t;
-    
-    // Initial (phase=0) axis b0:
-    double phi_b = acos(cos_phi_b);
-    double sin_phi_b = sin(phi_b);
-    double b0_x = bi_x*cos_phi_b + t_x*sin_phi_b;
-    double b0_y = bi_y*cos_phi_b + t_y*sin_phi_b;
-    double b0_z = bi_z*cos_phi_b + t_z*sin_phi_b;
-    
-    // Dot products:
-    double n_a0 = n_x*a0_x + n_y*a0_y + n_z*a0_z;
-    double n_b0 = n_x*b0_x + n_y*b0_y + n_z*b0_z;
-        
     for (l=0; l<2; l++)
     {
         if (l == 0)
@@ -124,6 +94,72 @@ int chi2 (int N_data, int N_filters, struct parameters_struct params, double *ch
         // The loop over all data points    
         for (i=0; i<N; i++)
         {            
+            
+            #ifdef TUMBLE
+            double pr_n0 = pr_x*n0_x + pr_y*n0_y + pr_z*n0_z;
+            
+            double phi_n;
+            if (l == 0)
+                phi_n = params.phi_n0 + hData[i].MJD/params.P_pr*24 * 2*PI;
+            else
+                phi_n = params.phi_n0 + (double)i/(double)N * 2*PI * hData[N_data-1].MJD/params.P_pr*24;
+            
+            double cos_phi_n = cos(phi_n);
+            double sin_phi_n = sin(phi_n);        
+            // Using the Rodrigues formula to rotate the internal spin vector n around the precession vector pr by angle phi_n:
+            n_x = n0_x*cos_phi_n + (pr_y*n0_z - pr_z*n0_y)*sin_phi_n + pr_x*pr_n0*(1.0-cos_phi_n);
+            n_y = n0_y*cos_phi_n + (pr_z*n0_x - pr_x*n0_z)*sin_phi_n + pr_y*pr_n0*(1.0-cos_phi_n);
+            n_z = n0_z*cos_phi_n + (pr_x*n0_y - pr_y*n0_x)*sin_phi_n + pr_z*pr_n0*(1.0-cos_phi_n);        
+            #else            
+            // Spin vector (barycentric FoR); https://stackoverflow.com/questions/5408276/sampling-uniformly-distributed-random-points-inside-a-spherical-volume
+            n_phi = acos(cos_n_phi);
+            n_x = sin(n_theta)*cos_n_phi;
+            n_y = sin(n_theta)*sin(n_phi);
+            n_z = cos(n_theta);
+            #endif    
+            
+            double cos_theta_a = cos(theta_a);
+            double sin_theta_a = sin(theta_a);
+            double a0_x, a0_y, a0_z;
+            
+            // Initial (phase=0) vector a0 orientation; it is in n-0-p plane, where p=[z x n], made a unit vector
+            a0_x = n_x*cos_theta_a - n_y/sqrt(n_y*n_y+n_x*n_x)*sin_theta_a;
+            a0_y = n_y*cos_theta_a + n_x/sqrt(n_y*n_y+n_x*n_x)*sin_theta_a;
+            a0_z = n_z*cos_theta_a;
+            
+            // Vector b_i (axis b before applying the phi_b rotation), vector product [a_0 x n]:
+            double bi_x = a0_y*n_z - a0_z*n_y;
+            double bi_y = a0_z*n_x - a0_x*n_z;
+            double bi_z = a0_x*n_y - a0_y*n_x;
+            // Making it a unit vector:
+            double bi = sqrt(bi_x*bi_x + bi_y*bi_y + bi_z*bi_z);
+            bi_x = bi_x / bi;
+            bi_y = bi_y / bi;
+            bi_z = bi_z / bi;
+            
+            // Vector t=[a0 x bi]:
+            double t_x = a0_y*bi_z - a0_z*bi_y;
+            double t_y = a0_z*bi_x - a0_x*bi_z;
+            double t_z = a0_x*bi_y - a0_y*bi_x;
+            // Making it a unit vector:
+            double t = sqrt(t_x*t_x + t_y*t_y + t_z*t_z);
+            t_x = t_x / t;
+            t_y = t_y / t;
+            t_z = t_z / t;
+            
+            // Initial (phase=0) axis b0:
+            double phi_b = acos(cos_phi_b);
+            double sin_phi_b = sin(phi_b);
+            double b0_x = bi_x*cos_phi_b + t_x*sin_phi_b;
+            double b0_y = bi_y*cos_phi_b + t_y*sin_phi_b;
+            double b0_z = bi_z*cos_phi_b + t_z*sin_phi_b;
+            
+            // Dot products:
+            double n_a0 = n_x*a0_x + n_y*a0_y + n_z*a0_z;
+            double n_b0 = n_x*b0_x + n_y*b0_y + n_z*b0_z;
+            
+            
+            
             // Rotational phase angle:
             if (l == 0)
             {
@@ -244,8 +280,8 @@ int chi2 (int N_data, int N_filters, struct parameters_struct params, double *ch
         }   
         
         chi2_min = chi2a / (N_data - N_PARAMS - N_filters);
-            for (m=0; m<N_filters; m++)
-                y_avr_min[m] = sum_y[m]/sum_w[m];
+        for (m=0; m<N_filters; m++)
+            y_avr_min[m] = sum_y[m]/sum_w[m];
         
         
         if (l == 0)

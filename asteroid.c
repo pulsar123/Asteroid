@@ -15,7 +15,7 @@ int main (int argc,char **argv)
 {
     FILE *fp;
     struct parameters_struct params;
-    float chi2_tot=1e32;
+    CHI_FLOAT chi2_tot=1e32;
     int i;
     int useGPU = 1;
     cudaStream_t  ID[2];
@@ -24,15 +24,20 @@ int main (int argc,char **argv)
     int N_data; // Number of data points
     int N_filters; // Number of filters used in the data        
     
-    if (argc == 8)
+    if (argc >= 10 && argc <= 13)
     {
-        params.b = atof(argv[1]);
-        params.P = atof(argv[2]);
-        params.c = atof(argv[3]);
-        params.cos_phi_b = atof(argv[4]);
-        params.theta = atof(argv[5]);
-        params.cos_phi = atof(argv[6]);
-        params.phi_a0 = atof(argv[7]);
+        params.b = atof(argv[3]);
+        params.P = atof(argv[4]);
+        params.c = atof(argv[5]);
+        params.cos_phi_b = atof(argv[6]);
+        params.theta = atof(argv[7]);
+        params.cos_phi = atof(argv[8]);
+        params.phi_a0 = atof(argv[9]);
+#ifdef TUMBLE
+        params.P_pr = atof(argv[10]);
+        params.theta_pr = atof(argv[11]);
+        params.phi_n0 = atof(argv[12]);
+#endif        
         useGPU = 0;
     }
     else if (argc != 3)
@@ -72,7 +77,7 @@ int main (int argc,char **argv)
         printf("  N_threads = %d\n", N_threads);        
         
 // &&&        
-        float hLimits[2][N_PARAMS];
+        CHI_FLOAT hLimits[2][N_PARAMS];
         int iparam;
         // Limits for each parameter during optimization:
         // b
@@ -90,7 +95,7 @@ int main (int argc,char **argv)
         
         // P
         iparam = 1;
-        hLimits[0][iparam] = 3.25/24;
+        hLimits[0][iparam] = 3.5/24;
         hLimits[1][iparam] = 8.5/24;
         
         // Theta
@@ -103,7 +108,7 @@ int main (int argc,char **argv)
         hLimits[0][iparam] = -1.0;
         hLimits[1][iparam] = 0.999;
         
-        // phi_a
+        // phi_a0
         iparam = 4;
         hLimits[0][iparam] = 0.0;
         hLimits[1][iparam] = 2.0*PI;
@@ -118,7 +123,22 @@ int main (int argc,char **argv)
         hLimits[0][iparam] = -1.0;
         hLimits[1][iparam] = 0.999;
 
-
+#ifdef TUMBLE
+        // P_pr
+        iparam = 7;
+        hLimits[0][iparam] = 3.5/24;
+        hLimits[1][iparam] = 8.5/24;
+        
+        // Theta_pr
+        iparam = 8;
+        hLimits[0][iparam] = 0.001/RAD;
+        hLimits[1][iparam] = 180.0/RAD;
+        
+        // phi_n0
+        iparam = 9;
+        hLimits[0][iparam] = 0.0;
+        hLimits[1][iparam] = 2.0*PI;
+#endif        
         
 // Normalizing parameters to delta=1 range: ???
         /*
@@ -132,7 +152,7 @@ int main (int argc,char **argv)
         }
         */
 
-        ERR(cudaMemcpyToSymbol(dLimits, hLimits, 2*N_PARAMS*sizeof(float), 0, cudaMemcpyHostToDevice));                
+        ERR(cudaMemcpyToSymbol(dLimits, hLimits, 2*N_PARAMS*sizeof(CHI_FLOAT), 0, cudaMemcpyHostToDevice));                
         
    // Initializing the device random number generator:
         curandState* d_states;
@@ -160,7 +180,7 @@ int main (int argc,char **argv)
                 sleep(DT_DUMP);
             
             // Copying the results from GPU:
-            ERR(cudaMemcpyAsync(h_f, d_f, N_threads * sizeof(float), cudaMemcpyDeviceToHost, ID[1]));
+            ERR(cudaMemcpyAsync(h_f, d_f, N_threads * sizeof(CHI_FLOAT), cudaMemcpyDeviceToHost, ID[1]));
             ERR(cudaMemcpyAsync(h_params, d_params, N_threads * sizeof(struct parameters_struct), cudaMemcpyDeviceToHost, ID[1]));
             ERR(cudaStreamSynchronize(ID[1]));
             
@@ -179,7 +199,13 @@ int main (int argc,char **argv)
                     fprintf(fp,"%10.6f ",  params.cos_phi_b);
                     fprintf(fp,"%10.6f ",  params.theta);
                     fprintf(fp,"%10.6f ",  params.cos_phi);
-                    fprintf(fp,"%10.6f\n", params.phi_a0);
+                    fprintf(fp,"%10.6f ",  params.phi_a0);
+#ifdef TUMBLE
+                    fprintf(fp,"%10.6f ",  params.P_pr*24);
+                    fprintf(fp,"%10.6f ",  params.theta_pr);
+                    fprintf(fp,"%10.6f ",  params.phi_n0);
+#endif                    
+                    fprintf(fp,"\n");
                 }
                 fclose(fp);
             }
@@ -205,7 +231,13 @@ int main (int argc,char **argv)
             printf("%10.6f ",  params.cos_phi_b);
             printf("%10.6f ",  params.theta);
             printf("%10.6f ",  params.cos_phi);
-            printf("%10.6f\n", params.phi_a0);
+            printf("%10.6f ", params.phi_a0);
+#ifdef TUMBLE
+            printf("%10.6f ",  params.P_pr*24);
+            printf("%10.6f ",  params.theta_pr);
+            printf("%10.6f ",  params.phi_n0);
+#endif             
+            printf("\n");
             fflush(stdout);
         }
         while(not_done != 0);
@@ -340,11 +372,9 @@ int main (int argc,char **argv)
     }
     #endif    
     
-#ifndef SIMPLEX
     // CPU based chi^2:
     double chi2_cpu;
     chi2(N_data, N_filters, params, &chi2_cpu);    
-#endif    
     
     return 0;  
 }

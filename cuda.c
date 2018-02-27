@@ -9,71 +9,20 @@
 #include "asteroid.h"
 
 
-__device__ float chi2one(struct parameters_struct params, struct obs_data *sData, int N_data, int N_filters)
+__device__ CHI_FLOAT chi2one(struct parameters_struct params, struct obs_data *sData, int N_data, int N_filters)
 // Computung chi^2 for a single model parameters combination, on GPU, by a single thread
 {
     int i, m;
-    double theta_a, n_phi, phi_a;
+    double phi_a;
     double n_x, n_y, n_z;
     double cos_phi_a, sin_phi_a, cos_alpha_p, sin_alpha_p, scalar_Sun, scalar_Earth, scalar;
     double cos_lambda_p, sin_lambda_p, Vmod, alpha_p, lambda_p;
     double a_x,a_y,a_z,b_x,b_y,b_z,c_x,c_y,c_z;
     double Ep_x, Ep_y, Ep_z, Sp_x, Sp_y, Sp_z;
-    float chi2a;
+    CHI_FLOAT chi2a;
     double sum_y2[N_FILTERS];
     double sum_y[N_FILTERS];
     double sum_w[N_FILTERS];
-    
-
-    theta_a = 90.0 / RAD;    
-    
-    // Calculations which are time independent:
-    
-    // Spin vector (barycentric FoR); https://stackoverflow.com/questions/5408276/sampling-uniformly-distributed-random-points-inside-a-spherical-volume
-    n_phi = acos(params.cos_phi);
-    n_x = sin(params.theta)*params.cos_phi;
-    n_y = sin(params.theta)*sin(n_phi);
-    n_z = cos(params.theta);
-    
-    double cos_theta_a = cos(theta_a);
-    double sin_theta_a = sin(theta_a);
-    double a0_x, a0_y, a0_z;
-    
-    // Initial (phase=0) vector a0 orientation; it is in n-0-p plane, where p=[z x n], made a unit vector
-    a0_x = n_x*cos_theta_a - n_y/sqrt(n_y*n_y+n_x*n_x)*sin_theta_a;
-    a0_y = n_y*cos_theta_a + n_x/sqrt(n_y*n_y+n_x*n_x)*sin_theta_a;
-    a0_z = n_z*cos_theta_a;
-    
-    // Vector b_i (axis b before applying the phi_b rotation), vector product [a_0 x n]:
-    double bi_x = a0_y*n_z - a0_z*n_y;
-    double bi_y = a0_z*n_x - a0_x*n_z;
-    double bi_z = a0_x*n_y - a0_y*n_x;
-    // Making it a unit vector:
-    double bi = sqrt(bi_x*bi_x + bi_y*bi_y + bi_z*bi_z);
-    bi_x = bi_x / bi;
-    bi_y = bi_y / bi;
-    bi_z = bi_z / bi;
-    
-    // Vector t=[a0 x bi]:
-    double t_x = a0_y*bi_z - a0_z*bi_y;
-    double t_y = a0_z*bi_x - a0_x*bi_z;
-    double t_z = a0_x*bi_y - a0_y*bi_x;
-    // Making it a unit vector:
-    double t = sqrt(t_x*t_x + t_y*t_y + t_z*t_z);
-    t_x = t_x / t;
-    t_y = t_y / t;
-    t_z = t_z / t;
-    
-    // Initial (phase=0) axis b0:
-    double phi_b = acos(params.cos_phi_b);
-    double sin_phi_b = sin(phi_b);
-    double b0_x = bi_x*params.cos_phi_b + t_x*sin_phi_b;
-    double b0_y = bi_y*params.cos_phi_b + t_y*sin_phi_b;
-    double b0_z = bi_z*params.cos_phi_b + t_z*sin_phi_b;
-    
-    // Dot products:
-    double n_a0 = n_x*a0_x + n_y*a0_y + n_z*a0_z;
-    double n_b0 = n_x*b0_x + n_y*b0_y + n_z*b0_z;                
     
     for (m=0; m<N_filters; m++)
     {
@@ -82,9 +31,83 @@ __device__ float chi2one(struct parameters_struct params, struct obs_data *sData
         sum_w[m] = 0.0;
     }
     
+    // Calculations which are time independent:
+    
+    #ifdef TUMBLE    
+    // In tumbling mode, the fixed vector pr is the precession vector
+    double pr_phi = acos(params.cos_phi);
+    double pr_x = sin(params.theta)*params.cos_phi;
+    double pr_y = sin(params.theta)*sin(pr_phi);
+    double pr_z = cos(params.theta);
+    
+    double cos_theta_pr = cos(params.theta_pr);
+    double sin_theta_pr = sin(params.theta_pr);
+    
+    // Initial (phase=0) vector n orientation; it is in pr-0-pp plane, where pp=[z x pr], made a unit vector
+    double n0_x = pr_x*cos_theta_pr - pr_y/sqrt(pr_y*pr_y+pr_x*pr_x)*sin_theta_pr;
+    double n0_y = pr_y*cos_theta_pr + pr_x/sqrt(pr_y*pr_y+pr_x*pr_x)*sin_theta_pr;
+    double n0_z = pr_z*cos_theta_pr;
+    #endif    
+    
     // The loop over all data points    
     for (i=0; i<N_data; i++)
     {            
+                
+        #ifdef TUMBLE    
+        // Dot product:
+        double pr_n0 = pr_x*n0_x + pr_y*n0_y + pr_z*n0_z;
+        double phi_n = params.phi_n0 + sData[i].MJD/params.P_pr * 2*PI;
+        double cos_phi_n = cos(phi_n);
+        double sin_phi_n = sin(phi_n);        
+        // Using the Rodrigues formula to rotate the internal spin vector n around the precession vector pr by angle phi_n:
+        n_x = n0_x*cos_phi_n + (pr_y*n0_z - pr_z*n0_y)*sin_phi_n + pr_x*pr_n0*(1.0-cos_phi_n);
+        n_y = n0_y*cos_phi_n + (pr_z*n0_x - pr_x*n0_z)*sin_phi_n + pr_y*pr_n0*(1.0-cos_phi_n);
+        n_z = n0_z*cos_phi_n + (pr_x*n0_y - pr_y*n0_x)*sin_phi_n + pr_z*pr_n0*(1.0-cos_phi_n);        
+        #else    
+        // Spin vector (barycentric FoR); https://stackoverflow.com/questions/5408276/sampling-uniformly-distributed-random-points-inside-a-spherical-volume
+        double n_phi = acos(params.cos_phi);
+        n_x = sin(params.theta)*params.cos_phi;
+        n_y = sin(params.theta)*sin(n_phi);
+        n_z = cos(params.theta);
+        #endif                
+        
+        double a0_x, a0_y, a0_z;
+        
+        // Initial (phase=0) vector a0 orientation; it is in n-0-p plane, where p=[z x n], made a unit vector
+        a0_x = - n_y/sqrt(n_y*n_y+n_x*n_x);
+        a0_y =   n_x/sqrt(n_y*n_y+n_x*n_x);
+        a0_z =   0.0;
+        
+        // Vector b_i (axis b before applying the phi_b rotation), vector product [a_0 x n]:
+        double bi_x = a0_y*n_z - a0_z*n_y;
+        double bi_y = a0_z*n_x - a0_x*n_z;
+        double bi_z = a0_x*n_y - a0_y*n_x;
+        // Making it a unit vector:
+        double bi = sqrt(bi_x*bi_x + bi_y*bi_y + bi_z*bi_z);
+        bi_x = bi_x / bi;
+        bi_y = bi_y / bi;
+        bi_z = bi_z / bi;
+        
+        // Vector t=[a0 x bi]:
+        double t_x = a0_y*bi_z - a0_z*bi_y;
+        double t_y = a0_z*bi_x - a0_x*bi_z;
+        double t_z = a0_x*bi_y - a0_y*bi_x;
+        // Making it a unit vector:
+        double t = sqrt(t_x*t_x + t_y*t_y + t_z*t_z);
+        t_x = t_x / t;
+        t_y = t_y / t;
+        t_z = t_z / t;
+        
+        // Initial (phase=0) axis b0:
+        double phi_b = acos(params.cos_phi_b);
+        double sin_phi_b = sin(phi_b);
+        double b0_x = bi_x*params.cos_phi_b + t_x*sin_phi_b;
+        double b0_y = bi_y*params.cos_phi_b + t_y*sin_phi_b;
+        double b0_z = bi_z*params.cos_phi_b + t_z*sin_phi_b;
+        
+        // Dot products:
+        double n_a0 = n_x*a0_x + n_y*a0_y + n_z*a0_z;
+        double n_b0 = n_x*b0_x + n_y*b0_y + n_z*b0_z;                                        
         
         phi_a = params.phi_a0 + sData[i].MJD/params.P * 2*PI;
         
@@ -151,7 +174,7 @@ __device__ float chi2one(struct parameters_struct params, struct obs_data *sData
     } // data points loop
     
     
-    float chi2m;
+    CHI_FLOAT chi2m;
     chi2a=0.0;    
     for (m=0; m<N_filters; m++)
     {
@@ -167,7 +190,7 @@ __device__ float chi2one(struct parameters_struct params, struct obs_data *sData
 
 //--------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 #ifdef SIMPLEX
-__global__ void setup_kernel ( curandState * state, unsigned long seed, float *d_f )
+__global__ void setup_kernel ( curandState * state, unsigned long seed, CHI_FLOAT *d_f )
 {
     // Global thread index:
     int id = blockIdx.x*blockDim.x + threadIdx.x;
@@ -179,7 +202,9 @@ __global__ void setup_kernel ( curandState * state, unsigned long seed, float *d
     return;
 } 
 
-__device__ int x2params(float *x, struct parameters_struct *params)
+//+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+__device__ int x2params(CHI_FLOAT *x, struct parameters_struct *params)
 {
     // Checking if we went beyond the limits:
     int failed = 0;
@@ -190,24 +215,29 @@ __device__ int x2params(float *x, struct parameters_struct *params)
     }
     if (failed)
         return failed;
-            
+    
     params->b =       x[0] * (dLimits[1][0]-dLimits[0][0]) + dLimits[0][0];
     params->P =       x[1] * (dLimits[1][1]-dLimits[0][1]) + dLimits[0][1];
     params->theta =   x[2] * (dLimits[1][2]-dLimits[0][2]) + dLimits[0][2]; 
     params->cos_phi = x[3] * (dLimits[1][3]-dLimits[0][3]) + dLimits[0][3];
     params->phi_a0 =  x[4] * (dLimits[1][4]-dLimits[0][4]) + dLimits[0][4];
-// &&&    
+    // &&&    
     params->c =       x[5] * (dLimits[1][5]-dLimits[0][5]) + dLimits[0][5];
     params->cos_phi_b=x[6] * (dLimits[1][6]-dLimits[0][6]) + dLimits[0][6];
-
-#ifdef FORCE_BC
+    #ifdef TUMBLE
+    params->P_pr    = x[7] * (dLimits[1][7]-dLimits[0][7]) + dLimits[0][7]; 
+    params->theta_pr =x[8] * (dLimits[1][8]-dLimits[0][8]) + dLimits[0][8]; 
+    params->phi_n0  = x[9] * (dLimits[1][9]-dLimits[0][9]) + dLimits[0][9]; 
+    #endif    
+    
+    #ifdef FORCE_BC
     if (params->c > params->b)
         return 1;
-#endif    
-#ifdef LOG_BC
+    #endif    
+    #ifdef LOG_BC
     params->b = exp(params->b);
     params->c = exp(params->c);
-#endif    
+    #endif    
     
     return 0;
 }
@@ -219,7 +249,7 @@ __device__ int x2params(float *x, struct parameters_struct *params)
 
 #ifdef SIMPLEX
 __global__ void chi2_gpu (struct obs_data *dData, int N_data, int N_filters,
-                          curandState* globalState, float *d_f, struct parameters_struct *d_params)
+                          curandState* globalState, CHI_FLOAT *d_f, struct parameters_struct *d_params)
 #else
 __global__ void chi2_gpu (struct obs_data *dData, int N_data, int N_filters, long int Nloc, int iglob, int N_serial, float * d_chi2_min, long int * d_iloc_min)
 #endif
@@ -250,8 +280,8 @@ __global__ void chi2_gpu (struct obs_data *dData, int N_data, int N_filters, lon
     unsigned int l = 0;  // Using non-long int limits code kernel run to ~2 months
     unsigned int l0 = 0;
     
-    float x[N_PARAMS+1][N_PARAMS];  // simplex points (point index, coordinate)
-    float f[N_PARAMS+1]; // chi2 values for the simplex edges (point index)
+    CHI_FLOAT x[N_PARAMS+1][N_PARAMS];  // simplex points (point index, coordinate)
+    CHI_FLOAT f[N_PARAMS+1]; // chi2 values for the simplex edges (point index)
     int ind[N_PARAMS+1]; // Indexes to the sorted array (point index)
     
     // The outer while loop (for full converged runs)
@@ -262,13 +292,13 @@ __global__ void chi2_gpu (struct obs_data *dData, int N_data, int N_filters, lon
         for (i=0; i<N_PARAMS; i++)
         {
             // The DX_INI business is to prevent the initial simplex going beyong the limits
-                x[0][i] = 1e-6 + (1.0-DX_INI-2e-6)*curand_uniform(&localState);
+            x[0][i] = 1e-6 + (1.0-DX_INI-2e-6)*curand_uniform(&localState);
         }
-#ifdef FORCE_BC
+        #ifdef FORCE_BC
         // Enforcing c<b initially (not perfect - for very small b might fail at the beginning)
         x[0][5] = x[0][5] * x[0][0];
-#endif                    
-                    
+        #endif                    
+        
         // Simplex initialization
         for (j=1; j<N_PARAMS+1; j++)
         {
@@ -301,7 +331,7 @@ __global__ void chi2_gpu (struct obs_data *dData, int N_data, int N_filters, lon
             {
                 ind2[j] = 0;  // Uninitialized flag
             }
-            float fmin;
+            CHI_FLOAT fmin;
             int jmin, j2;
             for (j=0; j<N_PARAMS+1; j++)
             {
@@ -319,23 +349,23 @@ __global__ void chi2_gpu (struct obs_data *dData, int N_data, int N_filters, lon
             }    
             
             // Simplex centroid:
-            float x0[N_PARAMS];
+            CHI_FLOAT x0[N_PARAMS];
             for (i=0; i<N_PARAMS; i++)
             {
-                float sum = 0.0;
+                CHI_FLOAT sum = 0.0;
                 for (j=0; j<N_PARAMS+1; j++)
                     sum = sum + x[j][i];
                 x0[i] = sum / (N_PARAMS+1);
             }           
             
             // Simplex size squared:
-            float size2 = 0.0;
+            CHI_FLOAT size2 = 0.0;
             for (j=0; j<N_PARAMS+1; j++)
             {
-                float sum = 0.0;
+                CHI_FLOAT sum = 0.0;
                 for (i=0; i<N_PARAMS; i++)
                 {
-                    float dx = x[j][i] - x0[i];
+                    CHI_FLOAT dx = x[j][i] - x0[i];
                     sum = sum + dx*dx;
                 }
                 size2 = size2 + sum;
@@ -350,12 +380,12 @@ __global__ void chi2_gpu (struct obs_data *dData, int N_data, int N_filters, lon
             }
             
             // Reflection
-            float x_r[N_PARAMS];
+            CHI_FLOAT x_r[N_PARAMS];
             for (i=0; i<N_PARAMS; i++)
             {
                 x_r[i] = x0[i] + ALPHA_SIM*(x0[i] - x[ind[N_PARAMS]][i]);
             }
-            float f_r;
+            CHI_FLOAT f_r;
             if (x2params(x_r,&params))
                 f_r = 1e30;
             else
@@ -374,12 +404,12 @@ __global__ void chi2_gpu (struct obs_data *dData, int N_data, int N_filters, lon
             // Expansion
             if (f_r < f[ind[0]])
             {
-                float x_e[N_PARAMS];
+                CHI_FLOAT x_e[N_PARAMS];
                 for (i=0; i<N_PARAMS; i++)
                 {
                     x_e[i] = x0[i] + GAMMA_SIM*(x_r[i] - x0[i]);
                 }
-                float f_e;
+                CHI_FLOAT f_e;
                 if (x2params(x_e,&params))
                     f_e = 1e30;
                 else
@@ -443,14 +473,14 @@ __global__ void chi2_gpu (struct obs_data *dData, int N_data, int N_filters, lon
                 break;
             
         }  // inner while loop
-
+        
         if (!failed)            
         {
             // Updating the best result so far for the thread to device memory:
             // Global thread index:
             int id = threadIdx.x + blockDim.x*blockIdx.x;
             // Previously best result:
-            float f_old = d_f[id];
+            CHI_FLOAT f_old = d_f[id];
             if (f[ind[0]] < f_old)
                 // We found a better solution; updating the device values
             {
@@ -547,7 +577,7 @@ __global__ void chi2_gpu (struct obs_data *dData, int N_data, int N_filters, lon
         // Copying the found minimum to device memory:
         d_iloc_min[blockIdx.x] = iloc_min;
     }
-
+    
     return;
     
     #endif
@@ -555,3 +585,4 @@ __global__ void chi2_gpu (struct obs_data *dData, int N_data, int N_filters, lon
     
 }
 
+//++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++

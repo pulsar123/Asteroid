@@ -1,6 +1,6 @@
 #OPT=-G -g -DGPU -DSIMPLEX -arch=sm_60 --ptxas-options=-v
-OPT=-O2 -DGPU -DSIMPLEX -arch=sm_60
-#OPT=-g -O0
+#OPT=-O2 -DGPU -DSIMPLEX -DTUMBLE -arch=sm_60
+OPT=-O2 -DSIMPLEX -DTUMBLE 
 INC=-I/usr/include/cuda -I.
 
 

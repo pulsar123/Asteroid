@@ -12,11 +12,17 @@
 #define PI 3.141592653589793238
 #define RAD (180.0 / PI)
 
-
 // Constants:
 // Number of free parameters for chi^2 (excludes filters):
 // &&&
+#ifdef TUMBLE
+const int N_PARAMS = 10;
+#else
 const int N_PARAMS = 7;
+#endif
+
+// Precision for CUDA chi^2 calculations (float or double):
+#define CHI_FLOAT float
 
 // Enforcing the c<b condition if defined:
 //#define FORCE_BC
@@ -62,17 +68,17 @@ const int N_BLOCKS = 56*4; // Should be proportional to the number of SMs (56 fo
 // Simplex parameters:
 const unsigned int N_STEPS = 300000; // Number of simplex steps (for each thread) 27,000 per hour (N=7; BS=256; NB=56*4)
 const unsigned int NS_STEPS = 100000; // Maximum number of steps per simplex
-const unsigned int DT_DUMP = 180; // Time in seconds between results dump (to stdout)
+const unsigned int DT_DUMP = 20; // Time in seconds between results dump (to stdout)
 const int N_WRITE = 1; // Every N_WRITE dumps make a dump to results.dat file
-const float DX_INI = 0.01;  // Scale-free initial step
-const float SIZE_MIN = 1e-5; // Scale-free smallest simplex size (convergence criterion)
+const CHI_FLOAT DX_INI = 0.01;  // Scale-free initial step
+const CHI_FLOAT SIZE_MIN = 1e-8; // Scale-free smallest simplex size (convergence criterion)
 // Dimensionless simplex constants:
-const float ALPHA_SIM = 1.0;
-const float GAMMA_SIM = 2.0;
-const float RHO_SIM   = 0.5;
-const float SIGMA_SIM = 0.5;
+const CHI_FLOAT ALPHA_SIM = 1.0;
+const CHI_FLOAT GAMMA_SIM = 2.0;
+const CHI_FLOAT RHO_SIM   = 0.5;
+const CHI_FLOAT SIGMA_SIM = 0.5;
 
-const float SIZE2_MIN = SIZE_MIN * SIZE_MIN;
+const CHI_FLOAT SIZE2_MIN = SIZE_MIN * SIZE_MIN;
 
 // Maximum number of chars in a file name:
 const int MAX_FILE_NAME = 256;
@@ -88,13 +94,18 @@ const double light_speed = 173.144632674;
 
 // Parameters structure:
 struct parameters_struct {
-    double b; 
-    double P;
-    double theta;
-    double cos_phi;
-    double phi_a0;
-    double c;
-    double cos_phi_b;
+    double b;          // b/a 
+    double P;          // internal period P (hours)
+    double theta;      // angle between internal rotation axis (no TUMBLE) or precession axis (TUMBLE) and axis z
+    double cos_phi;    // phi is the polar angle for internal rotation axis (no TUMBLE) or precession axis (TUMBLE)
+    double phi_a0;     // initial polar angle for a orientation
+    double c;          // c/a
+    double cos_phi_b;  // initial polar angle for b orientation
+#ifdef TUMBLE
+    double P_pr;       // precession period (hours)
+    double theta_pr;   // angle between internal rotation axis and precession axis
+    double phi_n0;     // initial polar angle for the rotation axis
+#endif    
 };
 
 // Observational data arrays:
@@ -125,8 +136,8 @@ __device__ __host__ void iloc_to_params(long int *, struct parameters_struct *);
 int gpu_prepare(int, int, int);
 
 #ifdef SIMPLEX
-__global__ void setup_kernel ( curandState *, unsigned long, float *);
-__global__ void chi2_gpu(struct obs_data *, int, int, curandState*, float*, struct parameters_struct*);
+__global__ void setup_kernel ( curandState *, unsigned long, CHI_FLOAT *);
+__global__ void chi2_gpu(struct obs_data *, int, int, curandState*, CHI_FLOAT*, struct parameters_struct*);
 #else
 __global__ void chi2_gpu(struct obs_data *, int, int, long int, int, int, float*, long int*);
 #endif
@@ -157,16 +168,16 @@ EXTERN double E_x0[3],E_y0[3],E_z0[3], S_x0[3],S_y0[3],S_z0[3], MJD0[3];
 EXTERN double *MJD_obs;  // observational time (with light delay)
 EXTERN double hMJD0;
 
-EXTERN float * d_chi2_min;
-EXTERN float * h_chi2_min;
+EXTERN CHI_FLOAT * d_chi2_min;
+EXTERN CHI_FLOAT * h_chi2_min;
 EXTERN long int * d_iloc_min;
 EXTERN long int * h_iloc_min;
 
 #ifdef SIMPLEX
-    EXTERN __device__ float dLimits[2][N_PARAMS];
-    EXTERN float *d_f;
+    EXTERN __device__ CHI_FLOAT dLimits[2][N_PARAMS];
+    EXTERN CHI_FLOAT *d_f;
     EXTERN struct parameters_struct *d_params;
-    EXTERN float *h_f;
+    EXTERN CHI_FLOAT *h_f;
     EXTERN struct parameters_struct *h_params;
 #endif                
 
