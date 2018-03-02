@@ -24,25 +24,27 @@ int main (int argc,char **argv)
     int N_data; // Number of data points
     int N_filters; // Number of filters used in the data        
     
-    if (argc >= 10 && argc <= 13)
+    if (argc == N_PARAMS+2)
     {
-        params.b = atof(argv[3]);
-        params.P = atof(argv[4]);
-        params.c = atof(argv[5]);
-        params.cos_phi_b = atof(argv[6]);
-        params.theta = atof(argv[7]);
-        params.cos_phi = atof(argv[8]);
-        params.phi_a0 = atof(argv[9]);
+        params.b = atof(argv[2]);
+        params.P = atof(argv[3]);
+        params.c = atof(argv[4]);
+        params.cos_phi_b = atof(argv[5]);
+        params.theta = atof(argv[6]);
+        params.cos_phi = atof(argv[7]);
+        params.phi_a0 = atof(argv[8]);
 #ifdef TUMBLE
-        params.P_pr = atof(argv[10]);
-        params.theta_pr = atof(argv[11]);
-        params.phi_n0 = atof(argv[12]);
+        params.P_pr = atof(argv[9]);
+        params.theta_pr = atof(argv[10]);
+        params.phi_n0 = atof(argv[11]);
 #endif        
         useGPU = 0;
     }
     else if (argc != 3)
     {
         printf("Arguments: obs_file  results_file\n");
+        printf("or\n");
+        printf("Arguments: obs_file  list_of_parameters\n");
         exit(1);
     }
     
@@ -95,8 +97,8 @@ int main (int argc,char **argv)
         
         // P
         iparam = 1;
-        hLimits[0][iparam] = 3.5/24;
-        hLimits[1][iparam] = 8.5/24;
+        hLimits[0][iparam] = 1/24.0;
+        hLimits[1][iparam] = 24/24.0;
         
         // Theta
         iparam = 2;
@@ -126,8 +128,8 @@ int main (int argc,char **argv)
 #ifdef TUMBLE
         // P_pr
         iparam = 7;
-        hLimits[0][iparam] = 3.5/24;
-        hLimits[1][iparam] = 8.5/24;
+        hLimits[0][iparam] = 1/24.0;
+        hLimits[1][iparam] = 24/24.0;
         
         // Theta_pr
         iparam = 8;
@@ -158,7 +160,7 @@ int main (int argc,char **argv)
         curandState* d_states;
         ERR(cudaMalloc ( &d_states, N_threads*sizeof( curandState ) ));
     // setup seeds, initialize d_f
-        setup_kernel <<< N_BLOCKS, BSIZE >>> ( d_states, time(NULL), d_f );
+        setup_kernel <<< N_BLOCKS, BSIZE >>> ( d_states, (unsigned long)(time(NULL)), d_f );
         //!!!
 //        setup_kernel <<< N_BLOCKS, BSIZE >>> ( d_states, 1, d_f );
 
@@ -167,10 +169,57 @@ int main (int argc,char **argv)
 // Creating streams:
         for (i = 0; i < 2; ++i)
             ERR(cudaStreamCreate (&ID[i]));
-        
+
+#ifdef TIMING        
+        cudaEvent_t start, stop;
+        float elapsed;
+        cudaEventCreate(&start);
+        cudaEventCreate(&stop);
+        cudaEventRecord(start, 0);
+#endif        
+       
         // The kernel (using stream 0):
         chi2_gpu<<<N_BLOCKS, BSIZE, 0, ID[0]>>>(dData, N_data, N_filters, d_states, d_f, d_params);
 
+#ifdef TIMING
+        cudaEventRecord(stop, 0);
+        cudaEventSynchronize (stop);
+        cudaEventElapsedTime(&elapsed, start, stop);
+        cudaEventDestroy(start);
+        cudaEventDestroy(stop);
+        printf("GPU time: %.2f ms\n", elapsed);
+        exit(0);
+#endif        
+        
+        //!!!
+        /*
+        cudaDeviceSynchronize();
+            cudaMemcpyAsync(h_f, d_f, N_threads * sizeof(CHI_FLOAT), cudaMemcpyDeviceToHost, ID[1]);
+            cudaMemcpyAsync(h_params, d_params, N_threads * sizeof(struct parameters_struct), cudaMemcpyDeviceToHost, ID[1]);
+        cudaDeviceSynchronize();
+        fp = fopen(argv[2], "w");
+                for (i=0; i<N_threads; i++)
+                {
+                    params = h_params[i];
+                    fprintf(fp,"%13.6e ",  h_f[i]);
+                    fprintf(fp,"%10.6f ",  params.b);
+                    fprintf(fp,"%10.6f ",  params.P*24);
+                    fprintf(fp,"%10.6f ",  params.c);
+                    fprintf(fp,"%10.6f ",  params.cos_phi_b);
+                    fprintf(fp,"%10.6f ",  params.theta);
+                    fprintf(fp,"%10.6f ",  params.cos_phi);
+                    fprintf(fp,"%10.6f ",  params.phi_a0);
+#ifdef TUMBLE
+                    fprintf(fp,"%10.6f ",  params.P_pr*24);
+                    fprintf(fp,"%10.6f ",  params.theta_pr);
+                    fprintf(fp,"%10.6f ",  params.phi_n0);
+#endif                    
+                    fprintf(fp,"\n");
+                }
+                fclose(fp);
+exit(0);        
+        */
+        
         int not_done = 1;
         int count = 0;
         do
@@ -180,9 +229,14 @@ int main (int argc,char **argv)
                 sleep(DT_DUMP);
             
             // Copying the results from GPU:
+            /*
             ERR(cudaMemcpyAsync(h_f, d_f, N_threads * sizeof(CHI_FLOAT), cudaMemcpyDeviceToHost, ID[1]));
             ERR(cudaMemcpyAsync(h_params, d_params, N_threads * sizeof(struct parameters_struct), cudaMemcpyDeviceToHost, ID[1]));
             ERR(cudaStreamSynchronize(ID[1]));
+*/
+            cudaMemcpyAsync(h_f, d_f, N_threads * sizeof(CHI_FLOAT), cudaMemcpyDeviceToHost, ID[1]);
+            cudaMemcpyAsync(h_params, d_params, N_threads * sizeof(struct parameters_struct), cudaMemcpyDeviceToHost, ID[1]);
+            cudaStreamSynchronize(ID[1]);
             
             count++;
             if (count == N_WRITE || not_done==0)
@@ -213,8 +267,11 @@ int main (int argc,char **argv)
             // Finding the best result between all threads:        
             int i_best = 0;
             chi2_tot = 1e32;
+            int Nresults = 0;
             for (i=0; i<N_threads; i++)
             {
+                if (h_f[i] < 1e29)
+                    Nresults++;
                 if (h_f[i] < chi2_tot)
                 {
                     chi2_tot = h_f[i];
@@ -237,6 +294,7 @@ int main (int argc,char **argv)
             printf("%10.6f ",  params.theta_pr);
             printf("%10.6f ",  params.phi_n0);
 #endif             
+            printf("%d ",  Nresults);
             printf("\n");
             fflush(stdout);
         }

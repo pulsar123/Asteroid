@@ -60,18 +60,22 @@ const double PHI_A2 = 2.0*PI;
 const int N_PHI_A = 360*4;
 
 // GPU optimization parameters:
-const int BSIZE = 256;   // Threads in a block (64 ... 1024, step of 64); 384
-const int N_BLOCKS = 56*4; // Should be proportional to the number of SMs (56 for P100);  56
+const int BSIZE = 32;   // Threads in a block (64 ... 1024, step of 64); 384
+const int N_BLOCKS = 56; // Should be proportional to the number of SMs (56 for P100);  56
 //const int N_SERIAL = 1; // number of serial iglob loops inside the kernel (>=1)
 //const int N_WARPS = BSIZE / 32;
 
 // Simplex parameters:
-const unsigned int N_STEPS = 300000; // Number of simplex steps (for each thread) 27,000 per hour (N=7; BS=256; NB=56*4)
+#ifdef TIMING
+const unsigned int N_STEPS = 1000; 
+#else
+const unsigned int N_STEPS = 10000; // Number of simplex steps (for each thread) 27,000 per hour (N=7; BS=256; NB=56*4)
+#endif
 const unsigned int NS_STEPS = 100000; // Maximum number of steps per simplex
-const unsigned int DT_DUMP = 20; // Time in seconds between results dump (to stdout)
+const unsigned int DT_DUMP = 30; // Time in seconds between results dump (to stdout)
 const int N_WRITE = 1; // Every N_WRITE dumps make a dump to results.dat file
 const CHI_FLOAT DX_INI = 0.01;  // Scale-free initial step
-const CHI_FLOAT SIZE_MIN = 1e-8; // Scale-free smallest simplex size (convergence criterion)
+const CHI_FLOAT SIZE_MIN = 1e-5; // Scale-free smallest simplex size (convergence criterion)
 // Dimensionless simplex constants:
 const CHI_FLOAT ALPHA_SIM = 1.0;
 const CHI_FLOAT GAMMA_SIM = 2.0;

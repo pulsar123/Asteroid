@@ -193,9 +193,9 @@ __device__ CHI_FLOAT chi2one(struct parameters_struct params, struct obs_data *s
 __global__ void setup_kernel ( curandState * state, unsigned long seed, CHI_FLOAT *d_f )
 {
     // Global thread index:
-    int id = blockIdx.x*blockDim.x + threadIdx.x;
+    unsigned long long id = blockIdx.x*blockDim.x + threadIdx.x;
     // Generating initial states for all threads in a kernel:
-    curand_init ( seed, id, 0, &state[id] );
+    curand_init ( (unsigned long long)seed, id, 0, &state[id] );
     
     d_f[id] = 1e30;
     
@@ -373,9 +373,25 @@ __global__ void chi2_gpu (struct obs_data *dData, int N_data, int N_filters, lon
             size2 = size2 / N_PARAMS;  // Computing the std square of the simplex points relative to the centroid point
             
             // Simplex convergence criterion, plus the end of thread life criterion:
+            /*
             if (size2 < SIZE2_MIN || l-l0>NS_STEPS || l > N_STEPS)
             {
                 l0 = l;
+                break;
+            }
+            */
+            if (size2 < SIZE2_MIN)
+            {
+                l0 = l;
+                break;
+            }
+            if (l-l0>NS_STEPS)
+            {
+                l0 = l;
+                break;
+            }
+            if (l > N_STEPS)
+            {
                 break;
             }
             
