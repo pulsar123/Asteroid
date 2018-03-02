@@ -234,14 +234,17 @@ exit(0);
             ERR(cudaMemcpyAsync(h_params, d_params, N_threads * sizeof(struct parameters_struct), cudaMemcpyDeviceToHost, ID[1]));
             ERR(cudaStreamSynchronize(ID[1]));
 */
-            cudaMemcpyAsync(h_f, d_f, N_threads * sizeof(CHI_FLOAT), cudaMemcpyDeviceToHost, ID[1]);
-            cudaMemcpyAsync(h_params, d_params, N_threads * sizeof(struct parameters_struct), cudaMemcpyDeviceToHost, ID[1]);
-            cudaMemcpyFromSymbolAsync(&h_block_counter, d_block_counter, sizeof(int), 0, cudaMemcpyDeviceToHost, ID[1]);
-            cudaMemcpyFromSymbolAsync(&h_min, d_min, sizeof(int), 0, cudaMemcpyDeviceToHost, ID[1]);
-            cudaMemcpyFromSymbolAsync(&h_max, d_max, sizeof(int), 0, cudaMemcpyDeviceToHost, ID[1]);
-            cudaMemcpyFromSymbolAsync(&h_sum, d_sum, sizeof(unsigned long long int), 0, cudaMemcpyDeviceToHost, ID[1]);
-            cudaMemcpyFromSymbolAsync(&h_sum2, d_sum2, sizeof(unsigned long long int), 0, cudaMemcpyDeviceToHost, ID[1]);
-            cudaStreamSynchronize(ID[1]);
+            ERR(cudaMemcpyFromSymbolAsync(&h_block_counter, d_block_counter, sizeof(int), 0, cudaMemcpyDeviceToHost, ID[1]));
+            ERR(cudaStreamSynchronize(ID[1]));
+            if (h_block_counter == 0)
+                continue;
+            ERR(cudaMemcpyAsync(h_f, d_f, h_block_counter * sizeof(CHI_FLOAT), cudaMemcpyDeviceToHost, ID[1]));
+            ERR(cudaMemcpyAsync(h_params, d_params, h_block_counter * sizeof(struct parameters_struct), cudaMemcpyDeviceToHost, ID[1]));
+            ERR(cudaMemcpyFromSymbolAsync(&h_min, d_min, sizeof(int), 0, cudaMemcpyDeviceToHost, ID[1]));
+            ERR(cudaMemcpyFromSymbolAsync(&h_max, d_max, sizeof(int), 0, cudaMemcpyDeviceToHost, ID[1]));
+            ERR(cudaMemcpyFromSymbolAsync(&h_sum, d_sum, sizeof(unsigned long long int), 0, cudaMemcpyDeviceToHost, ID[1]));
+            ERR(cudaMemcpyFromSymbolAsync(&h_sum2, d_sum2, sizeof(unsigned long long int), 0, cudaMemcpyDeviceToHost, ID[1]));
+            ERR(cudaStreamSynchronize(ID[1]));
             
             count++;
             if (count == N_WRITE || not_done==0)
@@ -302,8 +305,9 @@ exit(0);
             printf("%d ",  h_block_counter); // Number of finished blocks
             printf("%d ",  h_min);  // Min and max number of Simplex steps in all finished blocks
             printf("%d ",  h_max);
-            printf("%lf ",  (double)h_sum / (double)h_block_counter); // Average number of simplex steps
-            printf("%lf ",  sqrt(((double)h_sum2 - 1.0/(double)h_block_counter * (double)h_sum * (double)h_sum)    / (h_block_counter-1.0))); // std for the number of  simplex steps
+            double Nth = (double)(h_block_counter) * BSIZE;
+            printf("%lf ",  (double)h_sum / Nth); // Average number of simplex steps
+            printf("%lf ",  sqrt(((double)h_sum2 - 1.0/Nth * (double)h_sum * (double)h_sum)    / (Nth-1.0))); // std for the number of  simplex steps
             printf("\n");
             fflush(stdout);
         }

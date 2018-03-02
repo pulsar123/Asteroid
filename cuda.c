@@ -197,8 +197,9 @@ __global__ void setup_kernel ( curandState * state, unsigned long seed, CHI_FLOA
     // Generating initial states for all threads in a kernel:
     curand_init ( (unsigned long long)seed, id, 0, &state[id] );
     
-    d_f[id] = 1e30;
-    
+    if (threadIdx.x==0)
+        d_f[blockIdx.x] = 1e30;    
+
     if (threadIdx.x==0 && blockIdx.x==0)
     {
         d_block_counter = 0;
@@ -518,7 +519,7 @@ __global__ void chi2_gpu (struct obs_data *dData, int N_data, int N_filters, lon
     
     if (threadIdx.x == s_thread_id[0])
     {
-        int blockID = atomicInc(&d_block_counter, 1);
+        unsigned int blockID = atomicAdd(&d_block_counter, 1);
         // Copying the found minimum to device memory:
         d_f[blockID] = s_f[0];
         x2params(x[ind[0]],&params);

@@ -3,7 +3,7 @@ OPT=-O2 -DGPU -DSIMPLEX -DTUMBLE -arch=sm_60
 #OPT=-O2 -DSIMPLEX -DTUMBLE 
 INC=-I/usr/include/cuda -I.
 
-BINARY=asteroid_noERR
+BINARY=asteroid
 
 objects = asteroid.o read_data.o chi2.o misc.o cuda.o gpu_prepare.o
 
