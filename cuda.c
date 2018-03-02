@@ -526,8 +526,8 @@ __global__ void chi2_gpu (struct obs_data *dData, int N_data, int N_filters, lon
     }
     
     // Very expensive: probably should only be used for debugging:
-    atomicAdd(&d_sum, (long)l);
-    atomicAdd(&d_sum2, (long)l*(long)l);
+    atomicAdd(&d_sum, (unsigned long long)l);
+    atomicAdd(&d_sum2, (unsigned long long)l*(unsigned long long)l);
     atomicMin(&d_min, l);
     atomicMax(&d_max, l);
         

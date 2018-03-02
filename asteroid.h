@@ -141,8 +141,6 @@ int gpu_prepare(int, int, int);
 #ifdef SIMPLEX
 __global__ void setup_kernel ( curandState *, unsigned long, CHI_FLOAT *);
 __global__ void chi2_gpu(struct obs_data *, int, int, curandState*, CHI_FLOAT*, struct parameters_struct*);
-__device__ long int d_block_counter;
-long int h_block_counter;
 #else
 __global__ void chi2_gpu(struct obs_data *, int, int, long int, int, int, float*, long int*);
 #endif
@@ -182,17 +180,17 @@ EXTERN long int * h_iloc_min;
     EXTERN __device__ CHI_FLOAT dLimits[2][N_PARAMS];
     EXTERN CHI_FLOAT *d_f;
     EXTERN struct parameters_struct *d_params;
-    EXTERN __device__ long int d_sum;
-    EXTERN __device__ long int d_sum2;
+    EXTERN __device__ unsigned long long int d_sum;
+    EXTERN __device__ unsigned long long int d_sum2;
     EXTERN __device__ int d_min;
     EXTERN __device__ int d_max;
     EXTERN __device__ unsigned int d_block_counter;
     EXTERN CHI_FLOAT *h_f;
     EXTERN struct parameters_struct *h_params;
-    EXTERN long int d_sum;
-    EXTERN long int d_sum2;
-    EXTERN int d_min;
-    EXTERN int d_max;
+    EXTERN unsigned long long int h_sum;
+    EXTERN unsigned long long int h_sum2;
+    EXTERN int h_min;
+    EXTERN int h_max;
     EXTERN unsigned int h_block_counter;
 #endif                
 

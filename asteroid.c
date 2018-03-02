@@ -236,11 +236,11 @@ exit(0);
 */
             cudaMemcpyAsync(h_f, d_f, N_threads * sizeof(CHI_FLOAT), cudaMemcpyDeviceToHost, ID[1]);
             cudaMemcpyAsync(h_params, d_params, N_threads * sizeof(struct parameters_struct), cudaMemcpyDeviceToHost, ID[1]);
-            cudaMemcpyFromSymbolAsync(h_block_counter, d_block_counter, sizeof(int), 0, cudaMemcpyDeviceToHost, ID[1]);
-            cudaMemcpyFromSymbolAsync(h_min, d_min, sizeof(int), 0, cudaMemcpyDeviceToHost, ID[1]);
-            cudaMemcpyFromSymbolAsync(h_max, d_max, sizeof(int), 0, cudaMemcpyDeviceToHost, ID[1]);
-            cudaMemcpyFromSymbolAsync(h_sum, d_sum, sizeof(long int), 0, cudaMemcpyDeviceToHost, ID[1]);
-            cudaMemcpyFromSymbolAsync(h_sum2, d_sum2, sizeof(long int), 0, cudaMemcpyDeviceToHost, ID[1]);
+            cudaMemcpyFromSymbolAsync(&h_block_counter, d_block_counter, sizeof(int), 0, cudaMemcpyDeviceToHost, ID[1]);
+            cudaMemcpyFromSymbolAsync(&h_min, d_min, sizeof(int), 0, cudaMemcpyDeviceToHost, ID[1]);
+            cudaMemcpyFromSymbolAsync(&h_max, d_max, sizeof(int), 0, cudaMemcpyDeviceToHost, ID[1]);
+            cudaMemcpyFromSymbolAsync(&h_sum, d_sum, sizeof(unsigned long long int), 0, cudaMemcpyDeviceToHost, ID[1]);
+            cudaMemcpyFromSymbolAsync(&h_sum2, d_sum2, sizeof(unsigned long long int), 0, cudaMemcpyDeviceToHost, ID[1]);
             cudaStreamSynchronize(ID[1]);
             
             count++;
