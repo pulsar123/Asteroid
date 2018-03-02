@@ -4,11 +4,11 @@ int gpu_prepare(int N_data, int N_filters, int N_threads)
 {
 
 #ifdef SIMPLEX
-    ERR(cudaMalloc(&d_f, N_threads * sizeof(CHI_FLOAT)));
-    ERR(cudaMalloc(&d_params, N_threads * sizeof(struct parameters_struct)));
+    ERR(cudaMalloc(&d_f, N_BLOCKS * sizeof(CHI_FLOAT)));
+    ERR(cudaMalloc(&d_params, N_BLOCKS * sizeof(struct parameters_struct)));
 
-    ERR(cudaMallocHost(&h_f, N_threads * sizeof(CHI_FLOAT)));
-    ERR(cudaMallocHost(&h_params, N_threads * sizeof(struct parameters_struct)));
+    ERR(cudaMallocHost(&h_f, N_BLOCKS * sizeof(CHI_FLOAT)));
+    ERR(cudaMallocHost(&h_params, N_BLOCKS * sizeof(struct parameters_struct)));
 #else
     ERR(cudaMalloc(&d_chi2_min, N_BLOCKS * sizeof(float)));
     ERR(cudaMalloc(&d_iloc_min, N_BLOCKS * sizeof(long int)));

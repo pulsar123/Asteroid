@@ -158,7 +158,7 @@ int main (int argc,char **argv)
         
    // Initializing the device random number generator:
         curandState* d_states;
-        ERR(cudaMalloc ( &d_states, N_threads*sizeof( curandState ) ));
+        ERR(cudaMalloc ( &d_states, N_BLOCKS*BSIZE*sizeof( curandState ) ));
     // setup seeds, initialize d_f
         setup_kernel <<< N_BLOCKS, BSIZE >>> ( d_states, (unsigned long)(time(NULL)), d_f );
         //!!!
@@ -236,6 +236,11 @@ exit(0);
 */
             cudaMemcpyAsync(h_f, d_f, N_threads * sizeof(CHI_FLOAT), cudaMemcpyDeviceToHost, ID[1]);
             cudaMemcpyAsync(h_params, d_params, N_threads * sizeof(struct parameters_struct), cudaMemcpyDeviceToHost, ID[1]);
+            cudaMemcpyFromSymbolAsync(h_block_counter, d_block_counter, sizeof(int), 0, cudaMemcpyDeviceToHost, ID[1]);
+            cudaMemcpyFromSymbolAsync(h_min, d_min, sizeof(int), 0, cudaMemcpyDeviceToHost, ID[1]);
+            cudaMemcpyFromSymbolAsync(h_max, d_max, sizeof(int), 0, cudaMemcpyDeviceToHost, ID[1]);
+            cudaMemcpyFromSymbolAsync(h_sum, d_sum, sizeof(long int), 0, cudaMemcpyDeviceToHost, ID[1]);
+            cudaMemcpyFromSymbolAsync(h_sum2, d_sum2, sizeof(long int), 0, cudaMemcpyDeviceToHost, ID[1]);
             cudaStreamSynchronize(ID[1]);
             
             count++;
@@ -243,7 +248,7 @@ exit(0);
             {
                 count = 0;
                 fp = fopen(argv[2], "w");
-                for (i=0; i<N_threads; i++)
+                for (i=0; i<h_block_counter; i++)
                 {
                     params = h_params[i];
                     fprintf(fp,"%13.6e ",  h_f[i]);
@@ -268,7 +273,7 @@ exit(0);
             int i_best = 0;
             chi2_tot = 1e32;
             int Nresults = 0;
-            for (i=0; i<N_threads; i++)
+            for (i=0; i<h_block_counter; i++)
             {
                 if (h_f[i] < 1e29)
                     Nresults++;
@@ -294,7 +299,11 @@ exit(0);
             printf("%10.6f ",  params.theta_pr);
             printf("%10.6f ",  params.phi_n0);
 #endif             
-            printf("%d ",  Nresults);
+            printf("%d ",  h_block_counter); // Number of finished blocks
+            printf("%d ",  h_min);  // Min and max number of Simplex steps in all finished blocks
+            printf("%d ",  h_max);
+            printf("%lf ",  (double)h_sum / (double)h_block_counter); // Average number of simplex steps
+            printf("%lf ",  sqrt(((double)h_sum2 - 1.0/(double)h_block_counter * (double)h_sum * (double)h_sum)    / (h_block_counter-1.0))); // std for the number of  simplex steps
             printf("\n");
             fflush(stdout);
         }

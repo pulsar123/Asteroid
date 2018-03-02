@@ -52,7 +52,7 @@ __device__ CHI_FLOAT chi2one(struct parameters_struct params, struct obs_data *s
     // The loop over all data points    
     for (i=0; i<N_data; i++)
     {            
-                
+        
         #ifdef TUMBLE    
         // Dot product:
         double pr_n0 = pr_x*n0_x + pr_y*n0_y + pr_z*n0_z;
@@ -199,6 +199,15 @@ __global__ void setup_kernel ( curandState * state, unsigned long seed, CHI_FLOA
     
     d_f[id] = 1e30;
     
+    if (threadIdx.x==0 && blockIdx.x==0)
+    {
+        d_block_counter = 0;
+        d_sum = 0;
+        d_sum2 = 0;
+        d_min = 2e9;
+        d_max = 0;
+    }
+    
     return;
 } 
 
@@ -268,6 +277,8 @@ __global__ void chi2_gpu (struct obs_data *dData, int N_data, int N_filters, lon
     
     #ifdef SIMPLEX
     // Downhill simplex optimization approach
+    __shared__ CHI_FLOAT s_f[BSIZE];
+    __shared__ int s_thread_id[BSIZE];
     
     __syncthreads();
     
@@ -277,136 +288,155 @@ __global__ void chi2_gpu (struct obs_data *dData, int N_data, int N_filters, lon
     // Reading the global states from device memory:
     curandState localState = globalState[id];
     
-    unsigned int l = 0;  // Using non-long int limits code kernel run to ~2 months
-    unsigned int l0 = 0;
+    int l = 0;
     
     CHI_FLOAT x[N_PARAMS+1][N_PARAMS];  // simplex points (point index, coordinate)
     CHI_FLOAT f[N_PARAMS+1]; // chi2 values for the simplex edges (point index)
     int ind[N_PARAMS+1]; // Indexes to the sorted array (point index)
     
-    // The outer while loop (for full converged runs)
-    while (1)
+    
+    // Initial random point
+    for (i=0; i<N_PARAMS; i++)
     {
-        
-        // Initial random point
+        // The DX_INI business is to prevent the initial simplex going beyong the limits
+        x[0][i] = 1e-6 + (1.0-DX_INI-2e-6)*curand_uniform(&localState);
+    }
+    #ifdef FORCE_BC
+    // Enforcing c<b initially (not perfect - for very small b might fail at the beginning)
+    x[0][5] = x[0][5] * x[0][0];
+    #endif                    
+    
+    // Simplex initialization
+    for (j=1; j<N_PARAMS+1; j++)
+    {
         for (i=0; i<N_PARAMS; i++)
         {
-            // The DX_INI business is to prevent the initial simplex going beyong the limits
-            x[0][i] = 1e-6 + (1.0-DX_INI-2e-6)*curand_uniform(&localState);
+            if (i == j-1)
+                x[j][i] = x[0][i] + DX_INI;
+            else
+                x[j][i] = x[0][i];
         }
-        #ifdef FORCE_BC
-        // Enforcing c<b initially (not perfect - for very small b might fail at the beginning)
-        x[0][5] = x[0][5] * x[0][0];
-        #endif                    
+    }
+    
+    // Computing the initial function values (chi2):        
+    for (j=0; j<N_PARAMS+1; j++)
+    {
+        x2params(x[j],&params);
+        f[j] = chi2one(params, sData, N_data, N_filters);    
+    }
         
-        // Simplex initialization
-        for (j=1; j<N_PARAMS+1; j++)
-        {
-            for (i=0; i<N_PARAMS; i++)
-            {
-                if (i == j-1)
-                    x[j][i] = x[0][i] + DX_INI;
-                else
-                    x[j][i] = x[0][i];
-            }
-        }
+    // The main simplex loop
+    while (1)
+    {
+        l++;  // Incrementing the global (for the whole lifetime of the thread) simplex steps counter by one
         
-        // Computing the initial function values (chi2):        
+        // Sorting the simplex:
+        bool ind2[N_PARAMS+1];
         for (j=0; j<N_PARAMS+1; j++)
         {
-            x2params(x[j],&params);
-            f[j] = chi2one(params, sData, N_data, N_filters);    
+            ind2[j] = 0;  // Uninitialized flag
+        }
+        CHI_FLOAT fmin;
+        int jmin, j2;
+        for (j=0; j<N_PARAMS+1; j++)
+        {
+            fmin = 1e30;
+            for (j2=0; j2<N_PARAMS+1; j2++)
+            {
+                if (ind2[j2]==0 && f[j2] <= fmin)
+                {
+                    fmin = f[j2];
+                    jmin = j2;
+                }            
+            }
+            ind[j] = jmin;
+            ind2[jmin] = 1;
+        }    
+        
+        // Simplex centroid:
+        CHI_FLOAT x0[N_PARAMS];
+        for (i=0; i<N_PARAMS; i++)
+        {
+            CHI_FLOAT sum = 0.0;
+            for (j=0; j<N_PARAMS+1; j++)
+                sum = sum + x[j][i];
+            x0[i] = sum / (N_PARAMS+1);
+        }           
+        
+        // Simplex size squared:
+        CHI_FLOAT size2 = 0.0;
+        for (j=0; j<N_PARAMS+1; j++)
+        {
+            CHI_FLOAT sum = 0.0;
+            for (i=0; i<N_PARAMS; i++)
+            {
+                CHI_FLOAT dx = x[j][i] - x0[i];
+                sum = sum + dx*dx;
+            }
+            size2 = size2 + sum;
+        }
+        size2 = size2 / N_PARAMS;  // Computing the std square of the simplex points relative to the centroid point
+        
+        // Simplex convergence criterion, plus the end of thread life criterion:
+        /*
+         *            if (size2 < SIZE2_MIN || l-l0>NS_STEPS || l > N_STEPS)
+         *            {
+         *                l0 = l;
+         *                break;
+    }
+    */
+        if (size2 < SIZE2_MIN)
+            // We converged
+            break;
+        if (l > N_STEPS)
+            // We ran out of time
+            break;
+        
+        // Reflection
+        CHI_FLOAT x_r[N_PARAMS];
+        for (i=0; i<N_PARAMS; i++)
+        {
+            x_r[i] = x0[i] + ALPHA_SIM*(x0[i] - x[ind[N_PARAMS]][i]);
+        }
+        CHI_FLOAT f_r;
+        if (x2params(x_r,&params))
+            f_r = 1e30;
+        else
+            f_r = chi2one(params, sData, N_data, N_filters);
+        if (f_r >= f[ind[0]] && f_r < f[ind[N_PARAMS-1]])
+        {
+            // Replacing the worst point with the reflected point:
+            for (i=0; i<N_PARAMS; i++)
+            {
+                x[ind[N_PARAMS]][i] = x_r[i];
+            }
+            f[ind[N_PARAMS]] = f_r;
+            continue;  // Going to the next simplex step
         }
         
-        bool failed = 0;
-        
-        // The main simplex loop
-        while (1)
+        // Expansion
+        if (f_r < f[ind[0]])
         {
-            l++;  // Incrementing the global (for the whole lifetime of the thread) simplex steps counter by one
-            
-            // Sorting the simplex:
-            bool ind2[N_PARAMS+1];
-            for (j=0; j<N_PARAMS+1; j++)
-            {
-                ind2[j] = 0;  // Uninitialized flag
-            }
-            CHI_FLOAT fmin;
-            int jmin, j2;
-            for (j=0; j<N_PARAMS+1; j++)
-            {
-                fmin = 1e30;
-                for (j2=0; j2<N_PARAMS+1; j2++)
-                {
-                    if (ind2[j2]==0 && f[j2] <= fmin)
-                    {
-                        fmin = f[j2];
-                        jmin = j2;
-                    }            
-                }
-                ind[j] = jmin;
-                ind2[jmin] = 1;
-            }    
-            
-            // Simplex centroid:
-            CHI_FLOAT x0[N_PARAMS];
+            CHI_FLOAT x_e[N_PARAMS];
             for (i=0; i<N_PARAMS; i++)
             {
-                CHI_FLOAT sum = 0.0;
-                for (j=0; j<N_PARAMS+1; j++)
-                    sum = sum + x[j][i];
-                x0[i] = sum / (N_PARAMS+1);
-            }           
-            
-            // Simplex size squared:
-            CHI_FLOAT size2 = 0.0;
-            for (j=0; j<N_PARAMS+1; j++)
+                x_e[i] = x0[i] + GAMMA_SIM*(x_r[i] - x0[i]);
+            }
+            CHI_FLOAT f_e;
+            if (x2params(x_e,&params))
+                f_e = 1e30;
+            else
+                f_e = chi2one(params, sData, N_data, N_filters);
+            if (f_e < f_r)
             {
-                CHI_FLOAT sum = 0.0;
+                // Replacing the worst point with the expanded point:
                 for (i=0; i<N_PARAMS; i++)
                 {
-                    CHI_FLOAT dx = x[j][i] - x0[i];
-                    sum = sum + dx*dx;
+                    x[ind[N_PARAMS]][i] = x_e[i];
                 }
-                size2 = size2 + sum;
+                f[ind[N_PARAMS]] = f_e;
             }
-            size2 = size2 / N_PARAMS;  // Computing the std square of the simplex points relative to the centroid point
-            
-            // Simplex convergence criterion, plus the end of thread life criterion:
-            /*
-            if (size2 < SIZE2_MIN || l-l0>NS_STEPS || l > N_STEPS)
-            {
-                l0 = l;
-                break;
-            }
-            */
-            if (size2 < SIZE2_MIN)
-            {
-                l0 = l;
-                break;
-            }
-            if (l-l0>NS_STEPS)
-            {
-                l0 = l;
-                break;
-            }
-            if (l > N_STEPS)
-            {
-                break;
-            }
-            
-            // Reflection
-            CHI_FLOAT x_r[N_PARAMS];
-            for (i=0; i<N_PARAMS; i++)
-            {
-                x_r[i] = x0[i] + ALPHA_SIM*(x0[i] - x[ind[N_PARAMS]][i]);
-            }
-            CHI_FLOAT f_r;
-            if (x2params(x_r,&params))
-                f_r = 1e30;
             else
-                f_r = chi2one(params, sData, N_data, N_filters);
-            if (f_r >= f[ind[0]] && f_r < f[ind[N_PARAMS-1]])
             {
                 // Replacing the worst point with the reflected point:
                 for (i=0; i<N_PARAMS; i++)
@@ -414,104 +444,94 @@ __global__ void chi2_gpu (struct obs_data *dData, int N_data, int N_filters, lon
                     x[ind[N_PARAMS]][i] = x_r[i];
                 }
                 f[ind[N_PARAMS]] = f_r;
-                continue;  // Going to the next simplex step
             }
-            
-            // Expansion
-            if (f_r < f[ind[0]])
-            {
-                CHI_FLOAT x_e[N_PARAMS];
-                for (i=0; i<N_PARAMS; i++)
-                {
-                    x_e[i] = x0[i] + GAMMA_SIM*(x_r[i] - x0[i]);
-                }
-                CHI_FLOAT f_e;
-                if (x2params(x_e,&params))
-                    f_e = 1e30;
-                else
-                    f_e = chi2one(params, sData, N_data, N_filters);
-                if (f_e < f_r)
-                {
-                    // Replacing the worst point with the expanded point:
-                    for (i=0; i<N_PARAMS; i++)
-                    {
-                        x[ind[N_PARAMS]][i] = x_e[i];
-                    }
-                    f[ind[N_PARAMS]] = f_e;
-                }
-                else
-                {
-                    // Replacing the worst point with the reflected point:
-                    for (i=0; i<N_PARAMS; i++)
-                    {
-                        x[ind[N_PARAMS]][i] = x_r[i];
-                    }
-                    f[ind[N_PARAMS]] = f_r;
-                }
-                continue;  // Going to the next simplex step
-            }
-            
-            // Contraction
-            // (Here we repurpose x_r and f_r for the contraction stuff)
+            continue;  // Going to the next simplex step
+        }
+        
+        // Contraction
+        // (Here we repurpose x_r and f_r for the contraction stuff)
+        for (i=0; i<N_PARAMS; i++)
+        {
+            x_r[i] = x0[i] + RHO_SIM*(x[ind[N_PARAMS]][i] - x0[i]);
+        }
+        if (x2params(x_r,&params))
+            f_r = 1e30;
+        else
+            f_r = chi2one(params, sData, N_data, N_filters);
+        if (f_r < f[ind[N_PARAMS]])
+        {
+            // Replacing the worst point with the contracted point:
             for (i=0; i<N_PARAMS; i++)
             {
-                x_r[i] = x0[i] + RHO_SIM*(x[ind[N_PARAMS]][i] - x0[i]);
+                x[ind[N_PARAMS]][i] = x_r[i];
             }
-            if (x2params(x_r,&params))
-                f_r = 1e30;
+            f[ind[N_PARAMS]] = f_r;
+            continue;  // Going to the next simplex step
+        }
+        
+        // If all else fails - shrink
+        bool failed = 0;
+        for (j=1; j<N_PARAMS+1; j++)
+        {
+            for (i=0; i<N_PARAMS; i++)
+            {
+                x[ind[j]][i] = x[ind[0]][i] + SIGMA_SIM*(x[ind[j]][i] - x[ind[0]][i]);
+            }           
+            if (x2params(x[ind[j]],&params))
+                failed = 1;
             else
-                f_r = chi2one(params, sData, N_data, N_filters);
-            if (f_r < f[ind[N_PARAMS]])
-            {
-                // Replacing the worst point with the contracted point:
-                for (i=0; i<N_PARAMS; i++)
-                {
-                    x[ind[N_PARAMS]][i] = x_r[i];
-                }
-                f[ind[N_PARAMS]] = f_r;
-                continue;  // Going to the next simplex step
-            }
-            
-            // If all else fails - shrink
-            for (j=1; j<N_PARAMS+1; j++)
-            {
-                for (i=0; i<N_PARAMS; i++)
-                {
-                    x[ind[j]][i] = x[ind[0]][i] + SIGMA_SIM*(x[ind[j]][i] - x[ind[0]][i]);
-                }           
-                if (x2params(x[ind[j]],&params))
-                    failed = 1;
-                else
-                    f[ind[j]] = chi2one(params, sData, N_data, N_filters);
-            }
-            // We failed the optimization; restarting from the beginning
-            if (failed)
-                break;
-            
-        }  // inner while loop
-        
-        if (!failed)            
+                f[ind[j]] = chi2one(params, sData, N_data, N_filters);
+        }
+        // We failed the optimization
+        if (failed)
         {
-            // Updating the best result so far for the thread to device memory:
-            // Global thread index:
-            int id = threadIdx.x + blockDim.x*blockIdx.x;
-            // Previously best result:
-            CHI_FLOAT f_old = d_f[id];
-            if (f[ind[0]] < f_old)
-                // We found a better solution; updating the device values
-            {
-                x2params(x[ind[0]],&params);
-                d_params[id] = params;
-                d_f[id] = f[ind[0]];
-            }
+            f[ind[0]] = 1e30;
+            break;
         }
         
-        if (l >= N_STEPS)
-            // End of the thread's life (all threads will die around the same time)
-        {
-            return;
+    }  // inner while loop
+    
+    
+    s_f[threadIdx.x] = f[ind[0]];
+    s_thread_id[threadIdx.x] = threadIdx.x;
+    
+    __syncthreads();
+    
+    // Binary reduction:
+    int nTotalThreads = blockDim.x;
+    while(nTotalThreads > 1)
+    {
+        int halfPoint = nTotalThreads / 2; // Number of active threads
+        if (threadIdx.x < halfPoint) {
+            int thread2 = threadIdx.x + halfPoint; // the second element index
+            float temp = s_f[thread2];
+            if (temp < s_f[threadIdx.x])
+            {
+                s_f[threadIdx.x] = temp;
+                s_thread_id[threadIdx.x] = s_thread_id[thread2];
+            }
         }
-    } // outer while loop
+        __syncthreads();
+        nTotalThreads = halfPoint; // Reducing the binary tree size by two
+    }
+    // At this point, the smallest chi2 in the block is in s_f[0]
+    
+    if (threadIdx.x == s_thread_id[0])
+    {
+        int blockID = atomicInc(&d_block_counter, 1);
+        // Copying the found minimum to device memory:
+        d_f[blockID] = s_f[0];
+        x2params(x[ind[0]],&params);
+        d_params[blockID] = params;
+    }
+    
+    // Very expensive: probably should only be used for debugging:
+    atomicAdd(&d_sum, (long)l);
+    atomicAdd(&d_sum2, (long)l*(long)l);
+    atomicMin(&d_min, l);
+    atomicMax(&d_max, l);
+        
+    return;
     
     
     #else
