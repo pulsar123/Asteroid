@@ -15,19 +15,24 @@
 // Constants:
 // Number of free parameters for chi^2 (excludes filters):
 // &&&
-#ifdef TUMBLE
-const int N_PARAMS = 10;
-#else
-const int N_PARAMS = 7;
-#endif
 
 // Precision for CUDA chi^2 calculations (float or double):
 #define CHI_FLOAT float
 
-// Enforcing the c<b condition if defined:
-//#define FORCE_BC
 // Log scale for b and c if defined:
 #define LOG_BC
+
+#ifdef TUMBLE
+const int N_PARAMS0 = 9;
+#else
+const int N_PARAMS0 = 6;
+#endif
+
+#ifdef SYMMETRY
+const int N_PARAMS = N_PARAMS0 - 2;
+#else
+const int N_PARAMS = N_PARAMS0;
+#endif
 
 // Maximum number of filters:
 const int N_FILTERS = 11;
@@ -103,7 +108,6 @@ struct parameters_struct {
     double cos_phi;    // phi is the polar angle for internal rotation axis (no TUMBLE) or precession axis (TUMBLE)
     double phi_a0;     // initial polar angle for a orientation
     double c;          // c/a
-    double cos_phi_b;  // initial polar angle for b orientation
 #ifdef TUMBLE
     double P_pr;       // precession period (hours)
     double theta_pr;   // angle between internal rotation axis and precession axis

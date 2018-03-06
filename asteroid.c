@@ -29,14 +29,13 @@ int main (int argc,char **argv)
         params.b = atof(argv[2]);
         params.P = atof(argv[3]);
         params.c = atof(argv[4]);
-        params.cos_phi_b = atof(argv[5]);
-        params.theta = atof(argv[6]);
-        params.cos_phi = atof(argv[7]);
-        params.phi_a0 = atof(argv[8]);
+        params.theta = atof(argv[5]);
+        params.cos_phi = atof(argv[6]);
+        params.phi_a0 = atof(argv[7]);
 #ifdef TUMBLE
-        params.P_pr = atof(argv[9]);
-        params.theta_pr = atof(argv[10]);
-        params.phi_n0 = atof(argv[11]);
+        params.P_pr = atof(argv[8]);
+        params.theta_pr = atof(argv[9]);
+        params.phi_n0 = atof(argv[10]);
 #endif        
         useGPU = 0;
     }
@@ -80,64 +79,55 @@ int main (int argc,char **argv)
         
 // &&&        
         CHI_FLOAT hLimits[2][N_PARAMS];
-        int iparam;
+        int iparam = -1;
         // Limits for each parameter during optimization:
         // b
-        iparam = 0;
-// Cigar:        
+        iparam++;
         hLimits[0][iparam] = 0.02;
-        hLimits[1][iparam] = 50.0;
-// Disk:        
-//        hLimits[0][iparam] = 0.3;
-//        hLimits[1][iparam] = 3.333;
+        hLimits[1][iparam] = 1.0;
 #ifdef LOG_BC
         hLimits[0][iparam] = log(hLimits[0][iparam]);
         hLimits[1][iparam] = log(hLimits[1][iparam]);
 #endif        
         
-        // P
-        iparam = 1;
-        hLimits[0][iparam] = 1/24.0;
-        hLimits[1][iparam] = 24/24.0;
+        // frequency 1/P (1/days) 0...10
+        iparam++;
+        hLimits[0][iparam] = 24.0/7.6;
+        hLimits[1][iparam] = 24.0/6.0;
         
         // Theta
-        iparam = 2;
+        iparam++;
         hLimits[0][iparam] = 0.001/RAD;
         hLimits[1][iparam] = 180.0/RAD;
         
         // cos_phi
-        iparam = 3;
+        iparam++;
         hLimits[0][iparam] = -1.0;
         hLimits[1][iparam] = 0.999;
         
         // phi_a0
-        iparam = 4;
+        iparam++;
         hLimits[0][iparam] = 0.0;
         hLimits[1][iparam] = 2.0*PI;
         
-        // c
-        iparam = 5;
+        // c (not used in SYMMETRY modes)
+        iparam++;
         hLimits[0][iparam] = hLimits[0][0];
         hLimits[1][iparam] = hLimits[1][0];
-        
-        // cos_phi_b
-        iparam = 6;
-        hLimits[0][iparam] = -1.0;
-        hLimits[1][iparam] = 0.999;
 
 #ifdef TUMBLE
-        // P_pr
-        iparam = 7;
-        hLimits[0][iparam] = 1/24.0;
-        hLimits[1][iparam] = 24/24.0;
+        // frequency 1/P_pr (1/days) 0...10
+        iparam++;
+        hLimits[0][iparam] = 24.0/7.6;
+        hLimits[1][iparam] = 24.0/6.0;
         
         // Theta_pr
-        iparam = 8;
+        iparam++;
         hLimits[0][iparam] = 0.001/RAD;
         hLimits[1][iparam] = 180.0/RAD;
         
         // phi_n0
-        iparam = 9;
+        iparam++;
         hLimits[0][iparam] = 0.0;
         hLimits[1][iparam] = 2.0*PI;
 #endif        
@@ -258,7 +248,6 @@ exit(0);
                     fprintf(fp,"%10.6f ",  params.b);
                     fprintf(fp,"%10.6f ",  params.P*24);
                     fprintf(fp,"%10.6f ",  params.c);
-                    fprintf(fp,"%10.6f ",  params.cos_phi_b);
                     fprintf(fp,"%10.6f ",  params.theta);
                     fprintf(fp,"%10.6f ",  params.cos_phi);
                     fprintf(fp,"%10.6f ",  params.phi_a0);
@@ -293,7 +282,6 @@ exit(0);
             printf("%10.6f ",  params.b);
             printf("%10.6f ",  params.P*24);
             printf("%10.6f ",  params.c);
-            printf("%10.6f ",  params.cos_phi_b);
             printf("%10.6f ",  params.theta);
             printf("%10.6f ",  params.cos_phi);
             printf("%10.6f ", params.phi_a0);

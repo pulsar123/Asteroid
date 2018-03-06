@@ -17,7 +17,6 @@ __device__ CHI_FLOAT chi2one(struct parameters_struct params, struct obs_data *s
     double n_x, n_y, n_z;
     double cos_phi_a, sin_phi_a, cos_alpha_p, sin_alpha_p, scalar_Sun, scalar_Earth, scalar;
     double cos_lambda_p, sin_lambda_p, Vmod, alpha_p, lambda_p;
-    double a_x,a_y,a_z,b_x,b_y,b_z,c_x,c_y,c_z;
     double Ep_x, Ep_y, Ep_z, Sp_x, Sp_y, Sp_z;
     CHI_FLOAT chi2a;
     double sum_y2[N_FILTERS];
@@ -32,6 +31,24 @@ __device__ CHI_FLOAT chi2one(struct parameters_struct params, struct obs_data *s
     }
     
     // Calculations which are time independent:
+    
+    /* The geometry:
+      
+      Axis <a> rotates around the spin vector <n> which is fixed in time and randomly oriented. <n> coincides with the axis <c> (but has the opposite sign). In other words, the rotation is around axis c.
+      
+      The initial orientation of <a> is [z x n], then rotated by angle phi_a around <n>.
+      
+      Axis <b>=[a x n].
+      
+      Axial symmetric cases:
+       - Cigar: b = c << a
+       - Disk:  b << c = a
+       
+      There is no need to have b>1. c>1 would correspond to rotation around intermediate axis - unstable?
+      
+      In the more general tumbling case, the vector <n> is not fixed, but instead spins around another vector <pr> which is the one which is fixed and randomly oriented.
+     */
+    
     
     #ifdef TUMBLE    
     // In tumbling mode, the fixed vector pr is the precession vector
@@ -73,72 +90,47 @@ __device__ CHI_FLOAT chi2one(struct parameters_struct params, struct obs_data *s
         
         double a0_x, a0_y, a0_z;
         
-        // Initial (phase=0) vector a0 orientation; it is in n-0-p plane, where p=[z x n], made a unit vector
+        // Initial (phase=0) vector a0 orientation = [z x n], made a unit vector
         a0_x = - n_y/sqrt(n_y*n_y+n_x*n_x);
         a0_y =   n_x/sqrt(n_y*n_y+n_x*n_x);
         a0_z =   0.0;
-        
-        // Vector b_i (axis b before applying the phi_b rotation), vector product [a_0 x n]:
-        double bi_x = a0_y*n_z - a0_z*n_y;
-        double bi_y = a0_z*n_x - a0_x*n_z;
-        double bi_z = a0_x*n_y - a0_y*n_x;
-        // Making it a unit vector:
-        double bi = sqrt(bi_x*bi_x + bi_y*bi_y + bi_z*bi_z);
-        bi_x = bi_x / bi;
-        bi_y = bi_y / bi;
-        bi_z = bi_z / bi;
-        
-        // Vector t=[a0 x bi]:
-        double t_x = a0_y*bi_z - a0_z*bi_y;
-        double t_y = a0_z*bi_x - a0_x*bi_z;
-        double t_z = a0_x*bi_y - a0_y*bi_x;
-        // Making it a unit vector:
-        double t = sqrt(t_x*t_x + t_y*t_y + t_z*t_z);
-        t_x = t_x / t;
-        t_y = t_y / t;
-        t_z = t_z / t;
-        
-        // Initial (phase=0) axis b0:
-        double phi_b = acos(params.cos_phi_b);
-        double sin_phi_b = sin(phi_b);
-        double b0_x = bi_x*params.cos_phi_b + t_x*sin_phi_b;
-        double b0_y = bi_y*params.cos_phi_b + t_y*sin_phi_b;
-        double b0_z = bi_z*params.cos_phi_b + t_z*sin_phi_b;
-        
-        // Dot products:
+
+        // Dot product:
         double n_a0 = n_x*a0_x + n_y*a0_y + n_z*a0_z;
-        double n_b0 = n_x*b0_x + n_y*b0_y + n_z*b0_z;                                        
         
         phi_a = params.phi_a0 + sData[i].MJD/params.P * 2*PI;
-        
+
         cos_phi_a = cos(phi_a);
         sin_phi_a = sin(phi_a);
         
         // New basis - a,b,c axes of the ellipsoid after the phase rotation:
-        // Using the Rodrigues formula for a and b axes (n is the axis of rotation vector; a0 is the initial vector; a is the vector after rotation of phi_a radians)
+        // Using the Rodrigues formula for a (n is the axis of rotation vector = -c vector; a0 is the initial vector; a is the vector after rotation of phi_a radians)
         // https://en.wikipedia.org/wiki/Rodrigues%27_rotation_formula
+        double a_x,a_y,a_z;
         a_x = a0_x*cos_phi_a + (n_y*a0_z - n_z*a0_y)*sin_phi_a + n_x*n_a0*(1.0-cos_phi_a);
         a_y = a0_y*cos_phi_a + (n_z*a0_x - n_x*a0_z)*sin_phi_a + n_y*n_a0*(1.0-cos_phi_a);
         a_z = a0_z*cos_phi_a + (n_x*a0_y - n_y*a0_x)*sin_phi_a + n_z*n_a0*(1.0-cos_phi_a);
-        
-        b_x = b0_x*cos_phi_a + (n_y*b0_z - n_z*b0_y)*sin_phi_a + n_x*n_b0*(1.0-cos_phi_a);
-        b_y = b0_y*cos_phi_a + (n_z*b0_x - n_x*b0_z)*sin_phi_a + n_y*n_b0*(1.0-cos_phi_a);
-        b_z = b0_z*cos_phi_a + (n_x*b0_y - n_y*b0_x)*sin_phi_a + n_z*n_b0*(1.0-cos_phi_a);
-        
-        // c = [a x b]:
-        c_x = a_y*b_z - a_z*b_y;
-        c_y = a_z*b_x - a_x*b_z;
-        c_z = a_x*b_y - a_y*b_x;
-        
+                
+        // Vector b =  vector product [a x n]:
+        double b_x = a_y*n_z - a_z*n_y;
+        double b_y = a_z*n_x - a_x*n_z;
+        double b_z = a_x*n_y - a_y*n_x;
+        // Making it a unit vector:
+        double b = sqrt(b_x*b_x + b_y*b_y + b_z*b_z);
+        b_x = b_x / b;
+        b_y = b_y / b;
+        b_z = b_z / b;
+                
+        // Axis <c> vector is minus <n> vector
         // Earth vector in the new (a,b,c) basis:
         Ep_x = a_x*sData[i].E_x + a_y*sData[i].E_y + a_z*sData[i].E_z;
         Ep_y = b_x*sData[i].E_x + b_y*sData[i].E_y + b_z*sData[i].E_z;
-        Ep_z = c_x*sData[i].E_x + c_y*sData[i].E_y + c_z*sData[i].E_z;
+        Ep_z =-n_x*sData[i].E_x - n_y*sData[i].E_y - n_z*sData[i].E_z;
         
         // Sun vector in the new (a,b,c) basis:
         Sp_x = a_x*sData[i].S_x + a_y*sData[i].S_y + a_z*sData[i].S_z;
         Sp_y = b_x*sData[i].S_x + b_y*sData[i].S_y + b_z*sData[i].S_z;
-        Sp_z = c_x*sData[i].S_x + c_y*sData[i].S_y + c_z*sData[i].S_z;
+        Sp_z =-n_x*sData[i].S_x - n_y*sData[i].S_y - n_z*sData[i].S_z;
         
         // Now that we converted the Earth and Sun vectors to the internal asteroidal basis (a,b,c),
         // we can apply the formalism of Muinonen & Lumme, 2015 to calculate the brightness of the asteroid.
@@ -227,23 +219,30 @@ __device__ int x2params(CHI_FLOAT *x, struct parameters_struct *params)
         return failed;
     
     params->b =       x[0] * (dLimits[1][0]-dLimits[0][0]) + dLimits[0][0];
-    params->P =       x[1] * (dLimits[1][1]-dLimits[0][1]) + dLimits[0][1];
+    params->P =       1.0/( x[1] * (dLimits[1][1]-dLimits[0][1]) + dLimits[0][1]);
     params->theta =   x[2] * (dLimits[1][2]-dLimits[0][2]) + dLimits[0][2]; 
     params->cos_phi = x[3] * (dLimits[1][3]-dLimits[0][3]) + dLimits[0][3];
     params->phi_a0 =  x[4] * (dLimits[1][4]-dLimits[0][4]) + dLimits[0][4];
     // &&&    
+#ifndef SYMMETRY    
     params->c =       x[5] * (dLimits[1][5]-dLimits[0][5]) + dLimits[0][5];
-    params->cos_phi_b=x[6] * (dLimits[1][6]-dLimits[0][6]) + dLimits[0][6];
+ #else
+ #ifdef DISK    
+    #ifdef LOG_BC
+    params->c = 0.0;
+    #else
+    params->c = 1.0;
+    #endif
+ #else // Not disk = cigar geometry
+    params->c = params->b;
+ #endif    
+#endif    
     #ifdef TUMBLE
-    params->P_pr    = x[7] * (dLimits[1][7]-dLimits[0][7]) + dLimits[0][7]; 
-    params->theta_pr =x[8] * (dLimits[1][8]-dLimits[0][8]) + dLimits[0][8]; 
-    params->phi_n0  = x[9] * (dLimits[1][9]-dLimits[0][9]) + dLimits[0][9]; 
+    params->P_pr    = 1.0 / (x[6] * (dLimits[1][6]-dLimits[0][6]) + dLimits[0][6]); 
+    params->theta_pr =x[7] * (dLimits[1][7]-dLimits[0][7]) + dLimits[0][7]; 
+    params->phi_n0  = x[8] * (dLimits[1][8]-dLimits[0][8]) + dLimits[0][8]; 
     #endif    
     
-    #ifdef FORCE_BC
-    if (params->c > params->b)
-        return 1;
-    #endif    
     #ifdef LOG_BC
     params->b = exp(params->b);
     params->c = exp(params->c);
@@ -302,10 +301,6 @@ __global__ void chi2_gpu (struct obs_data *dData, int N_data, int N_filters, lon
         // The DX_INI business is to prevent the initial simplex going beyong the limits
         x[0][i] = 1e-6 + (1.0-DX_INI-2e-6)*curand_uniform(&localState);
     }
-    #ifdef FORCE_BC
-    // Enforcing c<b initially (not perfect - for very small b might fail at the beginning)
-    x[0][5] = x[0][5] * x[0][0];
-    #endif                    
     
     // Simplex initialization
     for (j=1; j<N_PARAMS+1; j++)

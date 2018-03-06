@@ -37,8 +37,6 @@ __device__ __host__ void iloc_to_params(long int * iloc, struct parameters_struc
         
     params->theta = (double)rest/(double)N_THETA * (THETA2 - THETA1) + THETA1;
 
-    params->cos_phi_b = 0.0;
-
     return;   
 }
 

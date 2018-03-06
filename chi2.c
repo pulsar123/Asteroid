@@ -12,7 +12,7 @@ int chi2 (int N_data, int N_filters, struct parameters_struct params, double *ch
     FILE *fpd;
     FILE *fpm;
     int i, m, l, N;
-    double phi_a, cos_n_phi, n_theta, theta_a, cos_phi_b, b, c, P, phi_a0;
+    double phi_a, cos_n_phi, n_theta, b, c, P, phi_a0;
     double n_phi, n_x, n_y, n_z;
     double cos_phi_a, sin_phi_a, cos_alpha_p, sin_alpha_p, scalar_Sun, scalar_Earth, scalar;
     double cos_lambda_p, sin_lambda_p, Vmod, alpha_p, lambda_p;
@@ -39,11 +39,9 @@ int chi2 (int N_data, int N_filters, struct parameters_struct params, double *ch
     b = params.b;
     P = params.P/24.0;
     c = params.c;
-    cos_phi_b = params.cos_phi_b;
     n_theta = params.theta;
     cos_n_phi = params.cos_phi;
     phi_a0 = params.phi_a0;
-    theta_a = 90 / RAD;
     
     
     // Disk: 1, 0.165, 5, 60, 90, 0.03, 7.35: 12.11:
@@ -118,47 +116,15 @@ int chi2 (int N_data, int N_filters, struct parameters_struct params, double *ch
             n_z = cos(n_theta);
             #endif    
             
-            double cos_theta_a = cos(theta_a);
-            double sin_theta_a = sin(theta_a);
             double a0_x, a0_y, a0_z;
             
             // Initial (phase=0) vector a0 orientation; it is in n-0-p plane, where p=[z x n], made a unit vector
-            a0_x = n_x*cos_theta_a - n_y/sqrt(n_y*n_y+n_x*n_x)*sin_theta_a;
-            a0_y = n_y*cos_theta_a + n_x/sqrt(n_y*n_y+n_x*n_x)*sin_theta_a;
-            a0_z = n_z*cos_theta_a;
+            a0_x = - n_y/sqrt(n_y*n_y+n_x*n_x);
+            a0_y =   n_x/sqrt(n_y*n_y+n_x*n_x);
+            a0_z =   0.0;
             
-            // Vector b_i (axis b before applying the phi_b rotation), vector product [a_0 x n]:
-            double bi_x = a0_y*n_z - a0_z*n_y;
-            double bi_y = a0_z*n_x - a0_x*n_z;
-            double bi_z = a0_x*n_y - a0_y*n_x;
-            // Making it a unit vector:
-            double bi = sqrt(bi_x*bi_x + bi_y*bi_y + bi_z*bi_z);
-            bi_x = bi_x / bi;
-            bi_y = bi_y / bi;
-            bi_z = bi_z / bi;
-            
-            // Vector t=[a0 x bi]:
-            double t_x = a0_y*bi_z - a0_z*bi_y;
-            double t_y = a0_z*bi_x - a0_x*bi_z;
-            double t_z = a0_x*bi_y - a0_y*bi_x;
-            // Making it a unit vector:
-            double t = sqrt(t_x*t_x + t_y*t_y + t_z*t_z);
-            t_x = t_x / t;
-            t_y = t_y / t;
-            t_z = t_z / t;
-            
-            // Initial (phase=0) axis b0:
-            double phi_b = acos(cos_phi_b);
-            double sin_phi_b = sin(phi_b);
-            double b0_x = bi_x*cos_phi_b + t_x*sin_phi_b;
-            double b0_y = bi_y*cos_phi_b + t_y*sin_phi_b;
-            double b0_z = bi_z*cos_phi_b + t_z*sin_phi_b;
-            
-            // Dot products:
+            // Dot product:
             double n_a0 = n_x*a0_x + n_y*a0_y + n_z*a0_z;
-            double n_b0 = n_x*b0_x + n_y*b0_y + n_z*b0_z;
-            
-            
             
             // Rotational phase angle:
             if (l == 0)
@@ -190,37 +156,37 @@ int chi2 (int N_data, int N_filters, struct parameters_struct params, double *ch
                 S_z1 = S_z1 / S;                    
             }
             
-            // Solar phase angle:  
-            //            double alpha = acos(hData[i].S_x*hData[i].E_x + hData[i].S_y*hData[i].E_y + hData[i].S_z*hData[i].E_z);
-            
             cos_phi_a = cos(phi_a);
             sin_phi_a = sin(phi_a);
             
             // New basis - a,b,c axes of the ellipsoid after the phase rotation:
-            // Using the Rodrigues formula for a and b axes (n is the axis of rotation vector; a0 is the initial vector; a is the vector after rotation of phi_a radians)
+            // Using the Rodrigues formula for a (n is the axis of rotation vector = -c vector; a0 is the initial vector; a is the vector after rotation of phi_a radians)
             // https://en.wikipedia.org/wiki/Rodrigues%27_rotation_formula
+            double a_x,a_y,a_z;
             a_x = a0_x*cos_phi_a + (n_y*a0_z - n_z*a0_y)*sin_phi_a + n_x*n_a0*(1.0-cos_phi_a);
             a_y = a0_y*cos_phi_a + (n_z*a0_x - n_x*a0_z)*sin_phi_a + n_y*n_a0*(1.0-cos_phi_a);
             a_z = a0_z*cos_phi_a + (n_x*a0_y - n_y*a0_x)*sin_phi_a + n_z*n_a0*(1.0-cos_phi_a);
             
-            b_x = b0_x*cos_phi_a + (n_y*b0_z - n_z*b0_y)*sin_phi_a + n_x*n_b0*(1.0-cos_phi_a);
-            b_y = b0_y*cos_phi_a + (n_z*b0_x - n_x*b0_z)*sin_phi_a + n_y*n_b0*(1.0-cos_phi_a);
-            b_z = b0_z*cos_phi_a + (n_x*b0_y - n_y*b0_x)*sin_phi_a + n_z*n_b0*(1.0-cos_phi_a);
+            // Vector b =  vector product [a x n]:
+            double b_x = a_y*n_z - a_z*n_y;
+            double b_y = a_z*n_x - a_x*n_z;
+            double b_z = a_x*n_y - a_y*n_x;
+            // Making it a unit vector:
+            double b = sqrt(b_x*b_x + b_y*b_y + b_z*b_z);
+            b_x = b_x / b;
+            b_y = b_y / b;
+            b_z = b_z / b;
             
-            // c = [a x b]:
-            c_x = a_y*b_z - a_z*b_y;
-            c_y = a_z*b_x - a_x*b_z;
-            c_z = a_x*b_y - a_y*b_x;
-            
+            // Axis <c> vector is minus <n> vector
             // Earth vector in the new (a,b,c) basis:
             Ep_x = a_x*E_x1 + a_y*E_y1 + a_z*E_z1;
             Ep_y = b_x*E_x1 + b_y*E_y1 + b_z*E_z1;
-            Ep_z = c_x*E_x1 + c_y*E_y1 + c_z*E_z1;
+            Ep_z =-n_x*E_x1 - n_y*E_y1 - n_z*E_z1;
             
             // Sun vector in the new (a,b,c) basis:
             Sp_x = a_x*S_x1 + a_y*S_y1 + a_z*S_z1;
             Sp_y = b_x*S_x1 + b_y*S_y1 + b_z*S_z1;
-            Sp_z = c_x*S_x1 + c_y*S_y1 + c_z*S_z1;
+            Sp_z =-n_x*S_x1 - n_y*S_y1 - n_z*S_z1;
             
             // Now that we converted the Earth and Sun vectors to the internal asteroidal basis (a,b,c),
             // we can apply the formalism of Muinonen & Lumme, 2015 to calculate the brightness of the asteroid.
