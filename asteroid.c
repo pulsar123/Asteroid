@@ -24,7 +24,7 @@ int main (int argc,char **argv)
     int N_data; // Number of data points
     int N_filters; // Number of filters used in the data        
     
-    if (argc == N_PARAMS+2)
+    if (argc == N_PARAMS0+2)
     {
         params.b = atof(argv[2]);
         params.P = atof(argv[3]);
@@ -37,7 +37,9 @@ int main (int argc,char **argv)
         params.theta_pr = atof(argv[9]);
         params.phi_n0 = atof(argv[10]);
 #endif        
+#ifndef DEBUG        
         useGPU = 0;
+#endif        
     }
     else if (argc != 3)
     {
@@ -81,10 +83,11 @@ int main (int argc,char **argv)
         CHI_FLOAT hLimits[2][N_PARAMS];
         int iparam = -1;
         // Limits for each parameter during optimization:
+        
         // b
         iparam++;
         hLimits[0][iparam] = 0.02;
-        hLimits[1][iparam] = 1.0;
+        hLimits[1][iparam] = 50;
 #ifdef LOG_BC
         hLimits[0][iparam] = log(hLimits[0][iparam]);
         hLimits[1][iparam] = log(hLimits[1][iparam]);
@@ -92,8 +95,8 @@ int main (int argc,char **argv)
         
         // frequency 1/P (1/days) 0...10
         iparam++;
-        hLimits[0][iparam] = 24.0/7.6;
-        hLimits[1][iparam] = 24.0/6.0;
+        hLimits[0][iparam] = 0.01;
+        hLimits[1][iparam] = 10;
         
         // Theta
         iparam++;
@@ -109,11 +112,13 @@ int main (int argc,char **argv)
         iparam++;
         hLimits[0][iparam] = 0.0;
         hLimits[1][iparam] = 2.0*PI;
-        
+
+#ifndef SYMMETRY        
         // c (not used in SYMMETRY modes)
         iparam++;
         hLimits[0][iparam] = hLimits[0][0];
         hLimits[1][iparam] = hLimits[1][0];
+#endif        
 
 #ifdef TUMBLE
         // frequency 1/P_pr (1/days) 0...10
@@ -166,6 +171,10 @@ int main (int argc,char **argv)
         cudaEventCreate(&start);
         cudaEventCreate(&stop);
         cudaEventRecord(start, 0);
+#endif        
+        
+#ifdef DEBUG
+        debug_kernel<<<1, 1>>>(params, dData, N_data, N_filters);
 #endif        
        
         // The kernel (using stream 0):
@@ -280,7 +289,7 @@ exit(0);
             params = h_params[i_best];
             printf("%13.6e ",  h_f[i_best]);
             printf("%10.6f ",  params.b);
-            printf("%10.6f ",  params.P*24);
+            printf("%10.6f ",  params.P*24);            
             printf("%10.6f ",  params.c);
             printf("%10.6f ",  params.theta);
             printf("%10.6f ",  params.cos_phi);

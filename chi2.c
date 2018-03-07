@@ -167,15 +167,10 @@ int chi2 (int N_data, int N_filters, struct parameters_struct params, double *ch
             a_y = a0_y*cos_phi_a + (n_z*a0_x - n_x*a0_z)*sin_phi_a + n_y*n_a0*(1.0-cos_phi_a);
             a_z = a0_z*cos_phi_a + (n_x*a0_y - n_y*a0_x)*sin_phi_a + n_z*n_a0*(1.0-cos_phi_a);
             
-            // Vector b =  vector product [a x n]:
+            // Vector b =  vector product [a x n]; it's a unit vector because <a> and <n> are, and they are perpendicular to each other
             double b_x = a_y*n_z - a_z*n_y;
             double b_y = a_z*n_x - a_x*n_z;
             double b_z = a_x*n_y - a_y*n_x;
-            // Making it a unit vector:
-            double b = sqrt(b_x*b_x + b_y*b_y + b_z*b_z);
-            b_x = b_x / b;
-            b_y = b_y / b;
-            b_z = b_z / b;
             
             // Axis <c> vector is minus <n> vector
             // Earth vector in the new (a,b,c) basis:
@@ -260,6 +255,10 @@ int chi2 (int N_data, int N_filters, struct parameters_struct params, double *ch
     
     fclose (fpd);
     fclose (fpm);
+    printf("Filter corrections: \n");
+    for (m=0; m<N_filters; m++)
+        printf("%c %f\n",all_filters[m], y_avr_min[m]);
+    
     printf("chi2_min=%f\n", chi2_min);
     return 0;
 }

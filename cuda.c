@@ -218,14 +218,16 @@ __device__ int x2params(CHI_FLOAT *x, struct parameters_struct *params)
     if (failed)
         return failed;
     
-    params->b =       x[0] * (dLimits[1][0]-dLimits[0][0]) + dLimits[0][0];
-    params->P =       1.0/( x[1] * (dLimits[1][1]-dLimits[0][1]) + dLimits[0][1]);
-    params->theta =   x[2] * (dLimits[1][2]-dLimits[0][2]) + dLimits[0][2]; 
-    params->cos_phi = x[3] * (dLimits[1][3]-dLimits[0][3]) + dLimits[0][3];
-    params->phi_a0 =  x[4] * (dLimits[1][4]-dLimits[0][4]) + dLimits[0][4];
+    int iparam = -1;
+    //!!! Limits should be in shared memory!
+    iparam++;  params->b =             x[iparam] * (dLimits[1][iparam]-dLimits[0][iparam]) + dLimits[0][iparam]; 
+    iparam++;  params->P =       1.0/( x[iparam] * (dLimits[1][iparam]-dLimits[0][iparam]) + dLimits[0][iparam]);
+    iparam++;  params->theta =         x[iparam] * (dLimits[1][iparam]-dLimits[0][iparam]) + dLimits[0][iparam]; 
+    iparam++;  params->cos_phi =       x[iparam] * (dLimits[1][iparam]-dLimits[0][iparam]) + dLimits[0][iparam]; 
+    iparam++;  params->phi_a0 =        x[iparam] * (dLimits[1][iparam]-dLimits[0][iparam]) + dLimits[0][iparam]; 
     // &&&    
 #ifndef SYMMETRY    
-    params->c =       x[5] * (dLimits[1][5]-dLimits[0][5]) + dLimits[0][5];
+    iparam++;  params->c =             x[iparam] * (dLimits[1][iparam]-dLimits[0][iparam]) + dLimits[0][iparam]; 
  #else
  #ifdef DISK    
     #ifdef LOG_BC
@@ -238,9 +240,9 @@ __device__ int x2params(CHI_FLOAT *x, struct parameters_struct *params)
  #endif    
 #endif    
     #ifdef TUMBLE
-    params->P_pr    = 1.0 / (x[6] * (dLimits[1][6]-dLimits[0][6]) + dLimits[0][6]); 
-    params->theta_pr =x[7] * (dLimits[1][7]-dLimits[0][7]) + dLimits[0][7]; 
-    params->phi_n0  = x[8] * (dLimits[1][8]-dLimits[0][8]) + dLimits[0][8]; 
+    iparam++;  params->P_pr    = 1.0 / (x[iparam] * (dLimits[1][iparam]-dLimits[0][iparam]) + dLimits[0][iparam]);
+    iparam++;  params->theta_pr =       x[iparam] * (dLimits[1][iparam]-dLimits[0][iparam]) + dLimits[0][iparam]; 
+    iparam++;  params->phi_n0  =        x[iparam] * (dLimits[1][iparam]-dLimits[0][iparam]) + dLimits[0][iparam]; 
     #endif    
     
     #ifdef LOG_BC
@@ -618,3 +620,27 @@ __global__ void chi2_gpu (struct obs_data *dData, int N_data, int N_filters, lon
 }
 
 //++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+
+// For debugging:
+#ifdef DEBUG
+__global__ void debug_kernel(struct parameters_struct params, struct obs_data *dData, int N_data, int N_filters)
+{
+    __shared__ struct obs_data sData[MAX_DATA];
+    int i;
+    CHI_FLOAT f;
+    
+    // Not efficient, for now:
+    if (threadIdx.x == 0)
+    {
+        for (i=0; i<N_data; i++)
+            sData[i] = dData[i];
+    }
+
+f = chi2one(params, sData, N_data, N_filters);
+    
+return;
+
+}
+
+#endif

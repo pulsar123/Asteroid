@@ -1,6 +1,6 @@
 #OPT=-G -g -DGPU -DSIMPLEX -arch=sm_60 --ptxas-options=-v
-OPT=-O2 -DGPU -DSIMPLEX -DSYMMETRY -DDISK -arch=sm_60
-#OPT=-O2 -DSIMPLEX -DTUMBLE 
+OPT=-O2 -DGPU -DSIMPLEX -DSYMMETRY -DDISK -DTUMBLE -arch=sm_60
+#OPT=-O2 -DSIMPLEX
 INC=-I/usr/include/cuda -I.
 
 BINARY=asteroid3
