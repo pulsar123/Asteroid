@@ -29,8 +29,8 @@ int read_data(char *data_file, int *N_data, int *N_filters)
   }
 }
 fclose(fp);
-// Minus one header line:
-*N_data = *N_data - 1;
+// Minus one header line: (???)
+//*N_data = *N_data - 1;
 
 if (*N_data > MAX_DATA)
 {
@@ -42,6 +42,10 @@ if (*N_data > MAX_DATA)
 ERR(cudaMallocHost(&hData, *N_data * sizeof(struct obs_data)));
 ERR(cudaMallocHost(&MJD_obs, *N_data * sizeof(double)));
 
+#ifdef DUMP_DV
+FILE *fpdump = fopen("dV.dat", "w");
+#endif
+
 // Reading the input data file
 fp = fopen(data_file, "r");
 int i = -1;
@@ -49,6 +53,7 @@ char filter;
 int j = 0;
 int k;
 int p_filter = -1;
+int W_filter = -1;
 double sgm, MJD1, V1;
 printf("Filters:\n");
 while (fgets(line, sizeof(line), fp)) 
@@ -75,9 +80,12 @@ while (fgets(line, sizeof(line), fp))
             all_filters[j] = filter;
             j++;
             printf("%d: %c\n", j, filter);
-            // The special case of the "p" filter (from Drahus et al.; presumably already geometry corrected)
+            // The special case of the "p" filter (from Drahus et al.; presumably already geometry corrected, but no light travel correction)
             if (filter == 'p')
                 p_filter = j;
+            // Another special case - Wesley et al data (time is light travel corrected, and magnitudes are geometry and color corrected)
+            if (filter == 'W')
+                W_filter = j;
         }
         // Translating filter char to filter number:
         for (k=0; k<j; k++)
@@ -217,12 +225,17 @@ for (i=0; i<*N_data; i++)
         S0 = S;
     }
     // Convertimg visual magnitudes to the asteroid/Earth/Sun distances at the first observed moment:
-    if (hData[i].Filter != p_filter)
+    if (hData[i].Filter != p_filter && hData[i].Filter != W_filter)
         hData[i].V = hData[i].V + 5.0*log10(E0/E * S0/S);
+#ifdef DUMP_DV
+    fprintf(fpdump, "%f\n", 5.0*log10(E0/E * S0/S));
+#endif
     // Computing the delay (light time), in days:
     delay = E / light_speed;
+    hData[i].MJD = MJD_obs[i];
     // Converting to asteroidal time (minus light time):
-    hData[i].MJD = MJD_obs[i] - delay;
+    if (hData[i].Filter != W_filter)
+        hData[i].MJD = hData[i].MJD - delay;
     if (i == 0)
         hMJD0 = hData[i].MJD;
     hData[i].MJD = hData[i].MJD - hMJD0;
@@ -234,6 +247,11 @@ for (i=0; i<*N_data; i++)
     hData[i].S_y = hData[i].S_y / S;
     hData[i].S_z = hData[i].S_z / S;
 }
+
+#ifdef DUMP_DV
+    fclose(fpdump);
+    exit (0);
+#endif
 
 return 0;
 }

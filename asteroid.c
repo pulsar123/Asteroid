@@ -82,12 +82,13 @@ int main (int argc,char **argv)
 // &&&        
         CHI_FLOAT hLimits[2][N_PARAMS];
         int iparam = -1;
+        int iPpr = -1;
         // Limits for each parameter during optimization:
         
         // b
         iparam++;
         hLimits[0][iparam] = 0.02;
-        hLimits[1][iparam] = 50;
+        hLimits[1][iparam] = 0.9;
 #ifdef LOG_BC
         hLimits[0][iparam] = log(hLimits[0][iparam]);
         hLimits[1][iparam] = log(hLimits[1][iparam]);
@@ -95,23 +96,23 @@ int main (int argc,char **argv)
         
         // frequency 1/P (1/days) 0...10
         iparam++;
-        hLimits[0][iparam] = 0.01;
-        hLimits[1][iparam] = 10;
+        hLimits[0][iparam] = 24.0/8.5;
+        hLimits[1][iparam] = 24.0/6;
         
         // Theta
         iparam++;
         hLimits[0][iparam] = 0.001/RAD;
-        hLimits[1][iparam] = 180.0/RAD;
+        hLimits[1][iparam] = 179.999/RAD;
         
         // cos_phi
         iparam++;
-        hLimits[0][iparam] = -1.0;
+        hLimits[0][iparam] = -0.999;
         hLimits[1][iparam] = 0.999;
         
         // phi_a0
         iparam++;
-        hLimits[0][iparam] = 0.0;
-        hLimits[1][iparam] = 2.0*PI;
+        hLimits[0][iparam] = 0.001;
+        hLimits[1][iparam] = 2.0*PI-0.001;
 
 #ifndef SYMMETRY        
         // c (not used in SYMMETRY modes)
@@ -123,8 +124,9 @@ int main (int argc,char **argv)
 #ifdef TUMBLE
         // frequency 1/P_pr (1/days) 0...10
         iparam++;
-        hLimits[0][iparam] = 24.0/7.6;
-        hLimits[1][iparam] = 24.0/6.0;
+        iPpr = iparam;
+        hLimits[0][iparam] = 24.0/240;
+        hLimits[1][iparam] = 24.0/1.0;
         
         // Theta_pr
         iparam++;
@@ -178,7 +180,7 @@ int main (int argc,char **argv)
 #endif        
        
         // The kernel (using stream 0):
-        chi2_gpu<<<N_BLOCKS, BSIZE, 0, ID[0]>>>(dData, N_data, N_filters, d_states, d_f, d_params);
+        chi2_gpu<<<N_BLOCKS, BSIZE, 0, ID[0]>>>(dData, N_data, N_filters, d_states, d_f, d_params, iPpr);
 
 #ifdef TIMING
         cudaEventRecord(stop, 0);

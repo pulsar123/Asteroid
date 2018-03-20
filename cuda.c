@@ -9,7 +9,7 @@
 #include "asteroid.h"
 
 
-__device__ CHI_FLOAT chi2one(struct parameters_struct params, struct obs_data *sData, int N_data, int N_filters)
+__device__ CHI_FLOAT chi2one(int iPpr, struct parameters_struct params, struct obs_data *sData, CHI_FLOAT sLimits[][N_PARAMS], int N_data, int N_filters)
 // Computung chi^2 for a single model parameters combination, on GPU, by a single thread
 {
     int i, m;
@@ -206,7 +206,7 @@ __global__ void setup_kernel ( curandState * state, unsigned long seed, CHI_FLOA
 
 //+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 
-__device__ int x2params(CHI_FLOAT *x, struct parameters_struct *params)
+__device__ int x2params(int iPpr, CHI_FLOAT *x, struct parameters_struct *params, CHI_FLOAT sLimits[][N_PARAMS])
 {
     // Checking if we went beyond the limits:
     int failed = 0;
@@ -214,20 +214,26 @@ __device__ int x2params(CHI_FLOAT *x, struct parameters_struct *params)
     {
         if (x[i]<=0.0 || x[i]>=1.0)
             failed = 1;
+#ifdef FORCE_P
+#ifdef TUMBLE
+        if (i == iPpr && x[i] > x[1])
+            failed = 1;
+#endif        
+#endif        
     }
     if (failed)
         return failed;
     
     int iparam = -1;
     //!!! Limits should be in shared memory!
-    iparam++;  params->b =             x[iparam] * (dLimits[1][iparam]-dLimits[0][iparam]) + dLimits[0][iparam]; 
-    iparam++;  params->P =       1.0/( x[iparam] * (dLimits[1][iparam]-dLimits[0][iparam]) + dLimits[0][iparam]);
-    iparam++;  params->theta =         x[iparam] * (dLimits[1][iparam]-dLimits[0][iparam]) + dLimits[0][iparam]; 
-    iparam++;  params->cos_phi =       x[iparam] * (dLimits[1][iparam]-dLimits[0][iparam]) + dLimits[0][iparam]; 
-    iparam++;  params->phi_a0 =        x[iparam] * (dLimits[1][iparam]-dLimits[0][iparam]) + dLimits[0][iparam]; 
+    iparam++;  params->b =             x[iparam] * (sLimits[1][iparam]-sLimits[0][iparam]) + sLimits[0][iparam]; 
+    iparam++;  params->P =       1.0/( x[iparam] * (sLimits[1][iparam]-sLimits[0][iparam]) + sLimits[0][iparam]);
+    iparam++;  params->theta =         x[iparam] * (sLimits[1][iparam]-sLimits[0][iparam]) + sLimits[0][iparam]; 
+    iparam++;  params->cos_phi =       x[iparam] * (sLimits[1][iparam]-sLimits[0][iparam]) + sLimits[0][iparam]; 
+    iparam++;  params->phi_a0 =        x[iparam] * (sLimits[1][iparam]-sLimits[0][iparam]) + sLimits[0][iparam]; 
     // &&&    
 #ifndef SYMMETRY    
-    iparam++;  params->c =             x[iparam] * (dLimits[1][iparam]-dLimits[0][iparam]) + dLimits[0][iparam]; 
+    iparam++;  params->c =             x[iparam] * (sLimits[1][iparam]-sLimits[0][iparam]) + sLimits[0][iparam]; 
  #else
  #ifdef DISK    
     #ifdef LOG_BC
@@ -240,9 +246,9 @@ __device__ int x2params(CHI_FLOAT *x, struct parameters_struct *params)
  #endif    
 #endif    
     #ifdef TUMBLE
-    iparam++;  params->P_pr    = 1.0 / (x[iparam] * (dLimits[1][iparam]-dLimits[0][iparam]) + dLimits[0][iparam]);
-    iparam++;  params->theta_pr =       x[iparam] * (dLimits[1][iparam]-dLimits[0][iparam]) + dLimits[0][iparam]; 
-    iparam++;  params->phi_n0  =        x[iparam] * (dLimits[1][iparam]-dLimits[0][iparam]) + dLimits[0][iparam]; 
+    iparam++;  params->P_pr    = 1.0 / (x[iparam] * (sLimits[1][iparam]-sLimits[0][iparam]) + sLimits[0][iparam]);
+    iparam++;  params->theta_pr =       x[iparam] * (sLimits[1][iparam]-sLimits[0][iparam]) + sLimits[0][iparam]; 
+    iparam++;  params->phi_n0  =        x[iparam] * (sLimits[1][iparam]-sLimits[0][iparam]) + sLimits[0][iparam]; 
     #endif    
     
     #ifdef LOG_BC
@@ -260,13 +266,14 @@ __device__ int x2params(CHI_FLOAT *x, struct parameters_struct *params)
 
 #ifdef SIMPLEX
 __global__ void chi2_gpu (struct obs_data *dData, int N_data, int N_filters,
-                          curandState* globalState, CHI_FLOAT *d_f, struct parameters_struct *d_params)
+                          curandState* globalState, CHI_FLOAT *d_f, struct parameters_struct *d_params, int iPpr)
 #else
 __global__ void chi2_gpu (struct obs_data *dData, int N_data, int N_filters, long int Nloc, int iglob, int N_serial, float * d_chi2_min, long int * d_iloc_min)
 #endif
 // CUDA kernel computing chi^2 on GPU
 {        
     __shared__ struct obs_data sData[MAX_DATA];
+    __shared__ CHI_FLOAT sLimits[2][N_PARAMS];
     int i, j;
     struct parameters_struct params;
     
@@ -275,6 +282,11 @@ __global__ void chi2_gpu (struct obs_data *dData, int N_data, int N_filters, lon
     {
         for (i=0; i<N_data; i++)
             sData[i] = dData[i];
+        for (i=0; i<N_PARAMS; i++)
+        {
+            sLimits[0][i] = dLimits[0][i];
+            sLimits[1][i] = dLimits[1][i];
+        }
     }
     
     #ifdef SIMPLEX
@@ -302,6 +314,12 @@ __global__ void chi2_gpu (struct obs_data *dData, int N_data, int N_filters, lon
     {
         // The DX_INI business is to prevent the initial simplex going beyong the limits
         x[0][i] = 1e-6 + (1.0-DX_INI-2e-6)*curand_uniform(&localState);
+#ifdef FORCE_P
+#ifdef TUMBLE
+        if (i == iPpr)
+            x[0][i] = x[0][i] * x[0][1];
+#endif        
+#endif        
     }
     
     // Simplex initialization
@@ -319,8 +337,8 @@ __global__ void chi2_gpu (struct obs_data *dData, int N_data, int N_filters, lon
     // Computing the initial function values (chi2):        
     for (j=0; j<N_PARAMS+1; j++)
     {
-        x2params(x[j],&params);
-        f[j] = chi2one(params, sData, N_data, N_filters);    
+        x2params(iPpr, x[j],&params,sLimits);
+        f[j] = chi2one(iPpr, params, sData, sLimits, N_data, N_filters);    
     }
         
     // The main simplex loop
@@ -397,10 +415,10 @@ __global__ void chi2_gpu (struct obs_data *dData, int N_data, int N_filters, lon
             x_r[i] = x0[i] + ALPHA_SIM*(x0[i] - x[ind[N_PARAMS]][i]);
         }
         CHI_FLOAT f_r;
-        if (x2params(x_r,&params))
+        if (x2params(iPpr, x_r,&params,sLimits))
             f_r = 1e30;
         else
-            f_r = chi2one(params, sData, N_data, N_filters);
+            f_r = chi2one(iPpr, params, sData, sLimits, N_data, N_filters);
         if (f_r >= f[ind[0]] && f_r < f[ind[N_PARAMS-1]])
         {
             // Replacing the worst point with the reflected point:
@@ -421,10 +439,10 @@ __global__ void chi2_gpu (struct obs_data *dData, int N_data, int N_filters, lon
                 x_e[i] = x0[i] + GAMMA_SIM*(x_r[i] - x0[i]);
             }
             CHI_FLOAT f_e;
-            if (x2params(x_e,&params))
+            if (x2params(iPpr, x_e,&params,sLimits))
                 f_e = 1e30;
             else
-                f_e = chi2one(params, sData, N_data, N_filters);
+                f_e = chi2one(iPpr, params, sData, sLimits, N_data, N_filters);
             if (f_e < f_r)
             {
                 // Replacing the worst point with the expanded point:
@@ -452,10 +470,10 @@ __global__ void chi2_gpu (struct obs_data *dData, int N_data, int N_filters, lon
         {
             x_r[i] = x0[i] + RHO_SIM*(x[ind[N_PARAMS]][i] - x0[i]);
         }
-        if (x2params(x_r,&params))
+        if (x2params(iPpr, x_r,&params,sLimits))
             f_r = 1e30;
         else
-            f_r = chi2one(params, sData, N_data, N_filters);
+            f_r = chi2one(iPpr, params, sData, sLimits, N_data, N_filters);
         if (f_r < f[ind[N_PARAMS]])
         {
             // Replacing the worst point with the contracted point:
@@ -475,10 +493,10 @@ __global__ void chi2_gpu (struct obs_data *dData, int N_data, int N_filters, lon
             {
                 x[ind[j]][i] = x[ind[0]][i] + SIGMA_SIM*(x[ind[j]][i] - x[ind[0]][i]);
             }           
-            if (x2params(x[ind[j]],&params))
+            if (x2params(iPpr, x[ind[j]],&params,sLimits))
                 failed = 1;
             else
-                f[ind[j]] = chi2one(params, sData, N_data, N_filters);
+                f[ind[j]] = chi2one(iPpr, params, sData, sLimits, N_data, N_filters);
         }
         // We failed the optimization
         if (failed)
@@ -519,7 +537,7 @@ __global__ void chi2_gpu (struct obs_data *dData, int N_data, int N_filters, lon
         unsigned int blockID = atomicAdd(&d_block_counter, 1);
         // Copying the found minimum to device memory:
         d_f[blockID] = s_f[0];
-        x2params(x[ind[0]],&params);
+        x2params(iPpr, x[ind[0]],&params,sLimits);
         d_params[blockID] = params;
     }
     
@@ -562,7 +580,7 @@ __global__ void chi2_gpu (struct obs_data *dData, int N_data, int N_filters, lon
             
             iloc_to_params(&iloc, &params);
             
-            chi2a = chi2one(params, sData, N_data, N_filters);
+            chi2a = chi2one(iPpr, params, sData, sLimits, N_data, N_filters);
             
             if (chi2a < chi2_min)
             {
@@ -637,7 +655,7 @@ __global__ void debug_kernel(struct parameters_struct params, struct obs_data *d
             sData[i] = dData[i];
     }
 
-f = chi2one(params, sData, N_data, N_filters);
+f = chi2one(iPpr, params, sData, sLimits, N_data, N_filters);
     
 return;
 

@@ -22,6 +22,13 @@
 // Log scale for b and c if defined:
 #define LOG_BC
 
+// Enforce Prp>P if defined
+#define FORCE_P
+
+// If defined, writes a file with delta V (geometry corrections for the observational data)
+//#define DUMP_DV
+
+
 #ifdef TUMBLE
 const int N_PARAMS0 = 9;
 #else
@@ -66,7 +73,7 @@ const int N_PHI_A = 360*4;
 
 // GPU optimization parameters:
 const int BSIZE = 256;   // Threads in a block (64 ... 1024, step of 64); 384
-const int N_BLOCKS = 56*200; // Should be proportional to the number of SMs (56 for P100); code runtime and memory consumed on GPU is proportional to this number; x1000 for 1 day
+const int N_BLOCKS = 56*20; // Should be proportional to the number of SMs (56 for P100); code runtime and memory consumed on GPU is proportional to this number; x1000 for 1 day
 //const int N_SERIAL = 1; // number of serial iglob loops inside the kernel (>=1)
 //const int N_WARPS = BSIZE / 32;
 
@@ -144,7 +151,7 @@ int gpu_prepare(int, int, int);
 
 #ifdef SIMPLEX
 __global__ void setup_kernel ( curandState *, unsigned long, CHI_FLOAT *);
-__global__ void chi2_gpu(struct obs_data *, int, int, curandState*, CHI_FLOAT*, struct parameters_struct*);
+__global__ void chi2_gpu(struct obs_data *, int, int, curandState*, CHI_FLOAT*, struct parameters_struct*, int);
   #ifdef DEBUG
   __global__ void debug_kernel(struct parameters_struct, struct obs_data *, int, int);
   #endif
