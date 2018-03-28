@@ -45,6 +45,9 @@ ERR(cudaMallocHost(&MJD_obs, *N_data * sizeof(double)));
 #ifdef DUMP_DV
 FILE *fpdump = fopen("dV.dat", "w");
 #endif
+#ifdef DUMP_RED_BLUE
+FILE *fpdump = fopen("red_blue_corr.dat", "w");
+#endif
 
 // Reading the input data file
 fp = fopen(data_file, "r");
@@ -52,7 +55,6 @@ int i = -1;
 char filter;
 int j = 0;
 int k;
-int p_filter = -1;
 int W_filter = -1;
 double sgm, MJD1, V1;
 printf("Filters:\n");
@@ -80,9 +82,6 @@ while (fgets(line, sizeof(line), fp))
             all_filters[j] = filter;
             j++;
             printf("%d: %c\n", j, filter);
-            // The special case of the "p" filter (from Drahus et al.; presumably already geometry corrected, but no light travel correction)
-            if (filter == 'p')
-                p_filter = j;
             // Another special case - Wesley et al data (time is light travel corrected, and magnitudes are geometry and color corrected)
             if (filter == 'W')
                 W_filter = j;
@@ -224,11 +223,11 @@ for (i=0; i<*N_data; i++)
         E0 = E;
         S0 = S;
     }
-    // Convertimg visual magnitudes to the asteroid/Earth/Sun distances at the first observed moment:
-    if (hData[i].Filter != p_filter && hData[i].Filter != W_filter)
-        hData[i].V = hData[i].V + 5.0*log10(E0/E * S0/S);
+    // Convertimg visual magnitudes to absolute magnitudes (at 1 au from sun and earth):
+    if (hData[i].Filter != W_filter)
+        hData[i].V = hData[i].V + 5.0*log10(1.0/E * 1.0/S);
 #ifdef DUMP_DV
-    fprintf(fpdump, "%f\n", 5.0*log10(E0/E * S0/S));
+    fprintf(fpdump, "%f\n", 5.0*log10(1.0/E * 1.0/S));
 #endif
     // Computing the delay (light time), in days:
     delay = E / light_speed;
@@ -236,6 +235,9 @@ for (i=0; i<*N_data; i++)
     // Converting to asteroidal time (minus light time):
     if (hData[i].Filter != W_filter)
         hData[i].MJD = hData[i].MJD - delay;
+#ifdef DUMP_RED_BLUE
+    fprintf(fpdump, "W %12.6lf %6.3f %5.3f r\n", hData[i].MJD, hData[i].V, 1.0/sqrt(hData[i].w));
+#endif
     if (i == 0)
         hMJD0 = hData[i].MJD;
     hData[i].MJD = hData[i].MJD - hMJD0;
@@ -249,6 +251,10 @@ for (i=0; i<*N_data; i++)
 }
 
 #ifdef DUMP_DV
+    fclose(fpdump);
+    exit (0);
+#endif
+#ifdef DUMP_RED_BLUE
     fclose(fpdump);
     exit (0);
 #endif

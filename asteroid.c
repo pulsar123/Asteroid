@@ -88,7 +88,7 @@ int main (int argc,char **argv)
         // b
         iparam++;
         hLimits[0][iparam] = 0.02;
-        hLimits[1][iparam] = 0.9;
+        hLimits[1][iparam] = 0.99;
 #ifdef LOG_BC
         hLimits[0][iparam] = log(hLimits[0][iparam]);
         hLimits[1][iparam] = log(hLimits[1][iparam]);
@@ -96,8 +96,8 @@ int main (int argc,char **argv)
         
         // frequency 1/P (1/days) 0...10
         iparam++;
-        hLimits[0][iparam] = 24.0/8.5;
-        hLimits[1][iparam] = 24.0/6;
+        hLimits[0][iparam] = 24.0/140;
+        hLimits[1][iparam] = 24.0/3;
         
         // Theta
         iparam++;
@@ -125,8 +125,8 @@ int main (int argc,char **argv)
         // frequency 1/P_pr (1/days) 0...10
         iparam++;
         iPpr = iparam;
-        hLimits[0][iparam] = 24.0/240;
-        hLimits[1][iparam] = 24.0/1.0;
+        hLimits[0][iparam] = -24.0/3;
+        hLimits[1][iparam] = -24.0/140;
         
         // Theta_pr
         iparam++;

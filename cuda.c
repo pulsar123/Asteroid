@@ -212,8 +212,14 @@ __device__ int x2params(int iPpr, CHI_FLOAT *x, struct parameters_struct *params
     int failed = 0;
     for (int i=0; i<N_PARAMS; i++)
     {
-        if (x[i]<=0.0 || x[i]>=1.0)
+#ifdef RANDOM_PPR_SIGN
+        if (i!=-iPpr && (x[i]< 0.0 || x[i]>=1.0)  ||
+            i==-iPpr && (x[i]<=-1.0 || x[i]>0.0) )
+                failed = 1;    
+#else        
+        if (x[i]<0.0 || x[i]>=1.0)
             failed = 1;
+#endif
 #ifdef FORCE_P
 #ifdef TUMBLE
         if (i == iPpr && x[i] > x[1])
@@ -321,6 +327,15 @@ __global__ void chi2_gpu (struct obs_data *dData, int N_data, int N_filters, lon
 #endif        
 #endif        
     }
+#ifdef RANDOM_PPR_SIGN
+// Even threads will have positive Ppr, odd - negative
+    if (threadIdx.x%2 == 1)
+    {
+        x[0][iPpr] = -x[0][iPpr];
+        // Hijacking iPpr variable to pass the sign of Ppr to chi2 function
+        iPpr = -iPpr;
+    }
+#endif
     
     // Simplex initialization
     for (j=1; j<N_PARAMS+1; j++)

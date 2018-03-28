@@ -23,10 +23,16 @@
 #define LOG_BC
 
 // Enforce Prp>P if defined
-#define FORCE_P
+//#define FORCE_P
 
 // If defined, writes a file with delta V (geometry corrections for the observational data)
 //#define DUMP_DV
+
+// If defined, writes red_blue_corr.dat file for Drahus et al data corrected for geometry and time travel
+//#define DUMP_RED_BLUE
+
+// If defined, sign of Prp is random
+//#define RANDOM_PPR_SIGN
 
 
 #ifdef TUMBLE
@@ -73,7 +79,7 @@ const int N_PHI_A = 360*4;
 
 // GPU optimization parameters:
 const int BSIZE = 256;   // Threads in a block (64 ... 1024, step of 64); 384
-const int N_BLOCKS = 56*20; // Should be proportional to the number of SMs (56 for P100); code runtime and memory consumed on GPU is proportional to this number; x1000 for 1 day
+const int N_BLOCKS = 56*200; // Should be proportional to the number of SMs (56 for P100); code runtime and memory consumed on GPU is proportional to this number; x1000 for 1 day
 //const int N_SERIAL = 1; // number of serial iglob loops inside the kernel (>=1)
 //const int N_WARPS = BSIZE / 32;
 
