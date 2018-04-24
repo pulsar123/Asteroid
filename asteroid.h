@@ -40,7 +40,7 @@ const int N_BLOCKS = 56*200; // Should be proportional to the number of SMs (56 
 //const int N_WARPS = BSIZE / 32;
 
 // ODE time step (days):
-#define TIME_STEP = 3e-3;
+const double TIME_STEP = 3e-3;
 
 // Simplex parameters:
 #ifdef TIMING

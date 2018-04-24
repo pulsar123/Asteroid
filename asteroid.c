@@ -23,7 +23,8 @@ int main (int argc,char **argv)
     // Observational data:
     int N_data; // Number of data points
     int N_filters; // Number of filters used in the data        
-    
+
+/*    
     if (argc == N_PARAMS0+2)
     {
         params.b = atof(argv[2]);
@@ -48,7 +49,7 @@ int main (int argc,char **argv)
         printf("Arguments: obs_file  list_of_parameters\n");
         exit(1);
     }
-    
+*/    
     
     #ifdef GPU
     if (useGPU)

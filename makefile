@@ -1,11 +1,11 @@
 #OPT=-G -g -DGPU -DSIMPLEX -arch=sm_60 --ptxas-options=-v
-OPT=-O2 -DGPU -DSIMPLEX -DTUMBLE -DDISK -DSYMMETRY -arch=sm_60
+OPT=-O2 -DGPU -DSIMPLEX -DTUMBLE -arch=sm_60
 #OPT=-O2 -DSIMPLEX -DSYMMETRY -DDISK 
 INC=-I/usr/include/cuda -I.
 
 BINARY=asteroid3
 
-objects = asteroid.o read_data.o chi2.o misc.o cuda.o gpu_prepare.o
+objects = asteroid.o read_data.o misc.o cuda.o gpu_prepare.o
 
 all: $(objects)
 	nvcc $(OPT)  $(objects) -o ../$(BINARY)

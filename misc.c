@@ -3,43 +3,6 @@
 */
 #include "asteroid.h"
 
-__device__ __host__ void iglob_to_params(int * iglob, struct parameters_struct * params)
-// Converting from the global CUDA index iglob to actual parameters, for both GPU and CPU code
-{
-    int i, rest;
-    
-    i = *iglob % N_P;
-    params->P = (double)i/(double)N_P * (P2 - P1) + P1;
-    rest = *iglob / N_P;
-
-    params->b = (double)rest/(double)N_B * (B2 - B1) + B1;
-
-    params->c = params->b;
-    
-// Disk geometry (cigar geometry if commented):    
-    params->b = 1.0;
-    
-    return;   
-}
-
-__device__ __host__ void iloc_to_params(long int * iloc, struct parameters_struct * params)
-// Converting from the local CUDA index iloc to actual parameters, for both GPU and CPU code
-{
-    long int i, rest;
-    
-    i = *iloc % N_PHI_A;
-    params->phi_a0 = (double)i/(double)N_PHI_A * (PHI_A2 - PHI_A1) + PHI_A1;
-    rest = *iloc / N_PHI_A;
-
-    i = rest % N_COS_PHI;
-    params->cos_phi = (double)i/(double)N_COS_PHI * (COS_PHI2 - COS_PHI1) + COS_PHI1;
-    rest = rest / N_COS_PHI;
-        
-    params->theta = (double)rest/(double)N_THETA * (THETA2 - THETA1) + THETA1;
-
-    return;   
-}
-
 
 int quadratic_interpolation(double MJD, double *E_x1,double *E_y1,double *E_z1, double *S_x1,double *S_y1,double *S_z1)
 {

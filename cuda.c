@@ -32,9 +32,7 @@ __device__ CHI_FLOAT chi2one(struct parameters_struct params, struct obs_data *s
 // Computung chi^2 for a single model parameters combination, on GPU, by a single thread
 {
     int i, m;
-    double phi_a;
-    double n_x, n_y, n_z;
-    double cos_phi_a, sin_phi_a, cos_alpha_p, sin_alpha_p, scalar_Sun, scalar_Earth, scalar;
+    double cos_alpha_p, sin_alpha_p, scalar_Sun, scalar_Earth, scalar;
     double cos_lambda_p, sin_lambda_p, Vmod, alpha_p, lambda_p;
     double Ep_x, Ep_y, Ep_z, Sp_x, Sp_y, Sp_z;
     CHI_FLOAT chi2a;
@@ -114,7 +112,7 @@ __device__ CHI_FLOAT chi2one(struct parameters_struct params, struct obs_data *s
     // Now we have a=1>b>c, and Il=1<Ii<Is
     // Axis of rotation can be either "a" (LAM) or "c" (SAM)
     
-    double Einv = 1.0/params.Es;
+//    double Einv = 1.0/params.Es;
     
     double mu[3];
     double Ip = 0.5*(Ii_inv + Is_inv);
@@ -124,10 +122,10 @@ __device__ CHI_FLOAT chi2one(struct parameters_struct params, struct obs_data *s
     mu[2] = Im;
     
     // Initial Euler angles values:
-    double phi = params.phi0;
+    double phi = params.phi_0;
     // Initial value of the Euler angle theta is determined by other parameters:
-    double theta = asin(sqrt((params.Es-1.0)/(sin(params.psi0)*sin(params.psi0)*(Ii_inv-Is_inv)+Is_inv-1.0)));    
-    double psi = params.psi0;
+    double theta = asin(sqrt((params.Es-1.0)/(sin(params.psi_0)*sin(params.psi_0)*(Ii_inv-Is_inv)+Is_inv-1.0)));    
+    double psi = params.psi_0;
     
     // The loop over all data points    
     for (i=0; i<N_data; i++)
@@ -333,8 +331,8 @@ __device__ int x2params(int LAM, CHI_FLOAT *x, struct parameters_struct *params,
                params->b_tumb = exp(log_b);
     
     // Derived values:
-    double Is = (1.0+params.b_tumb*params.b_tumb) / (params.b_tumb*params.b_tumb+params.c_tumb*params.c_tumb);
-    double Ii = (1.0+params.c_tumb*params.c_tumb) / (params.b_tumb*params.b_tumb+params.c_tumb*params.c_tumb);
+    double Is = (1.0+params->b_tumb*params->b_tumb) / (params->b_tumb*params->b_tumb+params->c_tumb*params->c_tumb);
+    double Ii = (1.0+params->c_tumb*params->c_tumb) / (params->b_tumb*params->b_tumb+params->c_tumb*params->c_tumb);
 
     // Dependent parameters:    
     iparam++;  
@@ -352,14 +350,14 @@ __device__ int x2params(int LAM, CHI_FLOAT *x, struct parameters_struct *params,
     if (LAM)
     {
         psi_min = 0.0;
-        psi_max = 2.0*pi;
+        psi_max = 2.0*PI;
     }
     else
     {
         psi_max = atan(sqrt(Ii*(Is-1.0/params->Es)/Is/(1.0/params->Es-Ii)));
         psi_min = -psi_max;
     }
-    params->psi0 = x[iparam]*(psi_max-psi_min) + psi_min;
+    params->psi_0 = x[iparam]*(psi_max-psi_min) + psi_min;
     
     return 0;
 }
