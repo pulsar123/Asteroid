@@ -13,17 +13,9 @@
 #define RAD (180.0 / PI)
 
 // Constants:
-// Number of free parameters for chi^2 (excludes filters):
-// &&&
 
 // Precision for CUDA chi^2 calculations (float or double):
 #define CHI_FLOAT float
-
-// Log scale for b and c if defined:
-#define LOG_BC
-
-// Enforce Prp>P if defined
-//#define FORCE_P
 
 // If defined, writes a file with delta V (geometry corrections for the observational data)
 //#define DUMP_DV
@@ -31,57 +23,24 @@
 // If defined, writes red_blue_corr.dat file for Drahus et al data corrected for geometry and time travel
 //#define DUMP_RED_BLUE
 
-// If defined, sign of Prp is random
-//#define RANDOM_PPR_SIGN
+// Total number of parameters (inpendent and dependent):
+const int N_PARAMS = 8;
 
-
-#ifdef TUMBLE
-const int N_PARAMS0 = 9;
-#else
-const int N_PARAMS0 = 6;
-#endif
-
-#ifdef SYMMETRY
-const int N_PARAMS = N_PARAMS0 - 1;
-#else
-const int N_PARAMS = N_PARAMS0;
-#endif
+// Number of independent parameters:
+const int N_INDEPEND = 5;
 
 // Maximum number of filters:
-const int N_FILTERS = 11;
+const int N_FILTERS = 2;
 
-// Parameter #1: b/a
-const double B1 = 0.1;
-const double B2 = 0.1;
-const int N_B = 1;
-
-// Parameter #2: period P, days
-const double P1 = 7.5/24;
-const double P2 = 7.5/24;
-const int N_P = 1;
-
-// Fixed spin vector n params (barycentric FoR)
-// The parameters are such that a uniform distribution in both results in a uniform spin vector distribution on a unit sphere
-// Parameter #3: theta is the angle between n and e_z; range [0...180]:
-const double THETA1 = 0.001/RAD;
-const double THETA2 = 180.0/RAD;
-const int N_THETA = 100;
-
-// Parameter #4:  Cosine of the polar angle phi, range [-1...1[
-const double COS_PHI1 = -1.0;
-const double COS_PHI2 = 0.999;
-const int N_COS_PHI = 100;
-
-// Parameter #5:  rotation (phase angle), phi_a; range [0,360[
-const double PHI_A1 = 0.0;
-const double PHI_A2 = 2.0*PI;
-const int N_PHI_A = 360*4;
 
 // GPU optimization parameters:
 const int BSIZE = 256;   // Threads in a block (64 ... 1024, step of 64); 384
 const int N_BLOCKS = 56*200; // Should be proportional to the number of SMs (56 for P100); code runtime and memory consumed on GPU is proportional to this number; x1000 for 1 day
 //const int N_SERIAL = 1; // number of serial iglob loops inside the kernel (>=1)
 //const int N_WARPS = BSIZE / 32;
+
+// ODE time step (days):
+#define TIME_STEP = 3e-3;
 
 // Simplex parameters:
 #ifdef TIMING
@@ -115,17 +74,16 @@ const double light_speed = 173.144632674;
 
 // Parameters structure:
 struct parameters_struct {
-    double b;          // b/a 
-    double P;          // internal period P (hours)
-    double theta;      // angle between internal rotation axis (no TUMBLE) or precession axis (TUMBLE) and axis z
-    double cos_phi;    // phi is the polar angle for internal rotation axis (no TUMBLE) or precession axis (TUMBLE)
-    double phi_a0;     // initial polar angle for a orientation
-    double c;          // c/a
-#ifdef TUMBLE
-    double P_pr;       // precession period (hours)
-    double theta_pr;   // angle between internal rotation axis and precession axis
-    double phi_n0;     // initial polar angle for the rotation axis
-#endif    
+    // Independent parameters:
+    double theta_M; // (angle between barycentric Z axis and angular momentum vector M); range 0...pi
+    double phi_M;   // (polar angle for the angular momentum M in the barycentric FoR); range 0 ... 2*pi
+    double phi_0;   // (initial Euler angle for precession); 0...2*pi
+    double L;       // Angular momentum L value, radians/day; if P is perdiod in hours, L=48*pi/P
+    double c_tumb;  // physical (tumbling) value of the axis c size; always smallest
+    // Dependent parameters:
+    double b_tumb;  // physical (tumbling) value of the axis b size; c_tumb < b_tumb < 1
+    double Es;      // dimensionless total energy (asteroid's excitation degree), constrained by b_tumb, c_tumb
+    double psi_0;   // initial Euler angle of rotation of the body, constrained by b_tumb, c_tumb, Es
 };
 
 // Observational data arrays:

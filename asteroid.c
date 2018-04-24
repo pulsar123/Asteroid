@@ -29,8 +29,8 @@ int main (int argc,char **argv)
         params.b = atof(argv[2]);
         params.P = atof(argv[3]);
         params.c = atof(argv[4]);
-        params.theta = atof(argv[5]);
-        params.cos_phi = atof(argv[6]);
+        params.theta_M = atof(argv[5]);
+        params.phi_M = atof(argv[6]);
         params.phi_a0 = atof(argv[7]);
 #ifdef TUMBLE
         params.P_pr = atof(argv[8]);
@@ -75,7 +75,6 @@ int main (int argc,char **argv)
         
 
 
-#ifdef SIMPLEX
         printf("\n*** Simplex optimization ***\n\n");
         printf("  N_threads = %d\n", N_threads);        
         
@@ -83,73 +82,32 @@ int main (int argc,char **argv)
         CHI_FLOAT hLimits[2][N_PARAMS];
         int iparam = -1;
         int iPpr = -1;
-        // Limits for each parameter during optimization:
+        // Limits for each independent model parameter during optimization:
         
-        // b
-        iparam++;
-        hLimits[0][iparam] = 0.02;
-        hLimits[1][iparam] = 0.99;
-#ifdef LOG_BC
-        hLimits[0][iparam] = log(hLimits[0][iparam]);
-        hLimits[1][iparam] = log(hLimits[1][iparam]);
-#endif        
-        
-        // frequency 1/P (1/days) 0...10
-        iparam++;
-        hLimits[0][iparam] = 24.0/140;
-        hLimits[1][iparam] = 24.0/3;
-        
-        // Theta
+        // Theta_M (angle between barycentric Z axis and angular momentum vector M); range 0...pi
         iparam++;
         hLimits[0][iparam] = 0.001/RAD;
         hLimits[1][iparam] = 179.999/RAD;
         
-        // cos_phi
+        // phi_M (polar angle for the angular momentum M in the barycentric FoR); range 0 ... 2*pi
         iparam++;
-        hLimits[0][iparam] = -0.999;
-        hLimits[1][iparam] = 0.999;
+        hLimits[0][iparam] = 0;
+        hLimits[1][iparam] = 360.0/RAD;
         
-        // phi_a0
+        // phi_0 (initial Euler angle for precession), 0...360 dgr
         iparam++;
-        hLimits[0][iparam] = 0.001;
-        hLimits[1][iparam] = 2.0*PI-0.001;
+        hLimits[0][iparam] = 0/RAD;
+        hLimits[1][iparam] = 360.0/RAD;
+        
+        // Angular momentum L value, radians/day; if P is perdiod in hours, L=48*pi/P
+        iparam++;
+        hLimits[0][iparam] = 48.0*PI / 120;
+        hLimits[1][iparam] = 48.0*PI / 1;
 
-#ifndef SYMMETRY        
-        // c (not used in SYMMETRY modes)
+        // c_tumb (physical (tumbling) value of the axis c size; always smallest)
         iparam++;
-        hLimits[0][iparam] = hLimits[0][0];
-        hLimits[1][iparam] = hLimits[1][0];
-#endif        
-
-#ifdef TUMBLE
-        // frequency 1/P_pr (1/days) 0...10
-        iparam++;
-        iPpr = iparam;
-        hLimits[0][iparam] = -24.0/3;
-        hLimits[1][iparam] = -24.0/140;
-        
-        // Theta_pr
-        iparam++;
-        hLimits[0][iparam] = 0.001/RAD;
-        hLimits[1][iparam] = 180.0/RAD;
-        
-        // phi_n0
-        iparam++;
-        hLimits[0][iparam] = 0.0;
-        hLimits[1][iparam] = 2.0*PI;
-#endif        
-        
-// Normalizing parameters to delta=1 range: ???
-        /*
-        float delta;
-        for (i=0; i<N_PARAMS; i++)
-        {
-            delta = hLimits[1,i] - hLimits[0,i];
-            hLimits[2,i] = delta;
-            hLimits[0,i] = hLimits[0,i] / delta;
-            hLimits[1,i] = hLimits[1,i] / delta;
-        }
-        */
+        hLimits[0][iparam] = log(0.02);
+        hLimits[1][iparam] = log(0.99);                
 
         ERR(cudaMemcpyToSymbol(dLimits, hLimits, 2*N_PARAMS*sizeof(CHI_FLOAT), 0, cudaMemcpyHostToDevice));                
         
@@ -207,8 +165,8 @@ int main (int argc,char **argv)
                     fprintf(fp,"%10.6f ",  params.P*24);
                     fprintf(fp,"%10.6f ",  params.c);
                     fprintf(fp,"%10.6f ",  params.cos_phi_b);
-                    fprintf(fp,"%10.6f ",  params.theta);
-                    fprintf(fp,"%10.6f ",  params.cos_phi);
+                    fprintf(fp,"%10.6f ",  params.theta_M);
+                    fprintf(fp,"%10.6f ",  params.phi_M);
                     fprintf(fp,"%10.6f ",  params.phi_a0);
 #ifdef TUMBLE
                     fprintf(fp,"%10.6f ",  params.P_pr*24);
@@ -256,17 +214,14 @@ exit(0);
                 {
                     params = h_params[i];
                     fprintf(fp,"%13.6e ",  h_f[i]);
-                    fprintf(fp,"%10.6f ",  params.b);
-                    fprintf(fp,"%10.6f ",  params.P*24);
-                    fprintf(fp,"%10.6f ",  params.c);
-                    fprintf(fp,"%10.6f ",  params.theta);
-                    fprintf(fp,"%10.6f ",  params.cos_phi);
-                    fprintf(fp,"%10.6f ",  params.phi_a0);
-#ifdef TUMBLE
-                    fprintf(fp,"%10.6f ",  params.P_pr*24);
-                    fprintf(fp,"%10.6f ",  params.theta_pr);
-                    fprintf(fp,"%10.6f ",  params.phi_n0);
-#endif                    
+                    fprintf(fp,"%10.6f ",  params.theta_M);
+                    fprintf(fp,"%10.6f ",  params.phi_M);
+                    fprintf(fp,"%10.6f ",  params.phi_0);
+                    fprintf(fp,"%10.6f ",  params.L);
+                    fprintf(fp,"%10.6f ",  params.c_tumb);
+                    fprintf(fp,"%10.6f ",  params.b_tumb);
+                    fprintf(fp,"%10.6f ",  params.Es);
+                    fprintf(fp,"%10.6f ",  params.psi_0);
                     fprintf(fp,"\n");
                 }
                 fclose(fp);
@@ -290,17 +245,14 @@ exit(0);
             // Priting the best result:
             params = h_params[i_best];
             printf("%13.6e ",  h_f[i_best]);
-            printf("%10.6f ",  params.b);
-            printf("%10.6f ",  params.P*24);            
-            printf("%10.6f ",  params.c);
-            printf("%10.6f ",  params.theta);
-            printf("%10.6f ",  params.cos_phi);
-            printf("%10.6f ", params.phi_a0);
-#ifdef TUMBLE
-            printf("%10.6f ",  params.P_pr*24);
-            printf("%10.6f ",  params.theta_pr);
-            printf("%10.6f ",  params.phi_n0);
-#endif             
+            printf("%10.6f ",  params.theta_M);
+            printf("%10.6f ",  params.phi_M);
+            printf("%10.6f ",  params.phi_0);
+            printf("%10.6f ",  params.L);
+            printf("%10.6f ",  params.c_tumb);
+            printf("%10.6f ",  params.b_tumb);
+            printf("%10.6f ",  params.Es);
+            printf("%10.6f ",  params.psi_0);            
             printf("%d ",  h_block_counter); // Number of finished blocks
             printf("%d ",  h_min);  // Min and max number of Simplex steps in all finished blocks
             printf("%d ",  h_max);
@@ -330,8 +282,8 @@ exit(0);
                 fprintf(fp,"%10.6f ",  params.P*24);
                 fprintf(fp,"%10.6f ",  params.c);
                 fprintf(fp,"%10.6f ",  params.cos_phi_b);
-                fprintf(fp,"%10.6f ",  params.theta);
-                fprintf(fp,"%10.6f ",  params.cos_phi);
+                fprintf(fp,"%10.6f ",  params.theta_M);
+                fprintf(fp,"%10.6f ",  params.phi_M);
                 fprintf(fp,"%10.6f\n", params.phi_a0);
             }
             fflush(fp);
@@ -343,108 +295,13 @@ exit(0);
 
 
         
-#else        
-        cudaEvent_t start, stop;
-        float elapsed;
-        cudaEventCreate(&start);
-        cudaEventCreate(&stop);
-        
-        // We use Y and Z grid dimensions to store iglob:
-        //    int Z_dim = Nglob / deviceProp.maxGridSize[1];
-        //    int Y_dim = Nglob % deviceProp.maxGridSize[1];
-        
-        // We use a combination of X grid dimension, BSIZE threads and N_SERIAL loops to store iloc:
-        // Make sure Nloc/N_SERIAL is integer dividable!
-        //    int X_dim = (Nloc/N_SERIAL+BSIZE-1) / BSIZE;
-        //    dim3 Dims(X_dim, Y_dim, Z_dim);
-        
-        long int Nloc = N_THETA * N_COS_PHI * N_PHI_A;
-        long int iloc_tot;
-        int N_serial = (Nloc+N_threads-1) / N_threads;
-        printf ("N_threads=%d; N_serial=%d\n", N_threads, N_serial);
-        
-        int iglob = 0;
-        int iglob_tot = 0;
-        int i_b, i_P;
-        int init = 1;
-        
-        for (i_b=0; i_b<N_B; i_b++)
-        {
-            for (i_P=0; i_P<N_P; i_P++)
-            {
-                iglob = i_b*N_P + i_P;
-                
-                if (init == 1)
-                    cudaEventRecord(start, 0);
-                
-                // The kernel:
-                chi2_gpu<<<N_BLOCKS, BSIZE>>>(dData, N_data, N_filters, Nloc, iglob, N_serial, d_chi2_min, d_iloc_min);
-                // Copying the results (one per block) to CPU:
-                ERR(cudaMemcpy(h_chi2_min, d_chi2_min, N_BLOCKS * sizeof(float), cudaMemcpyDeviceToHost));
-                ERR(cudaMemcpy(h_iloc_min, d_iloc_min, N_BLOCKS * sizeof(long int), cudaMemcpyDeviceToHost));
-                ERR(cudaDeviceSynchronize());
-                
-                float chi2_loc = 1e31;
-                long int iloc = 0;
-                
-                // Finding the best result between all the blocks:            
-                for (i=0; i<N_BLOCKS; i++)
-                {
-                    if (h_chi2_min[i] < chi2_loc)
-                    {
-                        chi2_loc =  h_chi2_min[i];
-                        iloc = h_iloc_min[i];
-                    }
-                }
-                printf("iglob=%d, chi2=%lf\n",iglob,chi2_loc);
-                
-                // Globally the best result:
-                if (chi2_loc < chi2_tot)
-                {
-                    chi2_tot =  chi2_loc;
-                    iloc_tot = iloc;
-                    iglob_tot = iglob;
-                }
-                
-                if (init == 1)
-                {
-                    cudaEventRecord(stop, 0);
-                    cudaEventSynchronize (stop);
-                    cudaEventElapsedTime(&elapsed, start, stop);
-                    cudaEventDestroy(start);
-                    cudaEventDestroy(stop);
-                    printf("GPU time: %.2f ms\n", elapsed);
-                }
-                
-                struct parameters_struct params;
-                iloc_to_params(&iloc, &params);
-                iglob_to_params(&iglob, &params);
-                fprintf(fp,"%e %7d %9lu %10.5lf %10.5lf %10.5lf %10.5lf %10.5lf %10.5lf %10.5lf\n",
-                        chi2_loc, iglob, iloc, params.b, params.P*24, params.c, params.cos_phi_b, params.theta, params.cos_phi, params.phi_a0);
-                
-                init = 0;
-            } // i_P
-        }  // i_b
-        
-        cudaDeviceSynchronize();    
-        iloc_to_params(&iloc_tot, &params);
-        iglob_to_params(&iglob_tot, &params);
-        
-        printf("GPU chi2_min=%e, iglob=%d, iloc=%lu\n", chi2_tot, iglob_tot, iloc_tot);
-        printf("b=%lf\n", params.b);
-        printf("P=%lf\n", params.P*24);
-        printf("theta=%lf\n", params.theta);
-        printf("cos_phi=%lf\n", params.cos_phi);
-        printf("phi_a0=%lf\n", params.phi_a0);
-        fclose(fp);
-#endif        
         
     }
-    #endif    
+    #endif   // GPU 
     
     // CPU based chi^2:
-    double chi2_cpu;
-    chi2(N_data, N_filters, params, &chi2_cpu);    
+//    double chi2_cpu;
+//    chi2(N_data, N_filters, params, &chi2_cpu);    
     
     return 0;  
 }

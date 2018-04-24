@@ -39,8 +39,8 @@ int chi2 (int N_data, int N_filters, struct parameters_struct params, double *ch
     b = params.b;
     P = params.P/24.0;
     c = params.c;
-    n_theta = params.theta;
-    cos_n_phi = params.cos_phi;
+    n_theta = params.theta_M;
+    cos_n_phi = params.phi_M;
     phi_a0 = params.phi_a0;
     
     
@@ -54,10 +54,9 @@ int chi2 (int N_data, int N_filters, struct parameters_struct params, double *ch
     
     #ifdef TUMBLE    
     // In tumbling mode, the fixed vector pr is the precession vector
-    double pr_phi = acos(params.cos_phi);
-    double pr_x = sin(params.theta)*params.cos_phi;
-    double pr_y = sin(params.theta)*sin(pr_phi);
-    double pr_z = cos(params.theta);
+    double pr_x = sin(params.theta_M)*cos(params.phi_M);
+    double pr_y = sin(params.theta_M)*sin(params.phi_M);
+    double pr_z = cos(params.theta_M);
     
     double cos_theta_pr = cos(params.theta_pr);
     double sin_theta_pr = sin(params.theta_pr);

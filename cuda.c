@@ -9,7 +9,26 @@
 #include "asteroid.h"
 
 
-__device__ CHI_FLOAT chi2one(int iPpr, struct parameters_struct params, struct obs_data *sData, CHI_FLOAT sLimits[][N_PARAMS], int N_data, int N_filters)
+__device__ void ODE_func (double y[], double f[], double mu[])
+{    
+// params[0,1,2] -> L, Ip, Im
+//    double phi = y[0];
+//    double theta = y[1];
+//    double psi = y[2];
+    
+    // dphi/dt:
+    f[0] = mu[0]*(mu[1]-mu[2]*cos(2.0*y[2]));
+    
+    // dtheta/dt:
+    f[1] = mu[0]*mu[2]*sin(y[1])*sin(2.0*y[2]);
+    
+    // dpsi/dt:
+    f[2] = cos(y[1])*(mu[0]-f[0]);
+}
+
+
+
+__device__ CHI_FLOAT chi2one(struct parameters_struct params, struct obs_data *sData, CHI_FLOAT sLimits[][N_PARAMS], int N_data, int N_filters)
 // Computung chi^2 for a single model parameters combination, on GPU, by a single thread
 {
     int i, m;
@@ -30,117 +49,195 @@ __device__ CHI_FLOAT chi2one(int iPpr, struct parameters_struct params, struct o
         sum_w[m] = 0.0;
     }
     
-    // Calculations which are time independent:
-    
-    /* The geometry:
+    /*  Tumbling model description:
+     
+     Triaxial ellipsoid with physical axes a, b, c. a and c are extremal ,
+     b is always intermediate. (c < b < a=1) Photometric a,b,c can be totally different.
+     
+     The corresponding moments of inertia are Il (a), Ii (b), Is(c); Il < Ii < Is.
+     
+     Input parameters with fixed constraints (5): 
+      - <M>: angular momentum vector described by params.theta_M and params.phi_M
+      - phi_0: initial Euler angle for precession, 0...2*pi
+      - L: angular momentum L value, radians/day; if P is perdiod in hours, L=48*pi/P
+      - c_tumb: log10 of the physical (tumbling) value of the smallest axis c size; c < b < a=1
       
-      Axis <a> rotates around the spin vector <n> which is fixed in time and randomly oriented. <n> coincides with the axis <c> (but has the opposite sign). In other words, the rotation is around axis c.
+     Derived values:
+      - Ii_inv = 1/Ii; inverse principle moment of inertia Ii
+      - Is_inv = 1/Is; inverse principle moment of inertia Is
       
-      The initial orientation of <a> is [z x n], then rotated by angle phi_a around <n>.
+     Parameters which are constrained by other parameters (3):
+      - b_tumb: log10 of the physical (tumbling) value of the axis b size; always intermediate; constrained by c: log10(b)=log10(c)...0
+      - Es: dimensionless total energy, constrained by Ii_inv: SAM: Es<1/Ii; LAM: Es>1/Ii
+      - psi_0: initial Euler angle of rotation of the body, constrained by Ii, Is, Einv=1/Es (only for SAM): psi_max=atan(sqrt(Ii*(Is-Einv)/Is/(Einv-Ii))); psi_0=[-psi_max,psi_max]
       
-      Axis <b>=[a x n].
-      
-      Axial symmetric cases:
-       - Cigar: b = c << a
-       - Disk:  b << c = a
-       
-      There is no need to have b>1. c>1 would correspond to rotation around intermediate axis - unstable?
-      
-      In the more general tumbling case, the vector <n> is not fixed, but instead spins around another vector <pr> which is the one which is fixed and randomly oriented.
+     Derived values:
+      - theta_0: initial Euler nutation angle; 0 ... pi range, derived from Ii, Is, Es, psi_0
+     
+     Time integration to compute the three Euler angles (phi, psi, theta) values for all observed data points
+      - Initial conditions: phi_0, psi_0, theta_0
+      - Parameters needed: L, Ip=0.5*(Ii_inv+Is_inv); Im=0.5*(Ii_inv-Is_inv);  
+      - time step - macro parameter TIME_STEP (days)
+     
      */
     
+    // Calculations which are time independent:        
     
-    #ifdef TUMBLE    
-    // In tumbling mode, the fixed vector pr is the precession vector
-    double pr_phi = acos(params.cos_phi);
-    double pr_x = sin(params.theta)*params.cos_phi;
-    double pr_y = sin(params.theta)*sin(pr_phi);
-    double pr_z = cos(params.theta);
+    // In tumbling mode, the vector M is the angular momentum vector (fixed in the inertial - barycentric - frame of reference)
+    // It is defined by the two angles (input parameters) - params.theta_M and params.phi_M
+    // It's a unit vector
+    double M_x = sin(params.theta_M)*cos(params.phi_M);
+    double M_y = sin(params.theta_M)*sin(params.phi_M);
+    double M_z = cos(params.theta_M);
+        
+    // In the new inertial frame of reference with the <M> vector being the z-axis, we arbitrarily choose the new x-axis, <XM>, to be [y x M].
+    // It is fixed in the inertial frame of reference, so can be computed here:
+    // Made a unit vector
+    double XM = sqrt(M_z*M_z+M_x*M_x);
+    double XM_x = M_z / XM;
+//    double XM_y = 0.0;
+    double XM_z = -M_x / XM;
+    // The third axis, YM, is derived as [M x XM]; a unit vector by design:
+    double YM_x = M_y*XM_z;
+    double YM_y = M_z*XM_x - M_x*XM_z;
+    double YM_z = -M_y*XM_x;
     
-    double cos_theta_pr = cos(params.theta_pr);
-    double sin_theta_pr = sin(params.theta_pr);
+    // Get from the stack: LAM=0/1
     
-    // Initial (phase=0) vector n orientation; it is in pr-0-pp plane, where pp=[z x pr], made a unit vector
-    double n0_x = pr_x*cos_theta_pr - pr_y/sqrt(pr_y*pr_y+pr_x*pr_x)*sin_theta_pr;
-    double n0_y = pr_y*cos_theta_pr + pr_x/sqrt(pr_y*pr_y+pr_x*pr_x)*sin_theta_pr;
-    double n0_z = pr_z*cos_theta_pr;
-    #endif    
+    // Shortest axis (c), largest moment of inertia:
+    double Is = (1.0+params.b_tumb*params.b_tumb)/(params.b_tumb*params.b_tumb+params.c_tumb*params.c_tumb);
+    // Intermediate axis (b), intermediate moment of inertia:
+    double Ii = (1.0+params.c_tumb*params.c_tumb)/(params.b_tumb*params.b_tumb+params.c_tumb*params.c_tumb);
+    double Is_inv = 1.0 / Is;
+    double Ii_inv = 1.0 / Ii;
+    
+    // Now we have a=1>b>c, and Il=1<Ii<Is
+    // Axis of rotation can be either "a" (LAM) or "c" (SAM)
+    
+    double Einv = 1.0/params.Es;
+    
+    double mu[3];
+    double Ip = 0.5*(Ii_inv + Is_inv);
+    double Im = 0.5*(Ii_inv - Is_inv);
+    mu[0] = params.L;
+    mu[1] = Ip;
+    mu[2] = Im;
+    
+    // Initial Euler angles values:
+    double phi = params.phi0;
+    // Initial value of the Euler angle theta is determined by other parameters:
+    double theta = asin(sqrt((params.Es-1.0)/(sin(params.psi0)*sin(params.psi0)*(Ii_inv-Is_inv)+Is_inv-1.0)));    
+    double psi = params.psi0;
     
     // The loop over all data points    
     for (i=0; i<N_data; i++)
-    {            
-        
-        #ifdef TUMBLE    
-        // Dot product:
-        double pr_n0 = pr_x*n0_x + pr_y*n0_y + pr_z*n0_z;
-        double phi_n = params.phi_n0 + sData[i].MJD/params.P_pr * 2*PI;
-        double cos_phi_n = cos(phi_n);
-        double sin_phi_n = sin(phi_n);        
-        // Using the Rodrigues formula to rotate the internal spin vector n around the precession vector pr by angle phi_n:
-        n_x = n0_x*cos_phi_n + (pr_y*n0_z - pr_z*n0_y)*sin_phi_n + pr_x*pr_n0*(1.0-cos_phi_n);
-        n_y = n0_y*cos_phi_n + (pr_z*n0_x - pr_x*n0_z)*sin_phi_n + pr_y*pr_n0*(1.0-cos_phi_n);
-        n_z = n0_z*cos_phi_n + (pr_x*n0_y - pr_y*n0_x)*sin_phi_n + pr_z*pr_n0*(1.0-cos_phi_n);        
-        #else    
-        // Spin vector (barycentric FoR); https://stackoverflow.com/questions/5408276/sampling-uniformly-distributed-random-points-inside-a-spherical-volume
-        double n_phi = acos(params.cos_phi);
-        n_x = sin(params.theta)*params.cos_phi;
-        n_y = sin(params.theta)*sin(n_phi);
-        n_z = cos(params.theta);
-        #endif                
-        
-        double a0_x, a0_y, a0_z;
-        
-        // Initial (phase=0) vector a0 orientation = [z x n], made a unit vector
-        a0_x = - n_y/sqrt(n_y*n_y+n_x*n_x);
-        a0_y =   n_x/sqrt(n_y*n_y+n_x*n_x);
-        a0_z =   0.0;
-
-        // Dot product:
-        double n_a0 = n_x*a0_x + n_y*a0_y + n_z*a0_z;
-        
-        phi_a = params.phi_a0 + sData[i].MJD/params.P * 2*PI;
-
-        cos_phi_a = cos(phi_a);
-        sin_phi_a = sin(phi_a);
-        
-        // New basis - a,b,c axes of the ellipsoid after the phase rotation:
-        // Using the Rodrigues formula for a (n is the axis of rotation vector = -c vector; a0 is the initial vector; a is the vector after rotation of phi_a radians)
-        // https://en.wikipedia.org/wiki/Rodrigues%27_rotation_formula
-        double a_x,a_y,a_z;
-        a_x = a0_x*cos_phi_a + (n_y*a0_z - n_z*a0_y)*sin_phi_a + n_x*n_a0*(1.0-cos_phi_a);
-        a_y = a0_y*cos_phi_a + (n_z*a0_x - n_x*a0_z)*sin_phi_a + n_y*n_a0*(1.0-cos_phi_a);
-        a_z = a0_z*cos_phi_a + (n_x*a0_y - n_y*a0_x)*sin_phi_a + n_z*n_a0*(1.0-cos_phi_a);
+    {                            
+        // Derive the three Euler angles theta, phi, psi here, by solving three ODEs numerically
+        if (i > 0)
+        {
+            // How many integration steps to the current (i-th) observed value, from the previous (i-1) one:
+            // Forcing the maximum possible time step of TIME_STEP days (macro parameter), to ensure accuracy
+            int N_steps = (sData[i].MJD - sData[i-1].MJD) / TIME_STEP + 1;
+            // Current equidistant time steps (h<=TIME_STEP):
+            double h = (sData[i].MJD - sData[i-1].MJD) / N_steps;
+            double y[3];
+            // Initial angles values = the old values, from the previous i cycle:
+            y[0] = phi;
+            y[1] = theta;
+            y[2] = psi;
+            
+            // RK4 method for solving ODEs with a fixed time step h
+            for (int l=0; l<N_steps; l++)
+            {
+                double K1[3], K2[3], K3[3], K4[3], f[3];
                 
-        // Vector b =  vector product [a x n]:
-        double b_x = a_y*n_z - a_z*n_y;
-        double b_y = a_z*n_x - a_x*n_z;
-        double b_z = a_x*n_y - a_y*n_x;
-        // Making it a unit vector:
-        double b = sqrt(b_x*b_x + b_y*b_y + b_z*b_z);
-        b_x = b_x / b;
-        b_y = b_y / b;
-        b_z = b_z / b;
-                
-        // Axis <c> vector is minus <n> vector
+                ODE_func (y, K1, mu);
+        
+                int j;
+                for (j=0; j<3; j++)
+                    f[j] = y[j] + h*K1[j]/2;
+                ODE_func (f, K2, mu);
+        
+                for (j=0; j<3; j++)
+                    f[j] = y[j] + h*K2[j]/2;
+                ODE_func (f, K3, mu);
+        
+                for (j=0; j<3; j++)
+                    f[j] = y[j] + h*K3[j];
+                ODE_func (f, K4, mu);
+        
+                for (j=0; j<3; j++)
+                    y[j] = y[j] + h/6.0 *(K1[j] + 2*K2[j] + 2*K3[j] + K4[j]);
+            }
+            // New (current) values of the Euler angles derived from solving the ODEs:
+            phi = y[0];
+            theta = y[1];
+            psi = y[2];
+        }                
+        
+        double cos_phi = cos(phi);
+        double sin_phi = sin(phi);
+
+        // Components of the node vector N=[M x a], derived by rotating vector XM towards vector YM by Euler angle phi
+        // It is unit by design
+        // Using XM_y = 0
+        double N_x = XM_x*cos_phi + YM_x*sin_phi;
+        double N_y =                YM_y*sin_phi;
+        double N_z = XM_z*cos_phi + YM_z*sin_phi;
+        
+        // Vector p=[N x M]; a unit one
+        double p_x = N_y*M_z - N_z*M_y;
+        double p_y = N_z*M_x - N_x*M_z;
+        double p_z = N_x*M_y - N_y*M_x;
+        
+        double cos_theta = cos(theta);
+        double sin_theta = sin(theta);
+        
+        // Vector of rotation <a> (the longest axes of the ellipsoid; x3; z; l) is derived by rotating <M> by Euler angle theta towards <p>,
+        // with vector <N> being the rotation vector (Rodrigues formula); a unit vector
+        double a_x = M_x*cos_theta + p_x*sin_theta;
+        double a_y = M_y*cos_theta + p_y*sin_theta;
+        double a_z = M_z*cos_theta + p_z*sin_theta;
+        
+        // Vector w=[a x N]; a unit one
+        double w_x = a_y*N_z - a_z*N_y;
+        double w_y = a_z*N_x - a_x*N_z;
+        double w_z = a_x*N_y - a_y*N_x;
+
+        double sin_psi = sin(psi);
+        double cos_psi = cos(psi);
+        
+        // Second axis of the ellipsoid, b (x1; x; i); a unit vector; derived by rotating <N> by Euler angle psi towards <w>,
+        // with vector <a> being the rotation axis
+        double b_x = N_x*cos_psi + w_x*sin_psi;
+        double b_y = N_y*cos_psi + w_y*sin_psi;
+        double b_z = N_z*cos_psi + w_z*sin_psi;
+        
+        // Third ellipsoid axis c (x2; y; s) - the shortest one; c=[a x b]
+        double c_x = a_y*b_z - a_z*b_y;
+        double c_y = a_z*b_x - a_x*b_z;
+        double c_z = a_x*b_y - a_y*b_x;
+
+        
         // Earth vector in the new (a,b,c) basis:
         Ep_x = a_x*sData[i].E_x + a_y*sData[i].E_y + a_z*sData[i].E_z;
         Ep_y = b_x*sData[i].E_x + b_y*sData[i].E_y + b_z*sData[i].E_z;
-        Ep_z =-n_x*sData[i].E_x - n_y*sData[i].E_y - n_z*sData[i].E_z;
+        Ep_z = c_x*sData[i].E_x + c_y*sData[i].E_y + c_z*sData[i].E_z;
         
         // Sun vector in the new (a,b,c) basis:
         Sp_x = a_x*sData[i].S_x + a_y*sData[i].S_y + a_z*sData[i].S_z;
         Sp_y = b_x*sData[i].S_x + b_y*sData[i].S_y + b_z*sData[i].S_z;
-        Sp_z =-n_x*sData[i].S_x - n_y*sData[i].S_y - n_z*sData[i].S_z;
+        Sp_z = c_x*sData[i].S_x + c_y*sData[i].S_y + c_z*sData[i].S_z;
         
         // Now that we converted the Earth and Sun vectors to the internal asteroidal basis (a,b,c),
         // we can apply the formalism of Muinonen & Lumme, 2015 to calculate the brightness of the asteroid.
         
-        // The two scalars from eq.(12) of Muinonen & Lumme, 2015:
-        scalar_Sun = sqrt(Sp_x*Sp_x + Sp_y*Sp_y/(params.b*params.b) + Sp_z*Sp_z/(params.c*params.c));
-        scalar_Earth = sqrt(Ep_x*Ep_x + Ep_y*Ep_y/(params.b*params.b) + Ep_z*Ep_z/(params.c*params.c));
+        // The two scalars from eq.(12) of Muinonen & Lumme, 2015; assuming a=1
+        scalar_Sun = sqrt(Sp_x*Sp_x + Sp_y*Sp_y/(params.b_tumb*params.b_tumb) + Sp_z*Sp_z/(params.c_tumb*params.c_tumb));
+        scalar_Earth = sqrt(Ep_x*Ep_x + Ep_y*Ep_y/(params.b_tumb*params.b_tumb) + Ep_z*Ep_z/(params.c_tumb*params.c_tumb));
         
         // From eq.(13):
-        cos_alpha_p = (Sp_x*Ep_x + Sp_y*Ep_y/(params.b*params.b) + Sp_z*Ep_z/(params.c*params.c)) / (scalar_Sun * scalar_Earth);
+        cos_alpha_p = (Sp_x*Ep_x + Sp_y*Ep_y/(params.b_tumb*params.b_tumb) + Sp_z*Ep_z/(params.c_tumb*params.c_tumb)) / (scalar_Sun * scalar_Earth);
         sin_alpha_p = sqrt(1.0 - cos_alpha_p*cos_alpha_p);
         alpha_p = atan2(sin_alpha_p, cos_alpha_p);
         
@@ -151,7 +248,7 @@ __device__ CHI_FLOAT chi2one(int iPpr, struct parameters_struct params, struct o
         lambda_p = atan2(sin_lambda_p, cos_lambda_p);
         
         // Asteroid's model visual brightness, from eq.(10):
-        Vmod = -2.5*log10(params.b*params.c * scalar_Sun*scalar_Earth/scalar * (cos(lambda_p-alpha_p) + cos_lambda_p +
+        Vmod = -2.5*log10(params.b_tumb*params.c_tumb * scalar_Sun*scalar_Earth/scalar * (cos(lambda_p-alpha_p) + cos_lambda_p +
         sin_lambda_p*sin(lambda_p-alpha_p) * log(1.0 / tan(0.5*lambda_p) / tan(0.5*(alpha_p-lambda_p)))));
         
         
@@ -181,7 +278,6 @@ __device__ CHI_FLOAT chi2one(int iPpr, struct parameters_struct params, struct o
 
 
 //--------------------------------------------------------------------------------------------------------------------------------------------------------------------------
-#ifdef SIMPLEX
 __global__ void setup_kernel ( curandState * state, unsigned long seed, CHI_FLOAT *d_f )
 {
     // Global thread index:
@@ -206,76 +302,74 @@ __global__ void setup_kernel ( curandState * state, unsigned long seed, CHI_FLOA
 
 //+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 
-__device__ int x2params(int iPpr, CHI_FLOAT *x, struct parameters_struct *params, CHI_FLOAT sLimits[][N_PARAMS])
+__device__ int x2params(int LAM, CHI_FLOAT *x, struct parameters_struct *params, CHI_FLOAT sLimits[][N_PARAMS])
 {
+    double log_b, log_c; 
+    
     // Checking if we went beyond the limits:
     int failed = 0;
     for (int i=0; i<N_PARAMS; i++)
     {
-#ifdef RANDOM_PPR_SIGN
-        if (i!=-iPpr && (x[i]< 0.0 || x[i]>=1.0)  ||
-            i==-iPpr && (x[i]<=-1.0 || x[i]>0.0) )
-                failed = 1;    
-#else        
         if (x[i]<0.0 || x[i]>=1.0)
             failed = 1;
-#endif
-#ifdef FORCE_P
-#ifdef TUMBLE
-        if (i == iPpr && x[i] > x[1])
-            failed = 1;
-#endif        
-#endif        
     }
+    // Crossing LAM <-> SAM is not allowed during optimization:
+    if (LAM==0 && x[6]>0.5 || LAM==1 && x[6]<0.5)
+        failed = 1;
     if (failed)
         return failed;
     
     int iparam = -1;
-    //!!! Limits should be in shared memory!
-    iparam++;  params->b =             x[iparam] * (sLimits[1][iparam]-sLimits[0][iparam]) + sLimits[0][iparam]; 
-    iparam++;  params->P =       1.0/( x[iparam] * (sLimits[1][iparam]-sLimits[0][iparam]) + sLimits[0][iparam]);
-    iparam++;  params->theta =         x[iparam] * (sLimits[1][iparam]-sLimits[0][iparam]) + sLimits[0][iparam]; 
-    iparam++;  params->cos_phi =       x[iparam] * (sLimits[1][iparam]-sLimits[0][iparam]) + sLimits[0][iparam]; 
-    iparam++;  params->phi_a0 =        x[iparam] * (sLimits[1][iparam]-sLimits[0][iparam]) + sLimits[0][iparam]; 
-    // &&&    
-#ifndef SYMMETRY    
-    iparam++;  params->c =             x[iparam] * (sLimits[1][iparam]-sLimits[0][iparam]) + sLimits[0][iparam]; 
- #else
- #ifdef DISK    
-    #ifdef LOG_BC
-    params->c = 0.0;
-    #else
-    params->c = 1.0;
-    #endif
- #else // Not disk = cigar geometry
-    params->c = params->b;
- #endif    
-#endif    
-    #ifdef TUMBLE
-    iparam++;  params->P_pr    = 1.0 / (x[iparam] * (sLimits[1][iparam]-sLimits[0][iparam]) + sLimits[0][iparam]);
-    iparam++;  params->theta_pr =       x[iparam] * (sLimits[1][iparam]-sLimits[0][iparam]) + sLimits[0][iparam]; 
-    iparam++;  params->phi_n0  =        x[iparam] * (sLimits[1][iparam]-sLimits[0][iparam]) + sLimits[0][iparam]; 
-    #endif    
+    // Independent parameters:
+    iparam++;  params->theta_M =     x[iparam] * (sLimits[1][iparam]-sLimits[0][iparam]) + sLimits[0][iparam]; 
+    iparam++;  params->phi_M =       x[iparam] * (sLimits[1][iparam]-sLimits[0][iparam]) + sLimits[0][iparam]; 
+    iparam++;  params->phi_0 =       x[iparam] * (sLimits[1][iparam]-sLimits[0][iparam]) + sLimits[0][iparam]; 
+    iparam++;  params->L =           x[iparam] * (sLimits[1][iparam]-sLimits[0][iparam]) + sLimits[0][iparam]; 
+    iparam++;  log_c =               x[iparam] * (sLimits[1][iparam]-sLimits[0][iparam]) + sLimits[0][iparam];
+               params->c_tumb = exp(log_c);
+
+    // Dependent parameters:
+    iparam++;  log_b =              x[iparam] * log_c; 
+               params->b_tumb = exp(log_b);
     
-    #ifdef LOG_BC
-    params->b = exp(params->b);
-    params->c = exp(params->c);
-    #endif    
+    // Derived values:
+    double Is = (1.0+params.b_tumb*params.b_tumb) / (params.b_tumb*params.b_tumb+params.c_tumb*params.c_tumb);
+    double Ii = (1.0+params.c_tumb*params.c_tumb) / (params.b_tumb*params.b_tumb+params.c_tumb*params.c_tumb);
+
+    // Dependent parameters:    
+    iparam++;  
+    // Dimensionless total energy (excitation degree)
+    if (LAM)
+    // LAM: Es>1.0/Ii
+        params->Es=2.0*(x[iparam]-0.5)*(1.0-1.0/Ii)+1.0/Ii;
+    else
+    // SAM: Es<1.0/Ii
+        params->Es=2.0*x[iparam]*(1.0/Ii-1.0/Is)+1.0/Is;
+
+    // Generating psi_0 (constrained by Es, Ii, Is)
+    iparam++;  
+    double psi_min, psi_max;
+    if (LAM)
+    {
+        psi_min = 0.0;
+        psi_max = 2.0*pi;
+    }
+    else
+    {
+        psi_max = atan(sqrt(Ii*(Is-1.0/params->Es)/Is/(1.0/params->Es-Ii)));
+        psi_min = -psi_max;
+    }
+    params->psi0 = x[iparam]*(psi_max-psi_min) + psi_min;
     
     return 0;
 }
-#endif
 
 
 
 //++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 
-#ifdef SIMPLEX
 __global__ void chi2_gpu (struct obs_data *dData, int N_data, int N_filters,
                           curandState* globalState, CHI_FLOAT *d_f, struct parameters_struct *d_params, int iPpr)
-#else
-__global__ void chi2_gpu (struct obs_data *dData, int N_data, int N_filters, long int Nloc, int iglob, int N_serial, float * d_chi2_min, long int * d_iloc_min)
-#endif
 // CUDA kernel computing chi^2 on GPU
 {        
     __shared__ struct obs_data sData[MAX_DATA];
@@ -288,14 +382,13 @@ __global__ void chi2_gpu (struct obs_data *dData, int N_data, int N_filters, lon
     {
         for (i=0; i<N_data; i++)
             sData[i] = dData[i];
-        for (i=0; i<N_PARAMS; i++)
+        for (i=0; i<N_INDEPEND; i++)
         {
             sLimits[0][i] = dLimits[0][i];
             sLimits[1][i] = dLimits[1][i];
         }
     }
     
-    #ifdef SIMPLEX
     // Downhill simplex optimization approach
     __shared__ CHI_FLOAT s_f[BSIZE];
     __shared__ int s_thread_id[BSIZE];
@@ -314,28 +407,26 @@ __global__ void chi2_gpu (struct obs_data *dData, int N_data, int N_filters, lon
     CHI_FLOAT f[N_PARAMS+1]; // chi2 values for the simplex edges (point index)
     int ind[N_PARAMS+1]; // Indexes to the sorted array (point index)
     
-    
+    int LAM;
     // Initial random point
     for (i=0; i<N_PARAMS; i++)
     {
-        // The DX_INI business is to prevent the initial simplex going beyong the limits
-        x[0][i] = 1e-6 + (1.0-DX_INI-2e-6)*curand_uniform(&localState);
-#ifdef FORCE_P
-#ifdef TUMBLE
-        if (i == iPpr)
-            x[0][i] = x[0][i] * x[0][1];
-#endif        
-#endif        
+        float r = curand_uniform(&localState);
+        if (i == 6)
+        {
+            // Using the x value for Es to determine the mode (1:LAM. 0:SAM)
+            LAM = r>=0.5;
+            if (LAM==0)
+                // Interval 1e-6 ... 0.5-DX_INI-1e-6:
+                x[0][i] = 1e-6 + (1-2*DX_INI-4e-6) * r;
+            else
+                // Interval 0.5+1e-6 ... 1-DX_INI-1e-6:
+                x[0][i] = 0.5 + 1e-6 + (1-2*DX_INI-4e-6) * (r-0.5);
+        }
+        else
+        // The DX_INI business is to prevent the initial simplex going beyong the limits (???)
+            x[0][i] = 1e-6 + (1.0-DX_INI-2e-6) * r;
     }
-#ifdef RANDOM_PPR_SIGN
-// Even threads will have positive Ppr, odd - negative
-    if (threadIdx.x%2 == 1)
-    {
-        x[0][iPpr] = -x[0][iPpr];
-        // Hijacking iPpr variable to pass the sign of Ppr to chi2 function
-        iPpr = -iPpr;
-    }
-#endif
     
     // Simplex initialization
     for (j=1; j<N_PARAMS+1; j++)
@@ -352,8 +443,8 @@ __global__ void chi2_gpu (struct obs_data *dData, int N_data, int N_filters, lon
     // Computing the initial function values (chi2):        
     for (j=0; j<N_PARAMS+1; j++)
     {
-        x2params(iPpr, x[j],&params,sLimits);
-        f[j] = chi2one(iPpr, params, sData, sLimits, N_data, N_filters);    
+        x2params(LAM, x[j], &params, sLimits);
+        f[j] = chi2one(params, sData, sLimits, N_data, N_filters);    
     }
         
     // The main simplex loop
@@ -430,10 +521,10 @@ __global__ void chi2_gpu (struct obs_data *dData, int N_data, int N_filters, lon
             x_r[i] = x0[i] + ALPHA_SIM*(x0[i] - x[ind[N_PARAMS]][i]);
         }
         CHI_FLOAT f_r;
-        if (x2params(iPpr, x_r,&params,sLimits))
+        if (x2params(LAM, x_r,&params,sLimits))
             f_r = 1e30;
         else
-            f_r = chi2one(iPpr, params, sData, sLimits, N_data, N_filters);
+            f_r = chi2one(params, sData, sLimits, N_data, N_filters);
         if (f_r >= f[ind[0]] && f_r < f[ind[N_PARAMS-1]])
         {
             // Replacing the worst point with the reflected point:
@@ -454,10 +545,10 @@ __global__ void chi2_gpu (struct obs_data *dData, int N_data, int N_filters, lon
                 x_e[i] = x0[i] + GAMMA_SIM*(x_r[i] - x0[i]);
             }
             CHI_FLOAT f_e;
-            if (x2params(iPpr, x_e,&params,sLimits))
+            if (x2params(LAM, x_e,&params,sLimits))
                 f_e = 1e30;
             else
-                f_e = chi2one(iPpr, params, sData, sLimits, N_data, N_filters);
+                f_e = chi2one(params, sData, sLimits, N_data, N_filters);
             if (f_e < f_r)
             {
                 // Replacing the worst point with the expanded point:
@@ -485,10 +576,10 @@ __global__ void chi2_gpu (struct obs_data *dData, int N_data, int N_filters, lon
         {
             x_r[i] = x0[i] + RHO_SIM*(x[ind[N_PARAMS]][i] - x0[i]);
         }
-        if (x2params(iPpr, x_r,&params,sLimits))
+        if (x2params(LAM, x_r,&params,sLimits))
             f_r = 1e30;
         else
-            f_r = chi2one(iPpr, params, sData, sLimits, N_data, N_filters);
+            f_r = chi2one(params, sData, sLimits, N_data, N_filters);
         if (f_r < f[ind[N_PARAMS]])
         {
             // Replacing the worst point with the contracted point:
@@ -508,10 +599,10 @@ __global__ void chi2_gpu (struct obs_data *dData, int N_data, int N_filters, lon
             {
                 x[ind[j]][i] = x[ind[0]][i] + SIGMA_SIM*(x[ind[j]][i] - x[ind[0]][i]);
             }           
-            if (x2params(iPpr, x[ind[j]],&params,sLimits))
+            if (x2params(LAM, x[ind[j]],&params,sLimits))
                 failed = 1;
             else
-                f[ind[j]] = chi2one(iPpr, params, sData, sLimits, N_data, N_filters);
+                f[ind[j]] = chi2one(params, sData, sLimits, N_data, N_filters);
         }
         // We failed the optimization
         if (failed)
@@ -552,7 +643,7 @@ __global__ void chi2_gpu (struct obs_data *dData, int N_data, int N_filters, lon
         unsigned int blockID = atomicAdd(&d_block_counter, 1);
         // Copying the found minimum to device memory:
         d_f[blockID] = s_f[0];
-        x2params(iPpr, x[ind[0]],&params,sLimits);
+        x2params(LAM, x[ind[0]],&params,sLimits);
         d_params[blockID] = params;
     }
     
@@ -562,93 +653,7 @@ __global__ void chi2_gpu (struct obs_data *dData, int N_data, int N_filters, lon
     atomicMin(&d_min, l);
     atomicMax(&d_max, l);
         
-    return;
-    
-    
-    #else
-    // Brute force approach (exploring the whole parameter space)
-    
-    __shared__ float s_chi2_min[BSIZE];
-    __shared__ int s_thread_id[BSIZE];
-    float chi2a, chi2_min;
-    long int iloc, iloc_min;
-    
-    chi2_min = 1e30;
-    
-    __syncthreads();
-    
-    // Global index (for the parameters for which we compute separate Chi^2_min)
-    // It only changes with blockIds
-    //    iglob = blockIdx.y + gridDim.y*blockIdx.z;
-    iglob_to_params(&iglob, &params);
-    
-    // Local index (for parameters over which chi2_min is computed)
-    // Changes with blockId.x, thread ID, and serial loop index j
-    iloc = N_serial * ((long int)threadIdx.x + blockDim.x*(long int)blockIdx.x);
-    if (iloc < Nloc)
-    {
-        
-        
-        // Outer serial loop:
-        for (j=0; j<N_serial; j++)
-        {
-            
-            iloc_to_params(&iloc, &params);
-            
-            chi2a = chi2one(iPpr, params, sData, sLimits, N_data, N_filters);
-            
-            if (chi2a < chi2_min)
-            {
-                chi2_min = chi2a;
-                iloc_min = iloc;
-            }                
-            
-            iloc++;
-            if (iloc >= Nloc)
-                break;
-            
-        } // j loop (serial)            
-    }
-    
-    s_chi2_min[threadIdx.x] = chi2_min;
-    s_thread_id[threadIdx.x] = threadIdx.x;
-    
-    __syncthreads();
-    
-    // Binary reduction:
-    int nTotalThreads = blockDim.x;
-    while(nTotalThreads > 1)
-    {
-        int halfPoint = nTotalThreads / 2; // Number of active threads
-        if (threadIdx.x < halfPoint) {
-            int thread2 = threadIdx.x + halfPoint; // the second element index
-            float temp = s_chi2_min[thread2];
-            if (temp < s_chi2_min[threadIdx.x])
-            {
-                s_chi2_min[threadIdx.x] = temp;
-                s_thread_id[threadIdx.x] = s_thread_id[thread2];
-            }
-        }
-        __syncthreads();
-        nTotalThreads = halfPoint; // Reducing the binary tree size by two
-    }
-    // At this point, the smallest chi2 in the block is in s_chi2_min[0]
-    
-    if (threadIdx.x == 0)
-    {
-        // Copying the found minimum to device memory:
-        d_chi2_min[blockIdx.x] = s_chi2_min[0];
-    }
-    if (threadIdx.x == s_thread_id[0])
-    {
-        // Copying the found minimum to device memory:
-        d_iloc_min[blockIdx.x] = iloc_min;
-    }
-    
-    return;
-    
-    #endif
-    
+    return;        
     
 }
 
@@ -670,7 +675,7 @@ __global__ void debug_kernel(struct parameters_struct params, struct obs_data *d
             sData[i] = dData[i];
     }
 
-f = chi2one(iPpr, params, sData, sLimits, N_data, N_filters);
+f = chi2one(params, sData, sLimits, N_data, N_filters);
     
 return;
 
