@@ -10,8 +10,16 @@
 
 
 __device__ void ODE_func (double y[], double f[], double mu[])
+/* Three ODEs for the tumbling evolution of the three Euler angles, phi, theta, and psi.
+   Derived in a manner similar to Kaasalainen 2001, but for the setup of Samarasinha and A'Hearn 1991
+   (a > b > c; Il > Ii > Is; either a or c can be the axis of rotation). The setup of Kaasalainen 2001 results
+   in large derivatives, and low accuracy and instability of ODEs for small I1.
+   
+   Here Ip=(1/Ii+1/Is)/2; Im=(1/Ii-1/Is)/2.
+   */
+
 {    
-// params[0,1,2] -> L, Ip, Im
+// mu[0,1,2] -> L, Ip, Im
 //    double phi = y[0];
 //    double theta = y[1];
 //    double psi = y[2];
@@ -22,7 +30,7 @@ __device__ void ODE_func (double y[], double f[], double mu[])
     // dtheta/dt:
     f[1] = mu[0]*mu[2]*sin(y[1])*sin(2.0*y[2]);
     
-    // dpsi/dt:
+    // dpsi/dt (assuming Il=1):
     f[2] = cos(y[1])*(mu[0]-f[0]);
 }
 
@@ -39,6 +47,9 @@ __device__ CHI_FLOAT chi2one(struct parameters_struct params, struct obs_data *s
     double sum_y2[N_FILTERS];
     double sum_y[N_FILTERS];
     double sum_w[N_FILTERS];
+
+//!!! Seems to speed up a bit ODE code:
+    __syncthreads();
     
     for (m=0; m<N_filters; m++)
     {
@@ -50,7 +61,7 @@ __device__ CHI_FLOAT chi2one(struct parameters_struct params, struct obs_data *s
     /*  Tumbling model description:
      
      Triaxial ellipsoid with physical axes a, b, c. a and c are extremal ,
-     b is always intermediate. (c < b < a=1) Photometric a,b,c can be totally different.
+     b is always intermediate. (c < b < a=1) Photometric a,b,c can be totally different (not implemented yet).
      
      The corresponding moments of inertia are Il (a), Ii (b), Is(c); Il < Ii < Is.
      
@@ -65,9 +76,9 @@ __device__ CHI_FLOAT chi2one(struct parameters_struct params, struct obs_data *s
       - Is_inv = 1/Is; inverse principle moment of inertia Is
       
      Parameters which are constrained by other parameters (3):
-      - b_tumb: log10 of the physical (tumbling) value of the axis b size; always intermediate; constrained by c: log10(b)=log10(c)...0
-      - Es: dimensionless total energy, constrained by Ii_inv: SAM: Es<1/Ii; LAM: Es>1/Ii
-      - psi_0: initial Euler angle of rotation of the body, constrained by Ii, Is, Einv=1/Es (only for SAM): psi_max=atan(sqrt(Ii*(Is-Einv)/Is/(Einv-Ii))); psi_0=[-psi_max,psi_max]
+      - b_tumb: log10 of the physical (tumbling) value of the intermediate axis b size; constrained by c: log10(b)=log10(c)...0
+      - Es: dimensionless total energy, constrained by Ii: SAM: Es<1/Ii; LAM: Es>1/Ii
+      - psi_0: initial Euler angle of rotation of the body, constrained (only for SAM) by Ii, Is, Einv=1/Es: psi_max=atan(sqrt(Ii*(Is-Einv)/Is/(Einv-Ii))); psi_0=[-psi_max,psi_max]
       
      Derived values:
       - theta_0: initial Euler nutation angle; 0 ... pi range, derived from Ii, Is, Es, psi_0
@@ -78,8 +89,14 @@ __device__ CHI_FLOAT chi2one(struct parameters_struct params, struct obs_data *s
       - time step - macro parameter TIME_STEP (days)
      
      */
-    
-    // Calculations which are time independent:        
+        
+    // We work in the inertial observed (Solar barycentric) frame of reference X, Y, Z.
+    // By applying sequentially the three Euler angles of the asteroid (which we compute by solving the three ODEs numerically),
+    // we derive the asteroid's internal axes (coinciding with b, c, a for x, y, z)
+    // orienation in the barycentric frame of reference. This allows us to compute the orientation of the asteroid->sun and asteroid->earth
+    // vectors in the asteroid's frame of reference, which is then used to compute it's apparent brightness for the observer.
+
+    // Calculations which are time independent:            
     
     // In tumbling mode, the vector M is the angular momentum vector (fixed in the inertial - barycentric - frame of reference)
     // It is defined by the two angles (input parameters) - params.theta_M and params.phi_M
@@ -88,7 +105,7 @@ __device__ CHI_FLOAT chi2one(struct parameters_struct params, struct obs_data *s
     double M_y = sin(params.theta_M)*sin(params.phi_M);
     double M_z = cos(params.theta_M);
         
-    // In the new inertial frame of reference with the <M> vector being the z-axis, we arbitrarily choose the new x-axis, <XM>, to be [y x M].
+    // In the new inertial frame of reference with the <M> vector being the z-axis, we arbitrarily choose the x-axis, <XM>, to be [y x M].
     // It is fixed in the inertial frame of reference, so can be computed here:
     // Made a unit vector
     double XM = sqrt(M_z*M_z+M_x*M_x);
@@ -99,9 +116,8 @@ __device__ CHI_FLOAT chi2one(struct parameters_struct params, struct obs_data *s
     double YM_x = M_y*XM_z;
     double YM_y = M_z*XM_x - M_x*XM_z;
     double YM_z = -M_y*XM_x;
-    
-    // Get from the stack: LAM=0/1
-    
+
+    // We set Il (moment of inertia corresponding to the largest axis, a) to 1.
     // Shortest axis (c), largest moment of inertia:
     double Is = (1.0+params.b_tumb*params.b_tumb)/(params.b_tumb*params.b_tumb+params.c_tumb*params.c_tumb);
     // Intermediate axis (b), intermediate moment of inertia:
@@ -119,7 +135,7 @@ __device__ CHI_FLOAT chi2one(struct parameters_struct params, struct obs_data *s
     double Im = 0.5*(Ii_inv - Is_inv);
     mu[0] = params.L;
     mu[1] = Ip;
-    mu[2] = Im;
+    mu[2] = Im;    
     
     // Initial Euler angles values:
     double phi = params.phi_0;
@@ -129,7 +145,8 @@ __device__ CHI_FLOAT chi2one(struct parameters_struct params, struct obs_data *s
     
     // The loop over all data points    
     for (i=0; i<N_data; i++)
-    {                            
+    {                                
+        
         // Derive the three Euler angles theta, phi, psi here, by solving three ODEs numerically
         if (i > 0)
         {
@@ -139,6 +156,8 @@ __device__ CHI_FLOAT chi2one(struct parameters_struct params, struct obs_data *s
             // Current equidistant time steps (h<=TIME_STEP):
             double h = (sData[i].MJD - sData[i-1].MJD) / N_steps;
             double y[3];
+
+           
             // Initial angles values = the old values, from the previous i cycle:
             y[0] = phi;
             y[1] = theta;
@@ -153,11 +172,11 @@ __device__ CHI_FLOAT chi2one(struct parameters_struct params, struct obs_data *s
         
                 int j;
                 for (j=0; j<3; j++)
-                    f[j] = y[j] + h*K1[j]/2;
+                    f[j] = y[j] + 0.5*h*K1[j];
                 ODE_func (f, K2, mu);
         
                 for (j=0; j<3; j++)
-                    f[j] = y[j] + h*K2[j]/2;
+                    f[j] = y[j] + 0.5*h*K2[j];
                 ODE_func (f, K3, mu);
         
                 for (j=0; j<3; j++)
@@ -165,13 +184,17 @@ __device__ CHI_FLOAT chi2one(struct parameters_struct params, struct obs_data *s
                 ODE_func (f, K4, mu);
         
                 for (j=0; j<3; j++)
-                    y[j] = y[j] + h/6.0 *(K1[j] + 2*K2[j] + 2*K3[j] + K4[j]);
+                    y[j] = y[j] + 1/6.0 * h *(K1[j] + 2*K2[j] + 2*K3[j] + K4[j]);
             }
+        
+
             // New (current) values of the Euler angles derived from solving the ODEs:
             phi = y[0];
             theta = y[1];
-            psi = y[2];
+            psi = y[2];                    
         }                
+
+        // At this point we know the three Euler angles for the current moment of time (data point) - phi, theta, psi.
         
         double cos_phi = cos(phi);
         double sin_phi = sin(phi);
@@ -192,7 +215,7 @@ __device__ CHI_FLOAT chi2one(struct parameters_struct params, struct obs_data *s
         double sin_theta = sin(theta);
         
         // Vector of rotation <a> (the longest axes of the ellipsoid; x3; z; l) is derived by rotating <M> by Euler angle theta towards <p>,
-        // with vector <N> being the rotation vector (Rodrigues formula); a unit vector
+        // with the node vector <N> being the rotation vector (Rodrigues formula); a unit vector
         double a_x = M_x*cos_theta + p_x*sin_theta;
         double a_y = M_y*cos_theta + p_y*sin_theta;
         double a_z = M_z*cos_theta + p_z*sin_theta;
@@ -211,27 +234,28 @@ __device__ CHI_FLOAT chi2one(struct parameters_struct params, struct obs_data *s
         double b_y = N_y*cos_psi + w_y*sin_psi;
         double b_z = N_z*cos_psi + w_z*sin_psi;
         
-        // Third ellipsoid axis c (x2; y; s) - the shortest one; c=[a x b]
+        // Third ellipsoid axis c (x2; y; s) - the shortest one; c=[a x b]; unit vector by design
         double c_x = a_y*b_z - a_z*b_y;
         double c_y = a_z*b_x - a_x*b_z;
         double c_z = a_x*b_y - a_y*b_x;
 
         
-        // Earth vector in the new (a,b,c) basis:
+        // Earth vector in the new (a,b,c) basis; according to my tests in brightness.c, the correct brightness curve is observed when
+        // the following sequence is used: a, c, b, for Ep_x,y,z.
         Ep_x = a_x*sData[i].E_x + a_y*sData[i].E_y + a_z*sData[i].E_z;
-        Ep_y = b_x*sData[i].E_x + b_y*sData[i].E_y + b_z*sData[i].E_z;
-        Ep_z = c_x*sData[i].E_x + c_y*sData[i].E_y + c_z*sData[i].E_z;
+        Ep_y = c_x*sData[i].E_x + c_y*sData[i].E_y + c_z*sData[i].E_z;
+        Ep_z = b_x*sData[i].E_x + b_y*sData[i].E_y + b_z*sData[i].E_z;
         
-        // Sun vector in the new (a,b,c) basis:
+        // Sun vector in the new (a,b,c) basis:-- should be (b,c,a)???
         Sp_x = a_x*sData[i].S_x + a_y*sData[i].S_y + a_z*sData[i].S_z;
-        Sp_y = b_x*sData[i].S_x + b_y*sData[i].S_y + b_z*sData[i].S_z;
-        Sp_z = c_x*sData[i].S_x + c_y*sData[i].S_y + c_z*sData[i].S_z;
+        Sp_y = c_x*sData[i].S_x + c_y*sData[i].S_y + c_z*sData[i].S_z;
+        Sp_z = b_x*sData[i].S_x + b_y*sData[i].S_y + b_z*sData[i].S_z;
         
         // Now that we converted the Earth and Sun vectors to the internal asteroidal basis (a,b,c),
         // we can apply the formalism of Muinonen & Lumme, 2015 to calculate the brightness of the asteroid.
         
         // The two scalars from eq.(12) of Muinonen & Lumme, 2015; assuming a=1
-        scalar_Sun = sqrt(Sp_x*Sp_x + Sp_y*Sp_y/(params.b_tumb*params.b_tumb) + Sp_z*Sp_z/(params.c_tumb*params.c_tumb));
+        scalar_Sun   = sqrt(Sp_x*Sp_x + Sp_y*Sp_y/(params.b_tumb*params.b_tumb) + Sp_z*Sp_z/(params.c_tumb*params.c_tumb));
         scalar_Earth = sqrt(Ep_x*Ep_x + Ep_y*Ep_y/(params.b_tumb*params.b_tumb) + Ep_z*Ep_z/(params.c_tumb*params.c_tumb));
         
         // From eq.(13):
@@ -246,6 +270,7 @@ __device__ CHI_FLOAT chi2one(struct parameters_struct params, struct obs_data *s
         lambda_p = atan2(sin_lambda_p, cos_lambda_p);
         
         // Asteroid's model visual brightness, from eq.(10):
+        //!!! Not using P(alpha) - single scattering phase function!
         Vmod = -2.5*log10(params.b_tumb*params.c_tumb * scalar_Sun*scalar_Earth/scalar * (cos(lambda_p-alpha_p) + cos_lambda_p +
         sin_lambda_p*sin(lambda_p-alpha_p) * log(1.0 / tan(0.5*lambda_p) / tan(0.5*(alpha_p-lambda_p)))));
         
@@ -271,6 +296,7 @@ __device__ CHI_FLOAT chi2one(struct parameters_struct params, struct obs_data *s
     }   
     
     chi2a = chi2a / (N_data - N_PARAMS - N_filters);
+
     return chi2a;
 }           
 
@@ -367,7 +393,7 @@ __device__ int x2params(int LAM, CHI_FLOAT *x, struct parameters_struct *params,
 //++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 
 __global__ void chi2_gpu (struct obs_data *dData, int N_data, int N_filters,
-                          curandState* globalState, CHI_FLOAT *d_f, struct parameters_struct *d_params, int iPpr)
+                          curandState* globalState, CHI_FLOAT *d_f, struct parameters_struct *d_params)
 // CUDA kernel computing chi^2 on GPU
 {        
     __shared__ struct obs_data sData[MAX_DATA];
@@ -680,3 +706,46 @@ return;
 }
 
 #endif
+
+
+/*            
+            // Initial angles values = the old values, from the previous i cycle:            
+            // RK4 method for solving ODEs with a fixed time step h
+            for (int l=0; l<N_steps; l++)
+            {
+                double y[3], K[3], f[3];
+                
+                y[0] = phi;
+                y[1] = theta;
+                y[2] = psi;
+                ODE_func (y, K, mu);
+                f[0] = phi + h/6.0 *K[0];
+                f[1] = theta + h/6.0 *K[1];
+                f[2] = psi + h/6.0 *K[2];
+        
+                y[0] = phi + 0.5*h*K[0];
+                y[1] = theta + 0.5*h*K[1];
+                y[2] = psi + 0.5*h*K[2];
+                ODE_func (y, K, mu);
+                f[0] = f[0] + h/3.0 *K[0];
+                f[1] = f[1] + h/3.0 *K[1];
+                f[2] = f[2] + h/3.0 *K[2];
+        
+                y[0] = phi + 0.5*h*K[0];
+                y[1] = theta + 0.5*h*K[1];
+                y[2] = psi + 0.5*h*K[2];
+                ODE_func (y, K, mu);
+                f[0] = f[0] + h/3.0 *K[0];
+                f[1] = f[1] + h/3.0 *K[1];
+                f[2] = f[2] + h/3.0 *K[2];
+
+                y[0] = phi + h*K[0];
+                y[1] = theta + h*K[1];
+                y[2] = psi + h*K[2];
+                ODE_func (y, K, mu);
+                phi = f[0] + h/6.0 *K[0];
+                theta = f[1] + h/6.0 *K[1];
+                psi = f[2] + h/6.0 *K[2];
+        
+            }
+            */

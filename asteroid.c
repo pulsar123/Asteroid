@@ -82,7 +82,6 @@ int main (int argc,char **argv)
 // &&&        
         CHI_FLOAT hLimits[2][N_PARAMS];
         int iparam = -1;
-        int iPpr = -1;
         // Limits for each independent model parameter during optimization:
         
         // Theta_M (angle between barycentric Z axis and angular momentum vector M); range 0...pi
@@ -139,7 +138,7 @@ int main (int argc,char **argv)
 #endif        
        
         // The kernel (using stream 0):
-        chi2_gpu<<<N_BLOCKS, BSIZE, 0, ID[0]>>>(dData, N_data, N_filters, d_states, d_f, d_params, iPpr);
+        chi2_gpu<<<N_BLOCKS, BSIZE, 0, ID[0]>>>(dData, N_data, N_filters, d_states, d_f, d_params);
 
 #ifdef TIMING
         cudaEventRecord(stop, 0);

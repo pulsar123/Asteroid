@@ -34,8 +34,8 @@ const int N_FILTERS = 2;
 
 
 // GPU optimization parameters:
-const int BSIZE = 256;   // Threads in a block (64 ... 1024, step of 64); 384
-const int N_BLOCKS = 56*200; // Should be proportional to the number of SMs (56 for P100); code runtime and memory consumed on GPU is proportional to this number; x1000 for 1 day
+const int BSIZE = 256;   // Threads in a block (64 ... 1024, step of 64); 384; 256
+const int N_BLOCKS = 56*400; // Should be proportional to the number of SMs (56 for P100); code runtime and memory consumed on GPU is proportional to this number; x1000 for 1 day
 //const int N_SERIAL = 1; // number of serial iglob loops inside the kernel (>=1)
 //const int N_WARPS = BSIZE / 32;
 
@@ -44,7 +44,7 @@ const double TIME_STEP = 3e-3;
 
 // Simplex parameters:
 #ifdef TIMING
-const unsigned int N_STEPS = 1000; 
+const unsigned int N_STEPS = 100; 
 #else
 const unsigned int N_STEPS = 100000; // Number of simplex steps per CUDA block (per simplex run) 27,000 per hour (N=7; BS=256; NB=56*4)
 #endif
@@ -113,15 +113,11 @@ __device__ __host__ void iloc_to_params(long int *, struct parameters_struct *);
 
 int gpu_prepare(int, int, int);
 
-#ifdef SIMPLEX
 __global__ void setup_kernel ( curandState *, unsigned long, CHI_FLOAT *);
-__global__ void chi2_gpu(struct obs_data *, int, int, curandState*, CHI_FLOAT*, struct parameters_struct*, int);
+__global__ void chi2_gpu(struct obs_data *, int, int, curandState*, CHI_FLOAT*, struct parameters_struct*);
   #ifdef DEBUG
   __global__ void debug_kernel(struct parameters_struct, struct obs_data *, int, int);
   #endif
-#else
-__global__ void chi2_gpu(struct obs_data *, int, int, long int, int, int, float*, long int*);
-#endif
 #endif
 
 
@@ -154,7 +150,6 @@ EXTERN CHI_FLOAT * h_chi2_min;
 EXTERN long int * d_iloc_min;
 EXTERN long int * h_iloc_min;
 
-#ifdef SIMPLEX
     EXTERN __device__ CHI_FLOAT dLimits[2][N_PARAMS];
     EXTERN CHI_FLOAT *d_f;
     EXTERN struct parameters_struct *d_params;
@@ -170,7 +165,6 @@ EXTERN long int * h_iloc_min;
     EXTERN int h_min;
     EXTERN int h_max;
     EXTERN unsigned int h_block_counter;
-#endif                
 
 
 #endif
