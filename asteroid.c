@@ -84,30 +84,30 @@ int main (int argc,char **argv)
         int iparam = -1;
         // Limits for each independent model parameter during optimization:
         
-        // Theta_M (angle between barycentric Z axis and angular momentum vector M); range 0...pi
+        // (0) Theta_M (angle between barycentric Z axis and angular momentum vector M); range 0...pi
         iparam++;
         hLimits[0][iparam] = 0.001/RAD;
         hLimits[1][iparam] = 179.999/RAD;
         
-        // phi_M (polar angle for the angular momentum M in the barycentric FoR); range 0 ... 2*pi
+        // (1) phi_M (polar angle for the angular momentum M in the barycentric FoR); range 0 ... 2*pi initially, can have any value during optimization
         iparam++;
         hLimits[0][iparam] = 0;
         hLimits[1][iparam] = 360.0/RAD;
         
-        // phi_0 (initial Euler angle for precession), 0...360 dgr
+        // (2) phi_0 (initial Euler angle for precession), 0...360 dgr initially, can have any value during optimization
         iparam++;
         hLimits[0][iparam] = 0/RAD;
         hLimits[1][iparam] = 360.0/RAD;
         
-        // Angular momentum L value, radians/day; if P is perdiod in hours, L=48*pi/P
+        // (3) Angular momentum L value, radians/day; if P is perdiod in hours, L=48*pi/P
         iparam++;
         hLimits[0][iparam] = 48.0*PI / 120;
         hLimits[1][iparam] = 48.0*PI / 1;
 
-        // c_tumb (physical (tumbling) value of the axis c size; always smallest)
+        // (4) c_tumb (physical (tumbling) value of the axis c size; always smallest)
         iparam++;
         hLimits[0][iparam] = log(0.02);
-        hLimits[1][iparam] = log(0.99);                
+        hLimits[1][iparam] = log(0.4);                
 
         ERR(cudaMemcpyToSymbol(dLimits, hLimits, 2*N_PARAMS*sizeof(CHI_FLOAT), 0, cudaMemcpyHostToDevice));                
         

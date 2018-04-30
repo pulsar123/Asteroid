@@ -334,6 +334,10 @@ __device__ int x2params(int LAM, CHI_FLOAT *x, struct parameters_struct *params,
     int failed = 0;
     for (int i=0; i<N_PARAMS; i++)
     {
+        // Three parameters (phi_M, phi_0, and psi_0 - for LAM=1 only, can have any value during optimization:
+        if (i==1 || i==2 || i==7 && LAM)
+            continue;
+        
         if (x[i]<0.0 || x[i]>=1.0)
             failed = 1;
     }
@@ -345,15 +349,15 @@ __device__ int x2params(int LAM, CHI_FLOAT *x, struct parameters_struct *params,
     
     int iparam = -1;
     // Independent parameters:
-    iparam++;  params->theta_M =     x[iparam] * (sLimits[1][iparam]-sLimits[0][iparam]) + sLimits[0][iparam]; 
-    iparam++;  params->phi_M =       x[iparam] * (sLimits[1][iparam]-sLimits[0][iparam]) + sLimits[0][iparam]; 
-    iparam++;  params->phi_0 =       x[iparam] * (sLimits[1][iparam]-sLimits[0][iparam]) + sLimits[0][iparam]; 
-    iparam++;  params->L =           x[iparam] * (sLimits[1][iparam]-sLimits[0][iparam]) + sLimits[0][iparam]; 
-    iparam++;  log_c =               x[iparam] * (sLimits[1][iparam]-sLimits[0][iparam]) + sLimits[0][iparam];
+    iparam++;  params->theta_M =     x[iparam] * (sLimits[1][iparam]-sLimits[0][iparam]) + sLimits[0][iparam]; // 0
+    iparam++;  params->phi_M =       x[iparam] * (sLimits[1][iparam]-sLimits[0][iparam]) + sLimits[0][iparam]; // 1
+    iparam++;  params->phi_0 =       x[iparam] * (sLimits[1][iparam]-sLimits[0][iparam]) + sLimits[0][iparam]; // 2
+    iparam++;  params->L =           x[iparam] * (sLimits[1][iparam]-sLimits[0][iparam]) + sLimits[0][iparam]; // 3
+    iparam++;  log_c =               x[iparam] * (sLimits[1][iparam]-sLimits[0][iparam]) + sLimits[0][iparam]; // 4
                params->c_tumb = exp(log_c);
 
     // Dependent parameters:
-    iparam++;  log_b =              x[iparam] * log_c; 
+    iparam++;  log_b =              x[iparam] * log_c; // 5
                params->b_tumb = exp(log_b);
     
     // Derived values:
@@ -361,7 +365,7 @@ __device__ int x2params(int LAM, CHI_FLOAT *x, struct parameters_struct *params,
     double Ii = (1.0+params->c_tumb*params->c_tumb) / (params->b_tumb*params->b_tumb+params->c_tumb*params->c_tumb);
 
     // Dependent parameters:    
-    iparam++;  
+    iparam++;  // 6  
     // Dimensionless total energy (excitation degree)
     if (LAM)
     // LAM: Es>1.0/Ii
@@ -371,7 +375,7 @@ __device__ int x2params(int LAM, CHI_FLOAT *x, struct parameters_struct *params,
         params->Es=2.0*x[iparam]*(1.0/Ii-1.0/Is)+1.0/Is;
 
     // Generating psi_0 (constrained by Es, Ii, Is)
-    iparam++;  
+    iparam++;  // 7
     double psi_min, psi_max;
     if (LAM)
     {

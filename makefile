@@ -1,4 +1,4 @@
-OPT=-G -g -DGPU -arch=sm_60
+OPT=-O2 -DGPU -arch=sm_60
 INC=-I/usr/include/cuda -I.
 
 BINARY=asteroid3
