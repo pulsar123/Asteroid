@@ -36,7 +36,7 @@ __device__ void ODE_func (double y[], double f[], double mu[])
 
 
 
-__device__ CHI_FLOAT chi2one(struct parameters_struct params, struct obs_data *sData, CHI_FLOAT sLimits[][N_PARAMS], int N_data, int N_filters)
+__device__ CHI_FLOAT chi2one(struct parameters_struct params, struct obs_data *sData, int N_data, int N_filters, double *delta_V, int Nplot)
 // Computung chi^2 for a single model parameters combination, on GPU, by a single thread
 {
     int i, m;
@@ -142,7 +142,7 @@ __device__ CHI_FLOAT chi2one(struct parameters_struct params, struct obs_data *s
     // Initial value of the Euler angle theta is determined by other parameters:
     double theta = asin(sqrt((params.Es-1.0)/(sin(params.psi_0)*sin(params.psi_0)*(Ii_inv-Is_inv)+Is_inv-1.0)));    
     double psi = params.psi_0;
-    
+            
     // The loop over all data points    
     for (i=0; i<N_data; i++)
     {                                
@@ -150,13 +150,16 @@ __device__ CHI_FLOAT chi2one(struct parameters_struct params, struct obs_data *s
         // Derive the three Euler angles theta, phi, psi here, by solving three ODEs numerically
         if (i > 0)
         {
+            int N_steps;
+            double h;
+            
             // How many integration steps to the current (i-th) observed value, from the previous (i-1) one:
             // Forcing the maximum possible time step of TIME_STEP days (macro parameter), to ensure accuracy
-            int N_steps = (sData[i].MJD - sData[i-1].MJD) / TIME_STEP + 1;
+            N_steps = (sData[i].MJD - sData[i-1].MJD) / TIME_STEP + 1;
             // Current equidistant time steps (h<=TIME_STEP):
-            double h = (sData[i].MJD - sData[i-1].MJD) / N_steps;
+            h = (sData[i].MJD - sData[i-1].MJD) / N_steps;
+            
             double y[3];
-
            
             // Initial angles values = the old values, from the previous i cycle:
             y[0] = phi;
@@ -273,18 +276,27 @@ __device__ CHI_FLOAT chi2one(struct parameters_struct params, struct obs_data *s
         //!!! Not using P(alpha) - single scattering phase function!
         Vmod = -2.5*log10(params.b_tumb*params.c_tumb * scalar_Sun*scalar_Earth/scalar * (cos(lambda_p-alpha_p) + cos_lambda_p +
         sin_lambda_p*sin(lambda_p-alpha_p) * log(1.0 / tan(0.5*lambda_p) / tan(0.5*(alpha_p-lambda_p)))));
-        
-        
-        // Filter:
-        int m = sData[i].Filter;
-        // Difference between the observational and model magnitudes:
-        double y = sData[i].V - Vmod;                    
-        sum_y2[m] = sum_y2[m] + y*y*sData[i].w;
-        sum_y[m] = sum_y[m] + y*sData[i].w;
-        sum_w[m] = sum_w[m] + sData[i].w;
+                        
+        if (Nplot > 0)
+        {
+            d_Vmod[i] = Vmod + delta_V[0]; //???
+        }
+        else
+        {
+            // Filter:
+            int m = sData[i].Filter;
+            // Difference between the observational and model magnitudes:
+            double y = sData[i].V - Vmod;                    
+            sum_y2[m] = sum_y2[m] + y*y*sData[i].w;
+            sum_y[m] = sum_y[m] + y*sData[i].w;
+            sum_w[m] = sum_w[m] + sData[i].w;
+        }
         
     } // data points loop
     
+    
+    if (Nplot > 0)
+        return 0.0;
     
     CHI_FLOAT chi2m;
     chi2a=0.0;    
@@ -293,6 +305,8 @@ __device__ CHI_FLOAT chi2one(struct parameters_struct params, struct obs_data *s
         // Chi^2 for the m-th filter:
         chi2m = sum_y2[m] - sum_y[m]*sum_y[m]/sum_w[m];
         chi2a = chi2a + chi2m;
+        // Average difference Vdata-Vmod for each filter (used for plotting):
+        delta_V[m] = sum_y[m] / sum_w[m];
     }   
     
     chi2a = chi2a / (N_data - N_PARAMS - N_filters);
@@ -393,17 +407,41 @@ __device__ int x2params(int LAM, CHI_FLOAT *x, struct parameters_struct *params,
 }
 
 
+//++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+__global__ void chi2_plot (struct obs_data *dData, int N_data, int N_filters,
+                          struct parameters_struct *d_params, struct obs_data *dPlot, int Nplot, struct parameters_struct params)
+// CUDA kernel to compute plot data from input params structure
+{        
+    int i;
+    struct parameters_struct params;
+    double delta_V[N_filters];
+    double chi2;
+    
+    
+    // Step one: computing constants for each filter using chi^2 method
+    chi2 = chi2one(params, dData, N_data, N_filters, delta_V, 0);
+    
+    // Step two: computing the Nplots data points using the delta_V values from above:
+
+    chi2 = chi2one(params, dPlot, Nplot, N_filters, delta_V, Nplot);
+    
+ return;   
+}
+
+
 
 //++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 
 __global__ void chi2_gpu (struct obs_data *dData, int N_data, int N_filters,
-                          curandState* globalState, CHI_FLOAT *d_f, struct parameters_struct *d_params)
+                          curandState* globalState, CHI_FLOAT *d_f, struct parameters_struct *d_params, int Nplot, struct parameters_struct params)
 // CUDA kernel computing chi^2 on GPU
 {        
     __shared__ struct obs_data sData[MAX_DATA];
     __shared__ CHI_FLOAT sLimits[2][N_PARAMS];
     int i, j;
     struct parameters_struct params;
+    double delta_V[N_filters];
     
     // Not efficient, for now:
     if (threadIdx.x == 0)
@@ -472,7 +510,7 @@ __global__ void chi2_gpu (struct obs_data *dData, int N_data, int N_filters,
     for (j=0; j<N_PARAMS+1; j++)
     {
         x2params(LAM, x[j], &params, sLimits);
-        f[j] = chi2one(params, sData, sLimits, N_data, N_filters);    
+        f[j] = chi2one(params, sData, N_data, N_filters, delta_V, 0);    
     }
         
     // The main simplex loop
@@ -552,7 +590,7 @@ __global__ void chi2_gpu (struct obs_data *dData, int N_data, int N_filters,
         if (x2params(LAM, x_r,&params,sLimits))
             f_r = 1e30;
         else
-            f_r = chi2one(params, sData, sLimits, N_data, N_filters);
+            f_r = chi2one(params, sData, N_data, N_filters, delta_V, 0);
         if (f_r >= f[ind[0]] && f_r < f[ind[N_PARAMS-1]])
         {
             // Replacing the worst point with the reflected point:
@@ -576,7 +614,7 @@ __global__ void chi2_gpu (struct obs_data *dData, int N_data, int N_filters,
             if (x2params(LAM, x_e,&params,sLimits))
                 f_e = 1e30;
             else
-                f_e = chi2one(params, sData, sLimits, N_data, N_filters);
+                f_e = chi2one(params, sData, N_data, N_filters, delta_V, 0);
             if (f_e < f_r)
             {
                 // Replacing the worst point with the expanded point:
@@ -607,7 +645,7 @@ __global__ void chi2_gpu (struct obs_data *dData, int N_data, int N_filters,
         if (x2params(LAM, x_r,&params,sLimits))
             f_r = 1e30;
         else
-            f_r = chi2one(params, sData, sLimits, N_data, N_filters);
+            f_r = chi2one(params, sData, N_data, N_filters, delta_V, 0);
         if (f_r < f[ind[N_PARAMS]])
         {
             // Replacing the worst point with the contracted point:
@@ -630,7 +668,7 @@ __global__ void chi2_gpu (struct obs_data *dData, int N_data, int N_filters,
             if (x2params(LAM, x[ind[j]],&params,sLimits))
                 failed = 1;
             else
-                f[ind[j]] = chi2one(params, sData, sLimits, N_data, N_filters);
+                f[ind[j]] = chi2one(params, sData, N_data, N_filters, delta_V, 0);
         }
         // We failed the optimization
         if (failed)
@@ -703,7 +741,7 @@ __global__ void debug_kernel(struct parameters_struct params, struct obs_data *d
             sData[i] = dData[i];
     }
 
-f = chi2one(params, sData, sLimits, N_data, N_filters);
+f = chi2one(params, sData, N_data, N_filters, delta_V, 0);
     
 return;
 

@@ -69,6 +69,9 @@ const int MAX_FILTERS = 100;
 // Maximum number nof data points:
 const int MAX_DATA = 400;
 
+// Number of time points for plotting
+const int NPLOT = 6000;
+
 // Speed of light (au/day):
 const double light_speed = 173.144632674;
 
@@ -102,7 +105,7 @@ int Filter;  // Filter code array
 
 
 // Function declarations
-int read_data(char *, int *, int *);
+int read_data(char *, int *, int *, int);
 int chi2 (int, int, struct parameters_struct, double *);
 int quadratic_interpolation(double, double *,double *,double *, double *,double *,double *);
 int timeval_subtract (double *, struct timeval *, struct timeval *);
@@ -111,7 +114,7 @@ __device__ __host__ void iloc_to_params(long int *, struct parameters_struct *);
 
 #ifdef GPU
 
-int gpu_prepare(int, int, int);
+int gpu_prepare(int, int, int, int);
 
 __global__ void setup_kernel ( curandState *, unsigned long, CHI_FLOAT *);
 __global__ void chi2_gpu(struct obs_data *, int, int, curandState*, CHI_FLOAT*, struct parameters_struct*);
@@ -135,9 +138,11 @@ EXTERN char all_filters[MAX_FILTERS];
 
 
 EXTERN struct obs_data *hData;
+EXTERN struct obs_data *hPlot;
 
 // CUDA version of the data:
 EXTERN struct obs_data *dData;
+EXTERN struct obs_data *dPlot;
 
 
 // Arrays used for ephemerides interpolation:
@@ -151,6 +156,8 @@ EXTERN long int * d_iloc_min;
 EXTERN long int * h_iloc_min;
 
     EXTERN __device__ CHI_FLOAT dLimits[2][N_PARAMS];
+    EXTERN __device__ double d_Vmod[NPLOT];
+    EXTERN double h_Vmod[NPLOT];
     EXTERN CHI_FLOAT *d_f;
     EXTERN struct parameters_struct *d_params;
     EXTERN __device__ unsigned long long int d_sum;

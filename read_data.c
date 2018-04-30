@@ -3,7 +3,7 @@
 /*  Reading input data files - ephemerides for asteroid, earth, sun, and the brightness curve data.  
 */
 
-int read_data(char *data_file, int *N_data, int *N_filters)
+int read_data(char *data_file, int *N_data, int *N_filters, int Nplot)
 {
  FILE *fp;
  FILE *fpA;
@@ -259,5 +259,47 @@ for (i=0; i<*N_data; i++)
     exit (0);
 #endif
 
+// Computing a fake data set, only for plotting
+// Explicitely assuming that ephemeride files contain three data points each    
+if (Nplot > 0)        
+{
+    // Time step for plotting:
+    double h = hData[N_data-1].MJD / (Nplot - 1);
+    double tplot;
+    int iplot;
+    
+    for (iplot=0; i<Nplot; i++)
+    {
+        tplot = i * h;
+        
+        // Handling two end points:
+        if (iplot == 0 || iplot == Nplot-1)
+        {
+            int i;
+            if (iplot == 0)
+                i = 0;
+            else
+                i = N_data - 1;
+            hPlot[iplot].MJD = hData[i].MJD;
+            hPlot[iplot].E_x = hData[i].E_x;
+            hPlot[iplot].E_y = hData[i].E_y;
+            hPlot[iplot].E_z = hData[i].E_z;
+            hPlot[iplot].S_x = hData[i].S_x;
+            hPlot[iplot].S_y = hData[i].S_y;
+            hPlot[iplot].S_z = hData[i].S_z;
+        }
+        else
+        {
+            hPlot[i].MJD = tplot;
+            quadratic_interpolation(tplot, &(hPlot[iplot].E_x), &(hPlot[iplot].E_y), &(hPlot[iplot].E_z), &(hPlot[iplot].S_x), &(hPlot[iplot].S_y), &(hPlot[iplot].S_z));
+            hPlot[i].V = 0.0;            
+        }
+        
+        
+    }
+
+}
+    
+    
 return 0;
 }

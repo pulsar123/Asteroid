@@ -23,24 +23,20 @@ int main (int argc,char **argv)
     // Observational data:
     int N_data; // Number of data points
     int N_filters; // Number of filters used in the data        
-
-/*    
-    if (argc == N_PARAMS0+2)
+    int Nplot = 0;
+    
+    
+    if (argc == N_PARAMS+2)
     {
-        params.b = atof(argv[2]);
-        params.P = atof(argv[3]);
-        params.c = atof(argv[4]);
-        params.theta_M = atof(argv[5]);
-        params.phi_M = atof(argv[6]);
-        params.phi_a0 = atof(argv[7]);
-#ifdef TUMBLE
-        params.P_pr = atof(argv[8]);
-        params.theta_pr = atof(argv[9]);
-        params.phi_n0 = atof(argv[10]);
-#endif        
-#ifndef DEBUG        
-        useGPU = 0;
-#endif        
+        params.theta_M = atof(argv[2]);
+        params.phi_M = atof(argv[3]);
+        params.phi_0 = atof(argv[4]);
+        params.L = atof(argv[5]);
+        params.c_tumb = atof(argv[6]);
+        params.b_tumb = atof(argv[7]);
+        params.Es = atof(argv[8]);
+        params.psi_0 = atof(argv[9]);
+        Nplot = NPLOT; // Number of plot points
     }
     else if (argc != 3)
     {
@@ -49,98 +45,98 @@ int main (int argc,char **argv)
         printf("Arguments: obs_file  list_of_parameters\n");
         exit(1);
     }
-*/    
+    */    
+
+#ifdef GPU
+if (useGPU)
+{
+    Is_GPU_present();
+}
+#endif    
+
+// Reading input paameters files
+//    read_input_params();
+
+// Reading all input data files, allocating and initializing observational data arrays   
+read_data(argv[1], &N_data, &N_filters, Nplot);
+
+
+#ifdef GPU    
+if (useGPU)
+{
+    //        fp = fopen(argv[2], "w");
     
-    #ifdef GPU
-    if (useGPU)
+    int N_threads = N_BLOCKS * BSIZE;
+    
+    gpu_prepare(N_data, N_filters, N_threads, Nplot);
+    
+    // &&&        
+    CHI_FLOAT hLimits[2][N_PARAMS];
+    int iparam = -1;
+    // Limits for each independent model parameter during optimization:
+    
+    // (0) Theta_M (angle between barycentric Z axis and angular momentum vector M); range 0...pi
+    iparam++;
+    hLimits[0][iparam] = 0.001/RAD;
+    hLimits[1][iparam] = 179.999/RAD;
+    
+    // (1) phi_M (polar angle for the angular momentum M in the barycentric FoR); range 0 ... 2*pi initially, can have any value during optimization
+    iparam++;
+    hLimits[0][iparam] = 0;
+    hLimits[1][iparam] = 360.0/RAD;
+    
+    // (2) phi_0 (initial Euler angle for precession), 0...360 dgr initially, can have any value during optimization
+    iparam++;
+    hLimits[0][iparam] = 0/RAD;
+    hLimits[1][iparam] = 360.0/RAD;
+    
+    // (3) Angular momentum L value, radians/day; if P is perdiod in hours, L=48*pi/P
+    iparam++;
+    hLimits[0][iparam] = 48.0*PI / 120;
+    hLimits[1][iparam] = 48.0*PI / 1;
+    
+    // (4) c_tumb (physical (tumbling) value of the axis c size; always smallest)
+    iparam++;
+    hLimits[0][iparam] = log(0.02);
+    hLimits[1][iparam] = log(0.4);                
+    
+    ERR(cudaMemcpyToSymbol(dLimits, hLimits, 2*N_PARAMS*sizeof(CHI_FLOAT), 0, cudaMemcpyHostToDevice));                
+    
+    
+    if (Nplot == 0)
     {
-        Is_GPU_present();
-    }
-    #endif    
-    
-    // Reading input paameters files
-    //    read_input_params();
-    
-    // Reading all input data files, allocating and initializing observational data arrays   
-    read_data(argv[1], &N_data, &N_filters);
-    
-    
-    #ifdef GPU    
-    if (useGPU)
-    {
-//        fp = fopen(argv[2], "w");
-
-        int N_threads = N_BLOCKS * BSIZE;
-                
-        gpu_prepare(N_data, N_filters, N_threads);
-        
-
-
         printf("\n*** Simplex optimization ***\n\n");
         printf("  N_threads = %d\n", N_threads);        
         
-// &&&        
-        CHI_FLOAT hLimits[2][N_PARAMS];
-        int iparam = -1;
-        // Limits for each independent model parameter during optimization:
         
-        // (0) Theta_M (angle between barycentric Z axis and angular momentum vector M); range 0...pi
-        iparam++;
-        hLimits[0][iparam] = 0.001/RAD;
-        hLimits[1][iparam] = 179.999/RAD;
-        
-        // (1) phi_M (polar angle for the angular momentum M in the barycentric FoR); range 0 ... 2*pi initially, can have any value during optimization
-        iparam++;
-        hLimits[0][iparam] = 0;
-        hLimits[1][iparam] = 360.0/RAD;
-        
-        // (2) phi_0 (initial Euler angle for precession), 0...360 dgr initially, can have any value during optimization
-        iparam++;
-        hLimits[0][iparam] = 0/RAD;
-        hLimits[1][iparam] = 360.0/RAD;
-        
-        // (3) Angular momentum L value, radians/day; if P is perdiod in hours, L=48*pi/P
-        iparam++;
-        hLimits[0][iparam] = 48.0*PI / 120;
-        hLimits[1][iparam] = 48.0*PI / 1;
-
-        // (4) c_tumb (physical (tumbling) value of the axis c size; always smallest)
-        iparam++;
-        hLimits[0][iparam] = log(0.02);
-        hLimits[1][iparam] = log(0.4);                
-
-        ERR(cudaMemcpyToSymbol(dLimits, hLimits, 2*N_PARAMS*sizeof(CHI_FLOAT), 0, cudaMemcpyHostToDevice));                
-        
-   // Initializing the device random number generator:
+        // Initializing the device random number generator:
         curandState* d_states;
         ERR(cudaMalloc ( &d_states, N_BLOCKS*BSIZE*sizeof( curandState ) ));
-    // setup seeds, initialize d_f
+        // setup seeds, initialize d_f
         setup_kernel <<< N_BLOCKS, BSIZE >>> ( d_states, (unsigned long)(time(NULL)), d_f );
-        //!!!
-//        setup_kernel <<< N_BLOCKS, BSIZE >>> ( d_states, 1, d_f );
-
+        
         ERR(cudaDeviceSynchronize());    
-
-// Creating streams:
+        
+        // Creating streams:
         for (i = 0; i < 2; ++i)
             ERR(cudaStreamCreate (&ID[i]));
-
-#ifdef TIMING        
+        
+        #ifdef TIMING        
         cudaEvent_t start, stop;
         float elapsed;
         cudaEventCreate(&start);
         cudaEventCreate(&stop);
         cudaEventRecord(start, 0);
-#endif        
+        #endif        
         
-#ifdef DEBUG
+        #ifdef DEBUG
         debug_kernel<<<1, 1>>>(params, dData, N_data, N_filters);
-#endif        
-       
+        #endif        
+        
         // The kernel (using stream 0):
         chi2_gpu<<<N_BLOCKS, BSIZE, 0, ID[0]>>>(dData, N_data, N_filters, d_states, d_f, d_params);
-
-#ifdef TIMING
+        
+        #ifdef TIMING
         cudaEventRecord(stop, 0);
         cudaEventSynchronize (stop);
         cudaEventElapsedTime(&elapsed, start, stop);
@@ -148,36 +144,36 @@ int main (int argc,char **argv)
         cudaEventDestroy(stop);
         printf("GPU time: %.2f ms\n", elapsed);
         exit(0);
-#endif        
+        #endif        
         
         //!!!
         /*
-        cudaDeviceSynchronize();
-            cudaMemcpyAsync(h_f, d_f, N_threads * sizeof(CHI_FLOAT), cudaMemcpyDeviceToHost, ID[1]);
-            cudaMemcpyAsync(h_params, d_params, N_threads * sizeof(struct parameters_struct), cudaMemcpyDeviceToHost, ID[1]);
-        cudaDeviceSynchronize();
-        fp = fopen(argv[2], "w");
-                for (i=0; i<N_threads; i++)
-                {
-                    params = h_params[i];
-                    fprintf(fp,"%13.6e ",  h_f[i]);
-                    fprintf(fp,"%10.6f ",  params.b);
-                    fprintf(fp,"%10.6f ",  params.P*24);
-                    fprintf(fp,"%10.6f ",  params.c);
-                    fprintf(fp,"%10.6f ",  params.cos_phi_b);
-                    fprintf(fp,"%10.6f ",  params.theta_M);
-                    fprintf(fp,"%10.6f ",  params.phi_M);
-                    fprintf(fp,"%10.6f ",  params.phi_a0);
-#ifdef TUMBLE
-                    fprintf(fp,"%10.6f ",  params.P_pr*24);
-                    fprintf(fp,"%10.6f ",  params.theta_pr);
-                    fprintf(fp,"%10.6f ",  params.phi_n0);
-#endif                    
-                    fprintf(fp,"\n");
-                }
-                fclose(fp);
-exit(0);        
-        */
+         *        cudaDeviceSynchronize();
+         *            cudaMemcpyAsync(h_f, d_f, N_threads * sizeof(CHI_FLOAT), cudaMemcpyDeviceToHost, ID[1]);
+         *            cudaMemcpyAsync(h_params, d_params, N_threads * sizeof(struct parameters_struct), cudaMemcpyDeviceToHost, ID[1]);
+         *        cudaDeviceSynchronize();
+         *        fp = fopen(argv[2], "w");
+         *                for (i=0; i<N_threads; i++)
+         *                {
+         *                    params = h_params[i];
+         *                    fprintf(fp,"%13.6e ",  h_f[i]);
+         *                    fprintf(fp,"%10.6f ",  params.b);
+         *                    fprintf(fp,"%10.6f ",  params.P*24);
+         *                    fprintf(fp,"%10.6f ",  params.c);
+         *                    fprintf(fp,"%10.6f ",  params.cos_phi_b);
+         *                    fprintf(fp,"%10.6f ",  params.theta_M);
+         *                    fprintf(fp,"%10.6f ",  params.phi_M);
+         *                    fprintf(fp,"%10.6f ",  params.phi_a0);
+         * #ifdef TUMBLE
+         *                    fprintf(fp,"%10.6f ",  params.P_pr*24);
+         *                    fprintf(fp,"%10.6f ",  params.theta_pr);
+         *                    fprintf(fp,"%10.6f ",  params.phi_n0);
+         * #endif                    
+         *                    fprintf(fp,"\n");
+    }
+    fclose(fp);
+    exit(0);        
+    */
         
         int not_done = 1;
         int count = 0;
@@ -189,10 +185,10 @@ exit(0);
             
             // Copying the results from GPU:
             /*
-            ERR(cudaMemcpyAsync(h_f, d_f, N_threads * sizeof(CHI_FLOAT), cudaMemcpyDeviceToHost, ID[1]));
-            ERR(cudaMemcpyAsync(h_params, d_params, N_threads * sizeof(struct parameters_struct), cudaMemcpyDeviceToHost, ID[1]));
-            ERR(cudaStreamSynchronize(ID[1]));
-*/
+             *            ERR(cudaMemcpyAsync(h_f, d_f, N_threads * sizeof(CHI_FLOAT), cudaMemcpyDeviceToHost, ID[1]));
+             *            ERR(cudaMemcpyAsync(h_params, d_params, N_threads * sizeof(struct parameters_struct), cudaMemcpyDeviceToHost, ID[1]));
+             *            ERR(cudaStreamSynchronize(ID[1]));
+             */
             ERR(cudaMemcpyFromSymbolAsync(&h_block_counter, d_block_counter, sizeof(int), 0, cudaMemcpyDeviceToHost, ID[1]));
             ERR(cudaStreamSynchronize(ID[1]));
             if (h_block_counter == 0)
@@ -264,44 +260,57 @@ exit(0);
         }
         while(not_done != 0);
         
-
-
-
-/*
-        for (i = 0; i < 2; ++i)
-            ERR(cudaStreamDestroy (&ID[i]));
-        ERR(cudaMemcpy(h_f, d_f, N_threads * sizeof(float), cudaMemcpyDeviceToHost);
-        ERR(cudaMemcpy(h_params, d_params, N_threads * sizeof(struct parameters_struct), cudaMemcpyDeviceToHost);
-        ERR(cudaDeviceSynchronize());
-            
-            for (i=0; i<N_threads; i++)
-            {
-                params = h_params[i];
-                fprintf(fp,"%13.6e ",  h_f[i]);
-                fprintf(fp,"%10.6f ",  params.b);
-                fprintf(fp,"%10.6f ",  params.P*24);
-                fprintf(fp,"%10.6f ",  params.c);
-                fprintf(fp,"%10.6f ",  params.cos_phi_b);
-                fprintf(fp,"%10.6f ",  params.theta_M);
-                fprintf(fp,"%10.6f ",  params.phi_M);
-                fprintf(fp,"%10.6f\n", params.phi_a0);
-            }
-            fflush(fp);
-*/
-
-
-
-
-
-
         
         
+        
+        /*
+         *        for (i = 0; i < 2; ++i)
+         *            ERR(cudaStreamDestroy (&ID[i]));
+         *        ERR(cudaMemcpy(h_f, d_f, N_threads * sizeof(float), cudaMemcpyDeviceToHost);
+         *        ERR(cudaMemcpy(h_params, d_params, N_threads * sizeof(struct parameters_struct), cudaMemcpyDeviceToHost);
+         *        ERR(cudaDeviceSynchronize());
+         *            
+         *            for (i=0; i<N_threads; i++)
+         *            {
+         *                params = h_params[i];
+         *                fprintf(fp,"%13.6e ",  h_f[i]);
+         *                fprintf(fp,"%10.6f ",  params.b);
+         *                fprintf(fp,"%10.6f ",  params.P*24);
+         *                fprintf(fp,"%10.6f ",  params.c);
+         *                fprintf(fp,"%10.6f ",  params.cos_phi_b);
+         *                fprintf(fp,"%10.6f ",  params.theta_M);
+         *                fprintf(fp,"%10.6f ",  params.phi_M);
+         *                fprintf(fp,"%10.6f\n", params.phi_a0);
     }
-    #endif   // GPU 
+    fflush(fp);
+    */
+        
+        
+    }  // End of Nplot=0 (simulation) module
     
-    // CPU based chi^2:
+    // ++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    else
+    {
+        printf("\n*** Plotting ***\n\n");
+        
+        // Running the CUDA kernel to produce the plot data from params:
+        chi2_plot<<<1, 1>>>(dData, N_data, N_filters, d_params, dPlot, Nplot, params);
+        
+        ERR(cudaMemcpyFromSymbol(&h_Vmod, d_Vmod, Nplot*sizeof(double), 0, cudaMemcpyDeviceToHost));                            
+        ERR(cudaDeviceSynchronize());
+        
+        fp = fopen("plot.dat", "w");
+        do (i=0; i<Nplot; i++)
+            fprintf(fp, "%13.6e %13.6e\n", hPlot[i].MJD, h_Vmod[i]);
+        fclose(fp);
+    }        
+    
+}
+#endif   // GPU 
+
+// CPU based chi^2:
 //    double chi2_cpu;
 //    chi2(N_data, N_filters, params, &chi2_cpu);    
-    
-    return 0;  
+
+return 0;  
 }
