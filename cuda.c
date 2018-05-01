@@ -36,7 +36,7 @@ __device__ void ODE_func (double y[], double f[], double mu[])
 
 
 
-__device__ CHI_FLOAT chi2one(struct parameters_struct params, struct obs_data *sData, int N_data, int N_filters, double *delta_V, int Nplot)
+__device__ CHI_FLOAT chi2one(struct parameters_struct params, struct obs_data *sData, int N_data, int N_filters, CHI_FLOAT *delta_V, int Nplot)
 // Computung chi^2 for a single model parameters combination, on GPU, by a single thread
 {
     int i, m;
@@ -48,8 +48,8 @@ __device__ CHI_FLOAT chi2one(struct parameters_struct params, struct obs_data *s
     double sum_y[N_FILTERS];
     double sum_w[N_FILTERS];
 
-//!!! Seems to speed up a bit ODE code:
-    __syncthreads();
+//!!! Seems to speed up a bit ODE code: - but probably breaks  __syncthreads at the end of chi2_gpu?
+//    __syncthreads();
     
     for (m=0; m<N_filters; m++)
     {
@@ -413,18 +413,16 @@ __global__ void chi2_plot (struct obs_data *dData, int N_data, int N_filters,
                           struct parameters_struct *d_params, struct obs_data *dPlot, int Nplot, struct parameters_struct params)
 // CUDA kernel to compute plot data from input params structure
 {        
-    int i;
-    struct parameters_struct params;
-    double delta_V[N_filters];
-    double chi2;
+    CHI_FLOAT delta_V[MAX_FILTERS];
+//    CHI_FLOAT chi2;
     
     
     // Step one: computing constants for each filter using chi^2 method
-    chi2 = chi2one(params, dData, N_data, N_filters, delta_V, 0);
+    d_chi2_plot = chi2one(params, dData, N_data, N_filters, delta_V, 0);
     
     // Step two: computing the Nplots data points using the delta_V values from above:
 
-    chi2 = chi2one(params, dPlot, Nplot, N_filters, delta_V, Nplot);
+    chi2one(params, dPlot, Nplot, N_filters, delta_V, Nplot);
     
  return;   
 }
@@ -434,14 +432,16 @@ __global__ void chi2_plot (struct obs_data *dData, int N_data, int N_filters,
 //++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 
 __global__ void chi2_gpu (struct obs_data *dData, int N_data, int N_filters,
-                          curandState* globalState, CHI_FLOAT *d_f, struct parameters_struct *d_params, int Nplot, struct parameters_struct params)
+                          curandState* globalState, CHI_FLOAT *d_f, struct parameters_struct *d_params)
 // CUDA kernel computing chi^2 on GPU
 {        
     __shared__ struct obs_data sData[MAX_DATA];
     __shared__ CHI_FLOAT sLimits[2][N_PARAMS];
+    __shared__ volatile CHI_FLOAT s_f[BSIZE];
+    __shared__ volatile int s_thread_id[BSIZE];
     int i, j;
     struct parameters_struct params;
-    double delta_V[N_filters];
+    CHI_FLOAT delta_V[MAX_FILTERS];
     
     // Not efficient, for now:
     if (threadIdx.x == 0)
@@ -456,8 +456,6 @@ __global__ void chi2_gpu (struct obs_data *dData, int N_data, int N_filters,
     }
     
     // Downhill simplex optimization approach
-    __shared__ CHI_FLOAT s_f[BSIZE];
-    __shared__ int s_thread_id[BSIZE];
     
     __syncthreads();
     
@@ -684,6 +682,7 @@ __global__ void chi2_gpu (struct obs_data *dData, int N_data, int N_filters,
     s_thread_id[threadIdx.x] = threadIdx.x;
     
     __syncthreads();
+    //!!! AT this point not all warps initialized s_f and s_thread_id! It looks like __syncthreads doesn't work!
     
     // Binary reduction:
     int nTotalThreads = blockDim.x;

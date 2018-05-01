@@ -45,7 +45,6 @@ int main (int argc,char **argv)
         printf("Arguments: obs_file  list_of_parameters\n");
         exit(1);
     }
-    */    
 
 #ifdef GPU
 if (useGPU)
@@ -189,7 +188,7 @@ if (useGPU)
              *            ERR(cudaMemcpyAsync(h_params, d_params, N_threads * sizeof(struct parameters_struct), cudaMemcpyDeviceToHost, ID[1]));
              *            ERR(cudaStreamSynchronize(ID[1]));
              */
-            ERR(cudaMemcpyFromSymbolAsync(&h_block_counter, d_block_counter, sizeof(int), 0, cudaMemcpyDeviceToHost, ID[1]));
+            ERR(cudaMemcpyFromSymbolAsync(&h_block_counter, d_block_counter, sizeof(unsigned int), 0, cudaMemcpyDeviceToHost, ID[1]));
             ERR(cudaStreamSynchronize(ID[1]));
             if (h_block_counter == 0)
                 continue;
@@ -296,12 +295,20 @@ if (useGPU)
         // Running the CUDA kernel to produce the plot data from params:
         chi2_plot<<<1, 1>>>(dData, N_data, N_filters, d_params, dPlot, Nplot, params);
         
-        ERR(cudaMemcpyFromSymbol(&h_Vmod, d_Vmod, Nplot*sizeof(double), 0, cudaMemcpyDeviceToHost));                            
+        ERR(cudaMemcpyFromSymbol(&h_Vmod, d_Vmod, Nplot*sizeof(double), 0, cudaMemcpyDeviceToHost));
+        ERR(cudaMemcpyFromSymbol(&h_chi2_plot, d_chi2_plot, sizeof(CHI_FLOAT), 0, cudaMemcpyDeviceToHost));
         ERR(cudaDeviceSynchronize());
         
-        fp = fopen("plot.dat", "w");
-        do (i=0; i<Nplot; i++)
+        printf("chi2_plot = %13.6e\n", h_chi2_plot);
+        
+        fp = fopen("model.dat", "w");
+        for (i=0; i<Nplot; i++)
             fprintf(fp, "%13.6e %13.6e\n", hPlot[i].MJD, h_Vmod[i]);
+        fclose(fp);
+        
+        fp = fopen("data.dat", "w");
+        for (i=0; i<N_data; i++)
+            fprintf(fp, "%13.6e %13.6e %13.6e w\n", hData[i].MJD, hData[i].V, 1/sqrt(hData[i].w));
         fclose(fp);
     }        
     

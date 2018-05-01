@@ -213,16 +213,12 @@ fclose(fpE);
 fclose(fpS);
 
 // Converting the observed data
-double E, S, E0, S0;
+double E, S;
 for (i=0; i<*N_data; i++)
 {
     E = sqrt(hData[i].E_x*hData[i].E_x + hData[i].E_y*hData[i].E_y+ hData[i].E_z*hData[i].E_z);
     S = sqrt(hData[i].S_x*hData[i].S_x + hData[i].S_y*hData[i].S_y+ hData[i].S_z*hData[i].S_z);
-    if (i == 0)
-    {
-        E0 = E;
-        S0 = S;
-    }
+
     // Convertimg visual magnitudes to absolute magnitudes (at 1 au from sun and earth):
     if (hData[i].Filter != W_filter)
         hData[i].V = hData[i].V + 5.0*log10(1.0/E * 1.0/S);
@@ -263,14 +259,18 @@ for (i=0; i<*N_data; i++)
 // Explicitely assuming that ephemeride files contain three data points each    
 if (Nplot > 0)        
 {
+    ERR(cudaMallocHost(&hPlot, Nplot * sizeof(struct obs_data)));
     // Time step for plotting:
-    double h = hData[N_data-1].MJD / (Nplot - 1);
+    double h = hData[*N_data-1].MJD / (Nplot - 1);
     double tplot;
     int iplot;
+    // Changing the ephemeride times:
+    for (l=0; l<3; l++)
+        MJD0[l] = MJD0[l] - hMJD0;
     
-    for (iplot=0; i<Nplot; i++)
+    for (iplot=0; iplot<Nplot; iplot++)
     {
-        tplot = i * h;
+        tplot = iplot * h;
         
         // Handling two end points:
         if (iplot == 0 || iplot == Nplot-1)
@@ -279,7 +279,7 @@ if (Nplot > 0)
             if (iplot == 0)
                 i = 0;
             else
-                i = N_data - 1;
+                i = *N_data - 1;
             hPlot[iplot].MJD = hData[i].MJD;
             hPlot[iplot].E_x = hData[i].E_x;
             hPlot[iplot].E_y = hData[i].E_y;
@@ -290,9 +290,9 @@ if (Nplot > 0)
         }
         else
         {
-            hPlot[i].MJD = tplot;
+            hPlot[iplot].MJD = tplot;
             quadratic_interpolation(tplot, &(hPlot[iplot].E_x), &(hPlot[iplot].E_y), &(hPlot[iplot].E_z), &(hPlot[iplot].S_x), &(hPlot[iplot].S_y), &(hPlot[iplot].S_z));
-            hPlot[i].V = 0.0;            
+            hPlot[iplot].V = 0.0;            
         }
         
         

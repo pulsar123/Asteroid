@@ -35,7 +35,7 @@ const int N_FILTERS = 2;
 
 // GPU optimization parameters:
 const int BSIZE = 256;   // Threads in a block (64 ... 1024, step of 64); 384; 256
-const int N_BLOCKS = 56*400; // Should be proportional to the number of SMs (56 for P100); code runtime and memory consumed on GPU is proportional to this number; x1000 for 1 day
+const int N_BLOCKS = 56*1000; // Should be proportional to the number of SMs (56 for P100); code runtime and memory consumed on GPU is proportional to this number; x1000 for 1 day
 //const int N_SERIAL = 1; // number of serial iglob loops inside the kernel (>=1)
 //const int N_WARPS = BSIZE / 32;
 
@@ -48,7 +48,7 @@ const unsigned int N_STEPS = 100;
 #else
 const unsigned int N_STEPS = 100000; // Number of simplex steps per CUDA block (per simplex run) 27,000 per hour (N=7; BS=256; NB=56*4)
 #endif
-const unsigned int DT_DUMP = 30; // Time in seconds between results dump (to stdout)
+const unsigned int DT_DUMP = 300; // Time in seconds between results dump (to stdout)
 const int N_WRITE = 1; // Every N_WRITE dumps make a dump to results.dat file
 const CHI_FLOAT DX_INI = 0.01;  // Scale-free initial step
 const CHI_FLOAT SIZE_MIN = 1e-5; // Scale-free smallest simplex size (convergence criterion)
@@ -118,6 +118,8 @@ int gpu_prepare(int, int, int, int);
 
 __global__ void setup_kernel ( curandState *, unsigned long, CHI_FLOAT *);
 __global__ void chi2_gpu(struct obs_data *, int, int, curandState*, CHI_FLOAT*, struct parameters_struct*);
+__global__ void chi2_plot(struct obs_data *, int, int,
+                          struct parameters_struct *, struct obs_data *, int, struct parameters_struct);
   #ifdef DEBUG
   __global__ void debug_kernel(struct parameters_struct, struct obs_data *, int, int);
   #endif
@@ -155,6 +157,8 @@ EXTERN CHI_FLOAT * h_chi2_min;
 EXTERN long int * d_iloc_min;
 EXTERN long int * h_iloc_min;
 
+EXTERN __device__ CHI_FLOAT d_chi2_plot;
+EXTERN CHI_FLOAT h_chi2_plot;
     EXTERN __device__ CHI_FLOAT dLimits[2][N_PARAMS];
     EXTERN __device__ double d_Vmod[NPLOT];
     EXTERN double h_Vmod[NPLOT];
