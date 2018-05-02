@@ -352,6 +352,12 @@ __device__ int x2params(int LAM, CHI_FLOAT *x, struct parameters_struct *params,
         if (i==1 || i==2 || i==7 && LAM)
             continue;
         
+#ifdef RELAXED
+        // Relaxing L and c: (physical values are enforced below)
+        if (i==3 || i==4)
+            continue;
+#endif
+        
         if (x[i]<0.0 || x[i]>=1.0)
             failed = 1;
     }
@@ -368,6 +374,11 @@ __device__ int x2params(int LAM, CHI_FLOAT *x, struct parameters_struct *params,
     iparam++;  params->phi_0 =       x[iparam] * (sLimits[1][iparam]-sLimits[0][iparam]) + sLimits[0][iparam]; // 2
     iparam++;  params->L =           x[iparam] * (sLimits[1][iparam]-sLimits[0][iparam]) + sLimits[0][iparam]; // 3
     iparam++;  log_c =               x[iparam] * (sLimits[1][iparam]-sLimits[0][iparam]) + sLimits[0][iparam]; // 4
+#ifdef RELAXED
+// Enforcing minimum limits on physical values of L and c:
+    if (params->L<0.0 || log_c>0.0)
+        return 1;
+#endif
                params->c_tumb = exp(log_c);
 
     // Dependent parameters:

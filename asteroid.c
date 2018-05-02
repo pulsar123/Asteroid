@@ -31,7 +31,7 @@ int main (int argc,char **argv)
         params.theta_M = atof(argv[2]);
         params.phi_M = atof(argv[3]);
         params.phi_0 = atof(argv[4]);
-        params.L = atof(argv[5]);
+        params.L = 48.0*PI/atof(argv[5]);        
         params.c_tumb = atof(argv[6]);
         params.b_tumb = atof(argv[7]);
         params.Es = atof(argv[8]);
@@ -92,12 +92,12 @@ if (useGPU)
     // (3) Angular momentum L value, radians/day; if P is perdiod in hours, L=48*pi/P
     iparam++;
     hLimits[0][iparam] = 48.0*PI / 120;
-    hLimits[1][iparam] = 48.0*PI / 1;
+    hLimits[1][iparam] = 48.0*PI / 0.5;
     
     // (4) c_tumb (physical (tumbling) value of the axis c size; always smallest)
     iparam++;
-    hLimits[0][iparam] = log(0.02);
-    hLimits[1][iparam] = log(0.4);                
+    hLimits[0][iparam] = log(0.01);
+    hLimits[1][iparam] = log(0.99);                
     
     ERR(cudaMemcpyToSymbol(dLimits, hLimits, 2*N_PARAMS*sizeof(CHI_FLOAT), 0, cudaMemcpyHostToDevice));                
     
@@ -212,7 +212,7 @@ if (useGPU)
                     fprintf(fp,"%10.6f ",  params.theta_M);
                     fprintf(fp,"%10.6f ",  params.phi_M);
                     fprintf(fp,"%10.6f ",  params.phi_0);
-                    fprintf(fp,"%10.6f ",  params.L);
+                    fprintf(fp,"%10.6f ",  48*PI/params.L);
                     fprintf(fp,"%10.6f ",  params.c_tumb);
                     fprintf(fp,"%10.6f ",  params.b_tumb);
                     fprintf(fp,"%10.6f ",  params.Es);
@@ -243,7 +243,7 @@ if (useGPU)
             printf("%10.6f ",  params.theta_M);
             printf("%10.6f ",  params.phi_M);
             printf("%10.6f ",  params.phi_0);
-            printf("%10.6f ",  params.L);
+            printf("%10.6f ",  48*PI/params.L);
             printf("%10.6f ",  params.c_tumb);
             printf("%10.6f ",  params.b_tumb);
             printf("%10.6f ",  params.Es);
