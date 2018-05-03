@@ -317,6 +317,55 @@ __device__ CHI_FLOAT chi2one(struct parameters_struct params, struct obs_data *s
 
 //+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 
+__device__ void params2x(int *LAM, CHI_FLOAT *x, struct parameters_struct *params, CHI_FLOAT sLimits[][N_PARAMS])
+// Converting from dimensional params structure to dimensionless array x. Used for plotting. 
+{
+    double log_c; 
+    
+    int iparam = -1;
+    
+    iparam++; x[iparam] = (params->theta_M - sLimits[0][iparam]) / (sLimits[1][iparam] - sLimits[0][iparam]);
+    iparam++; x[iparam] = (params->phi_M - sLimits[0][iparam]) / (sLimits[1][iparam] - sLimits[0][iparam]);
+    iparam++; x[iparam] = (params->phi_0 - sLimits[0][iparam]) / (sLimits[1][iparam] - sLimits[0][iparam]);
+    iparam++; x[iparam] = (params->L - sLimits[0][iparam]) / (sLimits[1][iparam] - sLimits[0][iparam]);
+    iparam++; x[iparam] = (log(params->c_tumb) - sLimits[0][iparam]) / (sLimits[1][iparam] - sLimits[0][iparam]);
+    
+    // New method for b_tumb:
+    iparam++; x[iparam] = (params->c_tumb/params->b_tumb - params->c_tumb) / (1.0 - params->c_tumb);
+
+    double Is = (1.0+params->b_tumb*params->b_tumb) / (params->b_tumb*params->b_tumb+params->c_tumb*params->c_tumb);
+    double Ii = (1.0+params->c_tumb*params->c_tumb) / (params->b_tumb*params->b_tumb+params->c_tumb*params->c_tumb);
+
+    *LAM = params->Es > 1.0/Ii;
+    iparam++;
+    if (*LAM)
+    // LAM: Es>1.0/Ii
+        x[iparam] = 0.5*((params->Es-1.0/Ii) / (1.0-1.0/Ii) + 1.0);
+    else
+    // SAM: Es<1.0/Ii
+        x[iparam] = 0.5*(params->Es-1.0/Is) / (1.0/Ii - 1.0/Is);
+    
+    // Generating psi_0 (constrained by Es, Ii, Is)
+    iparam++;  // 7
+    double psi_min, psi_max;
+    if (LAM)
+    {
+        psi_min = 0.0;
+        psi_max = 2.0*PI;
+    }
+    else
+    {
+        psi_max = atan(sqrt(Ii*(Is-1.0/params->Es)/Is/(1.0/params->Es-Ii)));
+        psi_min = -psi_max;
+    }
+    x[iparam] = (params->psi_0 - psi_min) / (psi_max - psi_min);
+    
+    return;
+}    
+    
+    
+//+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
 __device__ int x2params(int LAM, CHI_FLOAT *x, struct parameters_struct *params, CHI_FLOAT sLimits[][N_PARAMS])
 {
     double log_c; 
