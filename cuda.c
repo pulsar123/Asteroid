@@ -418,27 +418,6 @@ __device__ int x2params(int LAM, CHI_FLOAT *x, struct parameters_struct *params,
 }
 
 
-//++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
-
-__global__ void chi2_plot (struct obs_data *dData, int N_data, int N_filters,
-                          struct parameters_struct *d_params, struct obs_data *dPlot, int Nplot, struct parameters_struct params)
-// CUDA kernel to compute plot data from input params structure
-{        
-    CHI_FLOAT delta_V[MAX_FILTERS];
-//    CHI_FLOAT chi2;
-    
-    
-    // Step one: computing constants for each filter using chi^2 method
-    d_chi2_plot = chi2one(params, dData, N_data, N_filters, delta_V, 0);
-    
-    // Step two: computing the Nplots data points using the delta_V values from above:
-
-    chi2one(params, dPlot, Nplot, N_filters, delta_V, Nplot);
-    
- return;   
-}
-
-
 
 //++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 
@@ -760,44 +739,78 @@ return;
 #endif
 
 
-/*            
-            // Initial angles values = the old values, from the previous i cycle:            
-            // RK4 method for solving ODEs with a fixed time step h
-            for (int l=0; l<N_steps; l++)
-            {
-                double y[3], K[3], f[3];
-                
-                y[0] = phi;
-                y[1] = theta;
-                y[2] = psi;
-                ODE_func (y, K, mu);
-                f[0] = phi + h/6.0 *K[0];
-                f[1] = theta + h/6.0 *K[1];
-                f[2] = psi + h/6.0 *K[2];
-        
-                y[0] = phi + 0.5*h*K[0];
-                y[1] = theta + 0.5*h*K[1];
-                y[2] = psi + 0.5*h*K[2];
-                ODE_func (y, K, mu);
-                f[0] = f[0] + h/3.0 *K[0];
-                f[1] = f[1] + h/3.0 *K[1];
-                f[2] = f[2] + h/3.0 *K[2];
-        
-                y[0] = phi + 0.5*h*K[0];
-                y[1] = theta + 0.5*h*K[1];
-                y[2] = psi + 0.5*h*K[2];
-                ODE_func (y, K, mu);
-                f[0] = f[0] + h/3.0 *K[0];
-                f[1] = f[1] + h/3.0 *K[1];
-                f[2] = f[2] + h/3.0 *K[2];
+//++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 
-                y[0] = phi + h*K[0];
-                y[1] = theta + h*K[1];
-                y[2] = psi + h*K[2];
-                ODE_func (y, K, mu);
-                phi = f[0] + h/6.0 *K[0];
-                theta = f[1] + h/6.0 *K[1];
-                psi = f[2] + h/6.0 *K[2];
+__global__ void chi2_plot (struct obs_data *dData, int N_data, int N_filters,
+                          struct parameters_struct *d_params, struct obs_data *dPlot, int Nplot, struct parameters_struct params)
+// CUDA kernel to compute plot data from input params structure
+{        
+    CHI_FLOAT delta_V[MAX_FILTERS];
+
+    // Global thread index for points:
+    int id = threadIdx.x + blockDim.x*blockIdx.x;
+    
+    if (id == 0 && blockIdx.y == 0)
+        // Doing once per kernel
+    {
+        // Step one: computing constants for each filter using chi^2 method, and the chi2 value
+        d_chi2_plot = chi2one(params, dData, N_data, N_filters, delta_V, 0);
+    
+        // Step two: computing the Nplots data points using the delta_V values from above:
+        chi2one(params, dPlot, Nplot, N_filters, delta_V, Nplot);
+
+    }
+    
+
+    // Parameter index:
+    int iparam = blockIdx.y;            
+    // Changes from -DELTA_MAX to +DELTA_MAX:
+    // With id+1.0 we ensure that delta=0 corresponds to one of the threads
+    double delta = 2.0 * DELTA_MAX * ((id+1.0)/blockDim.x/gridDim.x - 0.5);
+    
+    // Modyfing slightly the corresponding parameter:
+    switch (iparam)
+    {
+        case 0:
+        params.theta_M = params.theta_M + delta * (dLimits[1][iparam] - dLimits[0][iparam]);
+        break;
+
+        case 1:
+        params.phi_M = params.phi_M + delta * (dLimits[1][iparam] - dLimits[0][iparam]);
+        break;
         
-            }
-            */
+        case 2:
+        params.phi_0 = params.phi_0 + delta * (dLimits[1][iparam] - dLimits[0][iparam]);
+        break;
+        
+        case 3:
+        params.L = params.L + delta * (dLimits[1][iparam] - dLimits[0][iparam]);
+        break;
+        
+        case 4:
+        params.c_tumb = params.c_tumb * exp(delta * (dLimits[1][iparam] - dLimits[0][iparam]));
+        break;
+        
+        case 5:
+//        params.b_tumb = params.b_tumb * exp(delta * (dLimits[1][4] - dLimits[0][4]));
+        params.b_tumb = params.b_tumb * exp(delta * (-log(params.c_tumb)));
+        break;
+
+        case 6:
+        params.Es = params.Es + delta*0.5;  //??
+        break;
+        
+        case 7:
+        params.psi_0 = params.psi_0 + delta*2.0*PI;
+        break;                    
+    }
+    
+    // Computing the chi2 for the shifted parameter:
+    d_chi2_lines[iparam][id] = chi2one(params, dData, N_data, N_filters, delta_V, 0);
+    
+    
+    
+ return;   
+}
+
+

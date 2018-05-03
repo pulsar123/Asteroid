@@ -71,6 +71,10 @@ const int MAX_DATA = 400;
 
 // Number of time points for plotting
 const int NPLOT = 6000;
+// Times BSIZE will give the total number of points for lines:
+const int C_POINTS = 10;
+// Maximum relative deviation for each parameter when computing lines:
+const double DELTA_MAX = 0.001;
 
 // Speed of light (au/day):
 const double light_speed = 173.144632674;
@@ -162,6 +166,8 @@ EXTERN CHI_FLOAT h_chi2_plot;
     EXTERN __device__ CHI_FLOAT dLimits[2][N_PARAMS];
     EXTERN __device__ double d_Vmod[NPLOT];
     EXTERN double h_Vmod[NPLOT];
+EXTERN __device__ CHI_FLOAT d_chi2_lines[N_PARAMS][BSIZE*C_POINTS];
+EXTERN CHI_FLOAT h_chi2_lines[N_PARAMS][BSIZE*C_POINTS];
     EXTERN CHI_FLOAT *d_f;
     EXTERN struct parameters_struct *d_params;
     EXTERN __device__ unsigned long long int d_sum;

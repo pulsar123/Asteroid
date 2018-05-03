@@ -292,11 +292,14 @@ if (useGPU)
     {
         printf("\n*** Plotting ***\n\n");
         
+        dim3 NB(C_POINTS, N_PARAMS);
+        
         // Running the CUDA kernel to produce the plot data from params:
-        chi2_plot<<<1, 1>>>(dData, N_data, N_filters, d_params, dPlot, Nplot, params);
+        chi2_plot<<<NB, BSIZE>>>(dData, N_data, N_filters, d_params, dPlot, Nplot, params);
         
         ERR(cudaMemcpyFromSymbol(&h_Vmod, d_Vmod, Nplot*sizeof(double), 0, cudaMemcpyDeviceToHost));
         ERR(cudaMemcpyFromSymbol(&h_chi2_plot, d_chi2_plot, sizeof(CHI_FLOAT), 0, cudaMemcpyDeviceToHost));
+        ERR(cudaMemcpyFromSymbol(&h_chi2_lines, d_chi2_lines, sizeof(h_chi2_lines), 0, cudaMemcpyDeviceToHost));
         ERR(cudaDeviceSynchronize());
         
         printf("chi2_plot = %13.6e\n", h_chi2_plot);
@@ -310,6 +313,22 @@ if (useGPU)
         for (i=0; i<N_data; i++)
             fprintf(fp, "%13.6e %13.6e %13.6e w\n", hData[i].MJD, hData[i].V, 1/sqrt(hData[i].w));
         fclose(fp);
+
+        fp = fopen("lines.dat", "w");
+        for (i=0; i<C_POINTS*BSIZE; i++)
+        {
+            fprintf(fp, "%13.6e ", 2.0 * DELTA_MAX * ((i+1.0)/(C_POINTS*BSIZE) - 0.5));
+            for (int iparam=0; iparam<N_PARAMS; iparam++)
+            {
+                CHI_FLOAT xx = h_chi2_lines[iparam][i];
+                if (isnan(xx))
+                    xx=1e30;
+                fprintf(fp, "%13.6e ", xx);
+            }
+            fprintf(fp, "\n");
+        }
+        fclose(fp);
+        
     }        
     
 }
