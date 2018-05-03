@@ -91,13 +91,13 @@ if (useGPU)
     
     // (3) Angular momentum L value, radians/day; if P is perdiod in hours, L=48*pi/P
     iparam++;
-    hLimits[0][iparam] = 48.0*PI / 120;
-    hLimits[1][iparam] = 48.0*PI / 0.5;
+    hLimits[0][iparam] = 48.0*PI / 8.75;
+    hLimits[1][iparam] = 48.0*PI / 0.4;
     
     // (4) c_tumb (physical (tumbling) value of the axis c size; always smallest)
     iparam++;
     hLimits[0][iparam] = log(0.01);
-    hLimits[1][iparam] = log(0.99);                
+    hLimits[1][iparam] = log(0.4);                
     
     ERR(cudaMemcpyToSymbol(dLimits, hLimits, 2*N_PARAMS*sizeof(CHI_FLOAT), 0, cudaMemcpyHostToDevice));                
     
@@ -111,8 +111,8 @@ if (useGPU)
         // Initializing the device random number generator:
         curandState* d_states;
         ERR(cudaMalloc ( &d_states, N_BLOCKS*BSIZE*sizeof( curandState ) ));
-        // setup seeds, initialize d_f
-        setup_kernel <<< N_BLOCKS, BSIZE >>> ( d_states, (unsigned long)(time(NULL)), d_f );
+        // setup seeds, initialize d_f, d_steps
+        setup_kernel <<< N_BLOCKS, BSIZE >>> ( d_states, (unsigned long)(time(NULL)), d_f, d_steps );
         
         ERR(cudaDeviceSynchronize());    
         
@@ -133,7 +133,7 @@ if (useGPU)
         #endif        
         
         // The kernel (using stream 0):
-        chi2_gpu<<<N_BLOCKS, BSIZE, 0, ID[0]>>>(dData, N_data, N_filters, d_states, d_f, d_params);
+        chi2_gpu<<<N_BLOCKS, BSIZE, 0, ID[0]>>>(dData, N_data, N_filters, d_states, d_f, d_params, d_steps);
         
         #ifdef TIMING
         cudaEventRecord(stop, 0);
@@ -193,6 +193,7 @@ if (useGPU)
             if (h_block_counter == 0)
                 continue;
             ERR(cudaMemcpyAsync(h_f, d_f, h_block_counter * sizeof(CHI_FLOAT), cudaMemcpyDeviceToHost, ID[1]));
+            ERR(cudaMemcpyAsync(h_steps, d_steps, h_block_counter * sizeof(int), cudaMemcpyDeviceToHost, ID[1]));
             ERR(cudaMemcpyAsync(h_params, d_params, h_block_counter * sizeof(struct parameters_struct), cudaMemcpyDeviceToHost, ID[1]));
             ERR(cudaMemcpyFromSymbolAsync(&h_min, d_min, sizeof(int), 0, cudaMemcpyDeviceToHost, ID[1]));
             ERR(cudaMemcpyFromSymbolAsync(&h_max, d_max, sizeof(int), 0, cudaMemcpyDeviceToHost, ID[1]));
@@ -209,6 +210,7 @@ if (useGPU)
                 {
                     params = h_params[i];
                     fprintf(fp,"%13.6e ",  h_f[i]);
+                    fprintf(fp,"%8d ",  h_steps[i]);
                     fprintf(fp,"%10.6f ",  params.theta_M);
                     fprintf(fp,"%10.6f ",  params.phi_M);
                     fprintf(fp,"%10.6f ",  params.phi_0);
@@ -240,6 +242,7 @@ if (useGPU)
             // Priting the best result:
             params = h_params[i_best];
             printf("%13.6e ",  h_f[i_best]);
+            printf("%8d ",  h_steps[i_best]);
             printf("%10.6f ",  params.theta_M);
             printf("%10.6f ",  params.phi_M);
             printf("%10.6f ",  params.phi_0);

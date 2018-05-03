@@ -315,34 +315,11 @@ __device__ CHI_FLOAT chi2one(struct parameters_struct params, struct obs_data *s
 }           
 
 
-//--------------------------------------------------------------------------------------------------------------------------------------------------------------------------
-__global__ void setup_kernel ( curandState * state, unsigned long seed, CHI_FLOAT *d_f )
-{
-    // Global thread index:
-    unsigned long long id = blockIdx.x*blockDim.x + threadIdx.x;
-    // Generating initial states for all threads in a kernel:
-    curand_init ( (unsigned long long)seed, id, 0, &state[id] );
-    
-    if (threadIdx.x==0)
-        d_f[blockIdx.x] = 1e30;    
-
-    if (threadIdx.x==0 && blockIdx.x==0)
-    {
-        d_block_counter = 0;
-        d_sum = 0;
-        d_sum2 = 0;
-        d_min = 2e9;
-        d_max = 0;
-    }
-    
-    return;
-} 
-
 //+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 
 __device__ int x2params(int LAM, CHI_FLOAT *x, struct parameters_struct *params, CHI_FLOAT sLimits[][N_PARAMS])
 {
-    double log_b, log_c; 
+    double log_c; 
     
     // Checking if we went beyond the limits:
     int failed = 0;
@@ -382,8 +359,11 @@ __device__ int x2params(int LAM, CHI_FLOAT *x, struct parameters_struct *params,
                params->c_tumb = exp(log_c);
 
     // Dependent parameters:
-    iparam++;  log_b =              x[iparam] * log_c; // 5
-               params->b_tumb = exp(log_b);
+//    iparam++;  log_b =              x[iparam] * log_c; // 5
+//               params->b_tumb = exp(log_b);
+// New: in this units, best results distribution looks much flatter; it gurantees b=c...1:
+// It can become unstable or fail if c_tumb->0               
+    iparam++;  params->b_tumb = 1.0/(x[iparam]*(1.0/params->c_tumb-1.0)+1.0);
     
     // Derived values:
     double Is = (1.0+params->b_tumb*params->b_tumb) / (params->b_tumb*params->b_tumb+params->c_tumb*params->c_tumb);
@@ -422,7 +402,7 @@ __device__ int x2params(int LAM, CHI_FLOAT *x, struct parameters_struct *params,
 //++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 
 __global__ void chi2_gpu (struct obs_data *dData, int N_data, int N_filters,
-                          curandState* globalState, CHI_FLOAT *d_f, struct parameters_struct *d_params)
+                          curandState* globalState, CHI_FLOAT *d_f, struct parameters_struct *d_params, int *d_steps)
 // CUDA kernel computing chi^2 on GPU
 {        
     __shared__ struct obs_data sData[MAX_DATA];
@@ -700,6 +680,7 @@ __global__ void chi2_gpu (struct obs_data *dData, int N_data, int N_filters,
         d_f[blockID] = s_f[0];
         x2params(LAM, x[ind[0]],&params,sLimits);
         d_params[blockID] = params;
+        d_steps[blockID] = l;
     }
     
     // Very expensive: probably should only be used for debugging:
@@ -812,5 +793,35 @@ __global__ void chi2_plot (struct obs_data *dData, int N_data, int N_filters,
     
  return;   
 }
+
+
+
+//--------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+__global__ void setup_kernel ( curandState * state, unsigned long seed, CHI_FLOAT *d_f, int *d_steps )
+{
+    // Global thread index:
+    unsigned long long id = blockIdx.x*blockDim.x + threadIdx.x;
+    // Generating initial states for all threads in a kernel:
+    curand_init ( (unsigned long long)seed, id, 0, &state[id] );
+    
+    if (threadIdx.x==0)
+    {
+        d_f[blockIdx.x] = 1e30;    
+        d_steps[blockIdx.x] = -1;    
+    }
+
+    if (threadIdx.x==0 && blockIdx.x==0)
+    {
+        d_block_counter = 0;
+        d_sum = 0;
+        d_sum2 = 0;
+        d_min = 2e9;
+        d_max = 0;
+    }
+    
+    return;
+} 
+
+
 
 
