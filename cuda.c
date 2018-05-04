@@ -257,12 +257,20 @@ __device__ CHI_FLOAT chi2one(struct parameters_struct params, struct obs_data *s
         // Now that we converted the Earth and Sun vectors to the internal asteroidal basis (a,b,c),
         // we can apply the formalism of Muinonen & Lumme, 2015 to calculate the brightness of the asteroid.
         
+#ifdef BC
+        double b = params.b;
+        double c = params.c;
+#else
+        double b = params.b_tumb;
+        double c = params.c_tumb;
+#endif        
+        
         // The two scalars from eq.(12) of Muinonen & Lumme, 2015; assuming a=1
-        scalar_Sun   = sqrt(Sp_x*Sp_x + Sp_y*Sp_y/(params.b_tumb*params.b_tumb) + Sp_z*Sp_z/(params.c_tumb*params.c_tumb));
-        scalar_Earth = sqrt(Ep_x*Ep_x + Ep_y*Ep_y/(params.b_tumb*params.b_tumb) + Ep_z*Ep_z/(params.c_tumb*params.c_tumb));
+        scalar_Sun   = sqrt(Sp_x*Sp_x + Sp_y*Sp_y/(b*b) + Sp_z*Sp_z/(c*c));
+        scalar_Earth = sqrt(Ep_x*Ep_x + Ep_y*Ep_y/(b*b) + Ep_z*Ep_z/(c*c));
         
         // From eq.(13):
-        cos_alpha_p = (Sp_x*Ep_x + Sp_y*Ep_y/(params.b_tumb*params.b_tumb) + Sp_z*Ep_z/(params.c_tumb*params.c_tumb)) / (scalar_Sun * scalar_Earth);
+        cos_alpha_p = (Sp_x*Ep_x + Sp_y*Ep_y/(b*b) + Sp_z*Ep_z/(c*c)) / (scalar_Sun * scalar_Earth);
         sin_alpha_p = sqrt(1.0 - cos_alpha_p*cos_alpha_p);
         alpha_p = atan2(sin_alpha_p, cos_alpha_p);
         
@@ -274,7 +282,7 @@ __device__ CHI_FLOAT chi2one(struct parameters_struct params, struct obs_data *s
         
         // Asteroid's model visual brightness, from eq.(10):
         //!!! Not using P(alpha) - single scattering phase function!
-        Vmod = -2.5*log10(params.b_tumb*params.c_tumb * scalar_Sun*scalar_Earth/scalar * (cos(lambda_p-alpha_p) + cos_lambda_p +
+        Vmod = -2.5*log10(b*c * scalar_Sun*scalar_Earth/scalar * (cos(lambda_p-alpha_p) + cos_lambda_p +
         sin_lambda_p*sin(lambda_p-alpha_p) * log(1.0 / tan(0.5*lambda_p) / tan(0.5*(alpha_p-lambda_p)))));
                         
         if (Nplot > 0)
@@ -317,11 +325,9 @@ __device__ CHI_FLOAT chi2one(struct parameters_struct params, struct obs_data *s
 
 //+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 
-__device__ void params2x(int *LAM, CHI_FLOAT *x, struct parameters_struct *params, CHI_FLOAT sLimits[][N_PARAMS])
+__device__ void params2x(int *LAM, CHI_FLOAT *x, struct parameters_struct *params, CHI_FLOAT sLimits[][N_INDEPEND])
 // Converting from dimensional params structure to dimensionless array x. Used for plotting. 
-{
-    double log_c; 
-    
+{    
     int iparam = -1;
     
     iparam++; x[iparam] = (params->theta_M - sLimits[0][iparam]) / (sLimits[1][iparam] - sLimits[0][iparam]);
@@ -366,7 +372,7 @@ __device__ void params2x(int *LAM, CHI_FLOAT *x, struct parameters_struct *param
     
 //+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 
-__device__ int x2params(int LAM, CHI_FLOAT *x, struct parameters_struct *params, CHI_FLOAT sLimits[][N_PARAMS])
+__device__ int x2params(int LAM, CHI_FLOAT *x, struct parameters_struct *params, CHI_FLOAT sLimits[][N_INDEPEND])
 {
     double log_c; 
     
@@ -383,7 +389,10 @@ __device__ int x2params(int LAM, CHI_FLOAT *x, struct parameters_struct *params,
         if (i==3 || i==4)
             continue;
 #endif
-        
+#ifdef BC
+        if (i>=N_PARAMS-2)
+            continue;
+#endif        
         if (x[i]<0.0 || x[i]>=1.0)
             failed = 1;
     }
@@ -408,11 +417,11 @@ __device__ int x2params(int LAM, CHI_FLOAT *x, struct parameters_struct *params,
                params->c_tumb = exp(log_c);
 
     // Dependent parameters:
-//    iparam++;  log_b =              x[iparam] * log_c; // 5
-//               params->b_tumb = exp(log_b);
+    iparam++;  double log_b =              x[iparam] * log_c; // 5
+               params->b_tumb = exp(log_b);
 // New: in this units, best results distribution looks much flatter; it gurantees b=c...1:
 // It can become unstable or fail if c_tumb->0               
-    iparam++;  params->b_tumb = 1.0/(x[iparam]*(1.0/params->c_tumb-1.0)+1.0);
+//    iparam++;  params->b_tumb = 1.0/(x[iparam]*(1.0/params->c_tumb-1.0)+1.0);
     
     // Derived values:
     double Is = (1.0+params->b_tumb*params->b_tumb) / (params->b_tumb*params->b_tumb+params->c_tumb*params->c_tumb);
@@ -442,6 +451,18 @@ __device__ int x2params(int LAM, CHI_FLOAT *x, struct parameters_struct *params,
         psi_min = -psi_max;
     }
     params->psi_0 = x[iparam]*(psi_max-psi_min) + psi_min;
+
+#ifdef BC
+    iparam++;  double log_c2 = x[iparam] * (sLimits[1][4]-sLimits[0][4]) + sLimits[0][4]; // 8
+    params->c = exp(log_c2);
+    iparam++;  double log_b2 =              x[iparam] * log_c2; // 9
+               params->b = exp(log_b2);
+//    iparam++;  double log_b = x[iparam] * (sLimits[1][4]-sLimits[0][4]) + sLimits[0][4]; // 9
+//    params->b = exp(log_b);
+//    if (fabs(log_c2-log_c)>BC_DEV_MAX || fabs(log_b-log(params->b_tumb))>BC_DEV_MAX)
+    if (fabs(log_c2-log_c) > BC_DEV_MAX || fabs(log_b2-log_b) > BC_DEV_MAX)
+        return 1;
+#endif    
     
     return 0;
 }
@@ -455,7 +476,7 @@ __global__ void chi2_gpu (struct obs_data *dData, int N_data, int N_filters,
 // CUDA kernel computing chi^2 on GPU
 {        
     __shared__ struct obs_data sData[MAX_DATA];
-    __shared__ CHI_FLOAT sLimits[2][N_PARAMS];
+    __shared__ CHI_FLOAT sLimits[2][N_INDEPEND];
     __shared__ volatile CHI_FLOAT s_f[BSIZE];
     __shared__ volatile int s_thread_id[BSIZE];
     int i, j;
@@ -494,6 +515,14 @@ __global__ void chi2_gpu (struct obs_data *dData, int N_data, int N_filters,
     // Initial random point
     for (i=0; i<N_PARAMS; i++)
     {
+#ifdef BC
+        // Initial vales of c/b are equal to initial values of c_tumb/b_tumb:
+        if (i >= N_PARAMS-2)
+        {
+            x[0][i] = x[0][i-4];
+            continue;
+        }
+#endif        
         float r = curand_uniform(&localState);
         if (i == 6)
         {
@@ -833,6 +862,15 @@ __global__ void chi2_plot (struct obs_data *dData, int N_data, int N_filters,
         case 7:
         params.psi_0 = params.psi_0 + delta*2.0*PI;
         break;                    
+#ifdef BC
+        case 8:
+        params.c = params.c * exp(delta * (dLimits[1][4] - dLimits[0][4]));
+        break;
+
+        case 9:
+        params.b = params.b * exp(delta * (dLimits[1][4] - dLimits[0][4]));
+        break;
+#endif        
     }
     
     // Computing the chi2 for the shifted parameter:

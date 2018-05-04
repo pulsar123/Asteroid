@@ -24,13 +24,20 @@
 //#define DUMP_RED_BLUE
 
 // Total number of parameters (inpendent and dependent):
+#ifdef BC
+const int N_PARAMS = 10;
+#else
 const int N_PARAMS = 8;
+#endif
 
 // Number of independent parameters:
 const int N_INDEPEND = 5;
 
 // Maximum number of filters:
 const int N_FILTERS = 1;
+
+// When b and c parameters are used, maximum ln deviation from corresponding b_tumb, c_tumb during optimization:
+const float BC_DEV_MAX = 2.30; // 2.30: 10x
 
 
 // GPU optimization parameters:
@@ -46,9 +53,9 @@ const double TIME_STEP = 1e-2;  // 3e-3
 #ifdef TIMING
 const unsigned int N_STEPS = 100; 
 #else
-const unsigned int N_STEPS = 1000000; // Number of simplex steps per CUDA block (per simplex run) 27,000 per hour (N=7; BS=256; NB=56*4)
+const unsigned int N_STEPS = 7500; // Number of simplex steps per CUDA block (per simplex run) 27,000 per hour (N=7; BS=256; NB=56*4)
 #endif
-const unsigned int DT_DUMP = 600; // Time in seconds between results dump (to stdout)
+const unsigned int DT_DUMP = 30; // Time in seconds between results dump (to stdout)
 const int N_WRITE = 1; // Every N_WRITE dumps make a dump to results.dat file
 const CHI_FLOAT DX_INI = 0.01;  // Scale-free initial step
 const CHI_FLOAT SIZE_MIN = 1e-5; // Scale-free smallest simplex size (convergence criterion)
@@ -91,6 +98,8 @@ struct parameters_struct {
     double b_tumb;  // physical (tumbling) value of the axis b size; c_tumb < b_tumb < 1
     double Es;      // dimensionless total energy (asteroid's excitation degree), constrained by b_tumb, c_tumb
     double psi_0;   // initial Euler angle of rotation of the body, constrained by b_tumb, c_tumb, Es
+    double c;       // Ellipsoid axis c/a size, for brightness purposes
+    double b;       // Ellipsoid axis b/a size, for brightness purposes
 };
 
 // Observational data arrays:
@@ -163,7 +172,7 @@ EXTERN long int * h_iloc_min;
 
 EXTERN __device__ CHI_FLOAT d_chi2_plot;
 EXTERN CHI_FLOAT h_chi2_plot;
-    EXTERN __device__ CHI_FLOAT dLimits[2][N_PARAMS];
+    EXTERN __device__ CHI_FLOAT dLimits[2][N_INDEPEND];
     EXTERN __device__ double d_Vmod[NPLOT];
     EXTERN double h_Vmod[NPLOT];
 EXTERN __device__ CHI_FLOAT d_chi2_lines[N_PARAMS][BSIZE*C_POINTS];

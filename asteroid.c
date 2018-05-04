@@ -26,7 +26,7 @@ int main (int argc,char **argv)
     int Nplot = 0;
     
     
-    if (argc == N_PARAMS+2)
+    if (argc == 10 || argc == 12)
     {
         params.theta_M = atof(argv[2]);
         params.phi_M = atof(argv[3]);
@@ -36,6 +36,11 @@ int main (int argc,char **argv)
         params.b_tumb = atof(argv[7]);
         params.Es = atof(argv[8]);
         params.psi_0 = atof(argv[9]);
+        if (argc == 12)
+        {
+            params.c = atof(argv[10]);
+            params.b = atof(argv[11]);
+        }
         Nplot = NPLOT; // Number of plot points
     }
     else if (argc != 3)
@@ -70,7 +75,7 @@ if (useGPU)
     gpu_prepare(N_data, N_filters, N_threads, Nplot);
     
     // &&&        
-    CHI_FLOAT hLimits[2][N_PARAMS];
+    CHI_FLOAT hLimits[2][N_INDEPEND];
     int iparam = -1;
     // Limits for each independent model parameter during optimization:
     
@@ -99,7 +104,7 @@ if (useGPU)
     hLimits[0][iparam] = log(0.01);
     hLimits[1][iparam] = log(0.4);                
     
-    ERR(cudaMemcpyToSymbol(dLimits, hLimits, 2*N_PARAMS*sizeof(CHI_FLOAT), 0, cudaMemcpyHostToDevice));                
+    ERR(cudaMemcpyToSymbol(dLimits, hLimits, 2*N_INDEPEND*sizeof(CHI_FLOAT), 0, cudaMemcpyHostToDevice));                
     
     
     if (Nplot == 0)
@@ -219,6 +224,10 @@ if (useGPU)
                     fprintf(fp,"%10.6f ",  params.b_tumb);
                     fprintf(fp,"%10.6f ",  params.Es);
                     fprintf(fp,"%10.6f ",  params.psi_0);
+#ifdef BC
+                    fprintf(fp,"%10.6f ",  params.c);
+                    fprintf(fp,"%10.6f ",  params.b);
+#endif                    
                     fprintf(fp,"\n");
                 }
                 fclose(fp);
@@ -250,7 +259,11 @@ if (useGPU)
             printf("%10.6f ",  params.c_tumb);
             printf("%10.6f ",  params.b_tumb);
             printf("%10.6f ",  params.Es);
-            printf("%10.6f ",  params.psi_0);            
+            printf("%10.6f ",  params.psi_0);  
+#ifdef BC
+            printf("%10.6f ",  params.c);
+            printf("%10.6f ",  params.b);
+#endif            
             printf("%d ",  h_block_counter); // Number of finished blocks
             printf("%d ",  h_min);  // Min and max number of Simplex steps in all finished blocks
             printf("%d ",  h_max);
