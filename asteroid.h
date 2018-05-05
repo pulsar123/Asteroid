@@ -37,12 +37,14 @@ const int N_INDEPEND = 5;
 const int N_FILTERS = 1;
 
 // When b and c parameters are used, maximum ln deviation from corresponding b_tumb, c_tumb during optimization:
-const float BC_DEV_MAX = 2.30; // 2.30: 10x
+const float BC_DEV_MAX = 100;  //2.3
+// The same, but only during the initial value generation (when RANDOM_BC option is used):
+const float BC_DEV1 = 1.1; //1.3
 
 
 // GPU optimization parameters:
 const int BSIZE = 256;   // Threads in a block (64 ... 1024, step of 64); 384; 256
-const int N_BLOCKS = 56*1000; // Should be proportional to the number of SMs (56 for P100); code runtime and memory consumed on GPU is proportional to this number; x1000 for 1 day
+const int N_BLOCKS = 56*5000; // Should be proportional to the number of SMs (56 for P100); code runtime and memory consumed on GPU is proportional to this number; x1000 for 1 day
 //const int N_SERIAL = 1; // number of serial iglob loops inside the kernel (>=1)
 //const int N_WARPS = BSIZE / 32;
 
@@ -55,7 +57,7 @@ const unsigned int N_STEPS = 100;
 #else
 const unsigned int N_STEPS = 7500; // Number of simplex steps per CUDA block (per simplex run) 27,000 per hour (N=7; BS=256; NB=56*4)
 #endif
-const unsigned int DT_DUMP = 30; // Time in seconds between results dump (to stdout)
+const unsigned int DT_DUMP = 600; // Time in seconds between results dump (to stdout)
 const int N_WRITE = 1; // Every N_WRITE dumps make a dump to results.dat file
 const CHI_FLOAT DX_INI = 0.01;  // Scale-free initial step
 const CHI_FLOAT SIZE_MIN = 1e-5; // Scale-free smallest simplex size (convergence criterion)

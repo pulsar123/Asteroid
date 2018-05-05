@@ -385,14 +385,15 @@ __device__ int x2params(int LAM, CHI_FLOAT *x, struct parameters_struct *params,
             continue;
         
 #ifdef RELAXED
-        // Relaxing L and c: (physical values are enforced below)
+        // Relaxing L and c_tumb: (physical values are enforced below)
         if (i==3 || i==4)
             continue;
-#endif
-#ifdef BC
-        if (i>=N_PARAMS-2)
+ #ifdef BC        
+        // Relaxing c:
+        if (i==N_PARAMS-2)
             continue;
-#endif        
+ #endif        
+#endif
         if (x[i]<0.0 || x[i]>=1.0)
             failed = 1;
     }
@@ -453,15 +454,30 @@ __device__ int x2params(int LAM, CHI_FLOAT *x, struct parameters_struct *params,
     params->psi_0 = x[iparam]*(psi_max-psi_min) + psi_min;
 
 #ifdef BC
+ #ifdef RANDOM_BC
+    iparam++;  double log_c_dev = (x[iparam]-0.5)*BC_DEV1*2; // 8
+    params->c = exp(log_c_dev + log_c);
+    iparam++;  double log_b_dev = (x[iparam]-0.5)*BC_DEV1*2; // 9
+    params->b = exp(log_b_dev + log_b);
+    if (fabs(log_c_dev) > BC_DEV_MAX || fabs(log_b_dev) > BC_DEV_MAX)
+        return 1;
+ #else    
     iparam++;  double log_c2 = x[iparam] * (sLimits[1][4]-sLimits[0][4]) + sLimits[0][4]; // 8
+  #ifdef RELAXED
+  // Minimum enforcement on c2 in relaxed mode:
+    if (log_c2 > 0.0)
+        return 1;
+  #endif  
     params->c = exp(log_c2);
+    // Enforcing the same order (a=1>b>c) aw with tumb values (a_tumb=1>b_tumb>c_tumb):
     iparam++;  double log_b2 =              x[iparam] * log_c2; // 9
                params->b = exp(log_b2);
+    if (fabs(log_c2-log_c) > BC_DEV_MAX || fabs(log_b2-log_b) > BC_DEV_MAX)
+        return 1;
+ #endif               
 //    iparam++;  double log_b = x[iparam] * (sLimits[1][4]-sLimits[0][4]) + sLimits[0][4]; // 9
 //    params->b = exp(log_b);
 //    if (fabs(log_c2-log_c)>BC_DEV_MAX || fabs(log_b-log(params->b_tumb))>BC_DEV_MAX)
-    if (fabs(log_c2-log_c) > BC_DEV_MAX || fabs(log_b2-log_b) > BC_DEV_MAX)
-        return 1;
 #endif    
     
     return 0;
@@ -516,12 +532,14 @@ __global__ void chi2_gpu (struct obs_data *dData, int N_data, int N_filters,
     for (i=0; i<N_PARAMS; i++)
     {
 #ifdef BC
+ #ifndef RANDOM_BC
         // Initial vales of c/b are equal to initial values of c_tumb/b_tumb:
         if (i >= N_PARAMS-2)
         {
             x[0][i] = x[0][i-4];
             continue;
         }
+ #endif        
 #endif        
         float r = curand_uniform(&localState);
         if (i == 6)

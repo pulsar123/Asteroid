@@ -96,13 +96,13 @@ if (useGPU)
     
     // (3) Angular momentum L value, radians/day; if P is perdiod in hours, L=48*pi/P
     iparam++;
-    hLimits[0][iparam] = 48.0*PI / 8.75;
-    hLimits[1][iparam] = 48.0*PI / 0.4;
+    hLimits[0][iparam] = 48.0*PI / 8.5;
+    hLimits[1][iparam] = 48.0*PI / 0.1;
     
     // (4) c_tumb (physical (tumbling) value of the axis c size; always smallest)
     iparam++;
     hLimits[0][iparam] = log(0.01);
-    hLimits[1][iparam] = log(0.4);                
+    hLimits[1][iparam] = log(0.99);                
     
     ERR(cudaMemcpyToSymbol(dLimits, hLimits, 2*N_INDEPEND*sizeof(CHI_FLOAT), 0, cudaMemcpyHostToDevice));                
     
