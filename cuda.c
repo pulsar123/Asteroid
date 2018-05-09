@@ -327,6 +327,7 @@ __device__ CHI_FLOAT chi2one(struct parameters_struct params, struct obs_data *s
 
 __device__ void params2x(int *LAM, CHI_FLOAT *x, struct parameters_struct *params, CHI_FLOAT sLimits[][N_INDEPEND])
 // Converting from dimensional params structure to dimensionless array x. Used for plotting. 
+// Broken for now!
 {    
     int iparam = -1;
     

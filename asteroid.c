@@ -161,17 +161,17 @@ if (useGPU)
          *                {
          *                    params = h_params[i];
          *                    fprintf(fp,"%13.6e ",  h_f[i]);
-         *                    fprintf(fp,"%10.6f ",  params.b);
-         *                    fprintf(fp,"%10.6f ",  params.P*24);
-         *                    fprintf(fp,"%10.6f ",  params.c);
-         *                    fprintf(fp,"%10.6f ",  params.cos_phi_b);
-         *                    fprintf(fp,"%10.6f ",  params.theta_M);
-         *                    fprintf(fp,"%10.6f ",  params.phi_M);
-         *                    fprintf(fp,"%10.6f ",  params.phi_a0);
+         *                    fprintf(fp,"%15.11f ",  params.b);
+         *                    fprintf(fp,"%15.11f ",  params.P*24);
+         *                    fprintf(fp,"%15.11f ",  params.c);
+         *                    fprintf(fp,"%15.11f ",  params.cos_phi_b);
+         *                    fprintf(fp,"%15.11f ",  params.theta_M);
+         *                    fprintf(fp,"%15.11f ",  params.phi_M);
+         *                    fprintf(fp,"%15.11f ",  params.phi_a0);
          * #ifdef TUMBLE
-         *                    fprintf(fp,"%10.6f ",  params.P_pr*24);
-         *                    fprintf(fp,"%10.6f ",  params.theta_pr);
-         *                    fprintf(fp,"%10.6f ",  params.phi_n0);
+         *                    fprintf(fp,"%15.11f ",  params.P_pr*24);
+         *                    fprintf(fp,"%15.11f ",  params.theta_pr);
+         *                    fprintf(fp,"%15.11f ",  params.phi_n0);
          * #endif                    
          *                    fprintf(fp,"\n");
     }
@@ -216,17 +216,17 @@ if (useGPU)
                     params = h_params[i];
                     fprintf(fp,"%13.6e ",  h_f[i]);
                     fprintf(fp,"%8d ",  h_steps[i]);
-                    fprintf(fp,"%10.6f ",  params.theta_M);
-                    fprintf(fp,"%10.6f ",  params.phi_M);
-                    fprintf(fp,"%10.6f ",  params.phi_0);
-                    fprintf(fp,"%10.6f ",  48*PI/params.L);
-                    fprintf(fp,"%10.6f ",  params.c_tumb);
-                    fprintf(fp,"%10.6f ",  params.b_tumb);
-                    fprintf(fp,"%10.6f ",  params.Es);
-                    fprintf(fp,"%10.6f ",  params.psi_0);
+                    fprintf(fp,"%15.11f ",  params.theta_M);
+                    fprintf(fp,"%15.11f ",  params.phi_M);
+                    fprintf(fp,"%15.11f ",  params.phi_0);
+                    fprintf(fp,"%15.11f ",  48*PI/params.L);
+                    fprintf(fp,"%15.11f ",  params.c_tumb);
+                    fprintf(fp,"%15.11f ",  params.b_tumb);
+                    fprintf(fp,"%15.11f ",  params.Es);
+                    fprintf(fp,"%15.11f ",  params.psi_0);
 #ifdef BC
-                    fprintf(fp,"%10.6f ",  params.c);
-                    fprintf(fp,"%10.6f ",  params.b);
+                    fprintf(fp,"%15.11f ",  params.c);
+                    fprintf(fp,"%15.11f ",  params.b);
 #endif                    
                     fprintf(fp,"\n");
                 }
@@ -252,17 +252,17 @@ if (useGPU)
             params = h_params[i_best];
             printf("%13.6e ",  h_f[i_best]);
             printf("%8d ",  h_steps[i_best]);
-            printf("%10.6f ",  params.theta_M);
-            printf("%10.6f ",  params.phi_M);
-            printf("%10.6f ",  params.phi_0);
-            printf("%10.6f ",  48*PI/params.L);
-            printf("%10.6f ",  params.c_tumb);
-            printf("%10.6f ",  params.b_tumb);
-            printf("%10.6f ",  params.Es);
-            printf("%10.6f ",  params.psi_0);  
+            printf("%15.11f ",  params.theta_M);
+            printf("%15.11f ",  params.phi_M);
+            printf("%15.11f ",  params.phi_0);
+            printf("%15.11f ",  48*PI/params.L);
+            printf("%15.11f ",  params.c_tumb);
+            printf("%15.11f ",  params.b_tumb);
+            printf("%15.11f ",  params.Es);
+            printf("%15.11f ",  params.psi_0);  
 #ifdef BC
-            printf("%10.6f ",  params.c);
-            printf("%10.6f ",  params.b);
+            printf("%15.11f ",  params.c);
+            printf("%15.11f ",  params.b);
 #endif            
             printf("%d ",  h_block_counter); // Number of finished blocks
             printf("%d ",  h_min);  // Min and max number of Simplex steps in all finished blocks
@@ -289,13 +289,13 @@ if (useGPU)
          *            {
          *                params = h_params[i];
          *                fprintf(fp,"%13.6e ",  h_f[i]);
-         *                fprintf(fp,"%10.6f ",  params.b);
-         *                fprintf(fp,"%10.6f ",  params.P*24);
-         *                fprintf(fp,"%10.6f ",  params.c);
-         *                fprintf(fp,"%10.6f ",  params.cos_phi_b);
-         *                fprintf(fp,"%10.6f ",  params.theta_M);
-         *                fprintf(fp,"%10.6f ",  params.phi_M);
-         *                fprintf(fp,"%10.6f\n", params.phi_a0);
+         *                fprintf(fp,"%15.11f ",  params.b);
+         *                fprintf(fp,"%15.11f ",  params.P*24);
+         *                fprintf(fp,"%15.11f ",  params.c);
+         *                fprintf(fp,"%15.11f ",  params.cos_phi_b);
+         *                fprintf(fp,"%15.11f ",  params.theta_M);
+         *                fprintf(fp,"%15.11f ",  params.phi_M);
+         *                fprintf(fp,"%15.11f\n", params.phi_a0);
     }
     fflush(fp);
     */
