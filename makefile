@@ -1,4 +1,4 @@
-OPT=-O2 -DGPU -DRELAXED -DBC -arch=sm_60
+OPT=-O2 -DGPU -DRELAXED -DBC -DP_PHI -arch=sm_60
 INC=-I/usr/include/cuda -I.
 
 BINARY=asteroid4

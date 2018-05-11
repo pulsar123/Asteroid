@@ -19,6 +19,9 @@ int main (int argc,char **argv)
     int i;
     int useGPU = 1;
     cudaStream_t  ID[2];
+#ifdef P_PHI
+    double Pphi1, Pphi2;
+#endif
     
     // Observational data:
     int N_data; // Number of data points
@@ -43,11 +46,22 @@ int main (int argc,char **argv)
         }
         Nplot = NPLOT; // Number of plot points
     }
+#ifdef P_PHI
+    else if (argc == 5)
+    {
+        Pphi1 = atof(argv[3]);
+        Pphi2 = atof(argv[4]);
+    }
+#endif        
     else if (argc != 3)
     {
         printf("Arguments: obs_file  results_file\n");
-        printf("or\n");
+        printf("or\n");      
         printf("Arguments: obs_file  list_of_parameters\n");
+#ifdef P_PHI
+        printf("or\n");      
+        printf("Arguments: obs_file  results_file  Pphi1  Pphi2 (hrs)\n");
+#endif        
         exit(1);
     }
 
@@ -97,7 +111,12 @@ if (useGPU)
     // (3) Angular momentum L value, radians/day; if P is perdiod in hours, L=48*pi/P
     iparam++;
     hLimits[0][iparam] = 48.0*PI / 0.4; // 8.5
-    hLimits[1][iparam] = 48.0*PI / 0.01; // 0.4
+    hLimits[1][iparam] = 48.0*PI / 0.01; // 0.4    
+    // In P_PHI mode has a different meaning: 48*pi/Pphi2 ... 48*pi/Pphi1 (used to generate L)
+#ifdef P_PHI
+    hLimits[0][iparam] = 48.0*PI / Pphi2;
+    hLimits[1][iparam] = 48.0*PI / Pphi1;
+#endif
     
     // (4) c_tumb (physical (tumbling) value of the axis c size; always smallest)
     iparam++;

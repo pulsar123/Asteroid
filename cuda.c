@@ -386,9 +386,15 @@ __device__ int x2params(int LAM, CHI_FLOAT *x, struct parameters_struct *params,
             continue;
         
 #ifdef RELAXED
+ #ifdef P_PHI
+        // Relaxing only c_tumb in P_PHI mode
+        if (i==4)
+            continue;
+ #else        
         // Relaxing L and c_tumb: (physical values are enforced below)
         if (i==3 || i==4)
             continue;
+ #endif
  #ifdef BC        
         // Relaxing c:
         if (i==N_PARAMS-2)
@@ -409,13 +415,11 @@ __device__ int x2params(int LAM, CHI_FLOAT *x, struct parameters_struct *params,
     iparam++;  params->theta_M =     x[iparam] * (sLimits[1][iparam]-sLimits[0][iparam]) + sLimits[0][iparam]; // 0
     iparam++;  params->phi_M =       x[iparam] * (sLimits[1][iparam]-sLimits[0][iparam]) + sLimits[0][iparam]; // 1
     iparam++;  params->phi_0 =       x[iparam] * (sLimits[1][iparam]-sLimits[0][iparam]) + sLimits[0][iparam]; // 2
-    iparam++;  params->L =           x[iparam] * (sLimits[1][iparam]-sLimits[0][iparam]) + sLimits[0][iparam]; // 3
+    iparam++;  
+#ifndef P_PHI    
+               params->L =           x[iparam] * (sLimits[1][iparam]-sLimits[0][iparam]) + sLimits[0][iparam]; // 3
+#endif    
     iparam++;  log_c =               x[iparam] * (sLimits[1][iparam]-sLimits[0][iparam]) + sLimits[0][iparam]; // 4
-#ifdef RELAXED
-// Enforcing minimum limits on physical values of L and c:
-    if (params->L<0.0 || log_c>0.0)
-        return 1;
-#endif
                params->c_tumb = exp(log_c);
 
     // Dependent parameters:
@@ -439,6 +443,21 @@ __device__ int x2params(int LAM, CHI_FLOAT *x, struct parameters_struct *params,
     // SAM: Es<1.0/Ii
         params->Es=2.0*x[iparam]*(1.0/Ii-1.0/Is)+1.0/Is;
 
+#ifdef P_PHI
+        /* Using the empirical fact that for a wide range of c, b, Es, L parameters, Pphi = S0*2*pi/Es/L (SAM)
+         * and S1*2*pi*Ii/L (LAM) with ~20% accuracy; S0=[1,1.1733], S1=[1,1.2067]. 
+         * This allows an easy constraint on L if the range of Pphi is given. 
+         * When generating L, we use both the S0/1 ranges, and the given Phi1...Pphi2 range.
+         */
+    if (LAM)
+        params->L = (x[3] * (1.2067*sLimits[1][3]-sLimits[0][3]) + sLimits[0][3]) / params->Es;
+//        params->L = (x[3] * (sLimits[1][3]-sLimits[0][3]*0.828706) + sLimits[0][3]*0.828706) / params->Es;
+    else
+        params->L = (x[3] * (1.1733*sLimits[1][3]-sLimits[0][3]) + sLimits[0][3]) * Ii;
+//        params->L = (x[3] * (sLimits[1][3]-sLimits[0][3]*0.852297) + sLimits[0][3]*0.852297) * Ii;
+    
+#endif        
+                
     // Generating psi_0 (constrained by Es, Ii, Is)
     iparam++;  // 7
     double psi_min, psi_max;
@@ -480,6 +499,11 @@ __device__ int x2params(int LAM, CHI_FLOAT *x, struct parameters_struct *params,
 //    params->b = exp(log_b);
 //    if (fabs(log_c2-log_c)>BC_DEV_MAX || fabs(log_b-log(params->b_tumb))>BC_DEV_MAX)
 #endif    
+#ifdef RELAXED
+// Enforcing minimum limits on physical values of L and c:
+    if (params->L<0.0 || log_c>0.0)
+        return 1;
+#endif
     
     return 0;
 }

@@ -49,7 +49,7 @@ const int N_BLOCKS = 56*5000; // Should be proportional to the number of SMs (56
 //const int N_WARPS = BSIZE / 32;
 
 // ODE time step (days):
-const double TIME_STEP = 3e-3;  // 3e-3
+const double TIME_STEP = 1e-2;  // 3e-3
 
 // Simplex parameters:
 #ifdef TIMING
@@ -57,7 +57,7 @@ const unsigned int N_STEPS = 100;
 #else
 const unsigned int N_STEPS = 7500; // Number of simplex steps per CUDA block (per simplex run) 27,000 per hour (N=7; BS=256; NB=56*4)
 #endif
-const unsigned int DT_DUMP = 600; // Time in seconds between results dump (to stdout)
+const unsigned int DT_DUMP = 300; // Time in seconds between results dump (to stdout)
 const int N_WRITE = 1; // Every N_WRITE dumps make a dump to results.dat file
 const CHI_FLOAT DX_INI = 0.01;  // Scale-free initial step
 const CHI_FLOAT SIZE_MIN = 1e-5; // Scale-free smallest simplex size (convergence criterion)
