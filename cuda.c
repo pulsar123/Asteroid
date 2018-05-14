@@ -280,8 +280,14 @@ __device__ CHI_FLOAT chi2one(struct parameters_struct params, struct obs_data *s
         sin_lambda_p = scalar_Earth*sin_alpha_p / scalar;
         lambda_p = atan2(sin_lambda_p, cos_lambda_p);
         
+        // Solar phase angle:
+//        double cos_alpha = Sp_x*Ep_x + Sp_y*Ep_y + Sp_z*Ep_z;
+        // Single-particle phase scattering function:
+//        const double g_HG = 0;
+//        double P_alpha = (1.0 - g_HG*g_HG) / (1.0 + g_HG*g_HG + 2.0*g_HG*cos_alpha);
+        
         // Asteroid's model visual brightness, from eq.(10):
-        //!!! Not using P(alpha) - single scattering phase function!
+        // Simplest case of isotropic single-particle scattering, P(alpha)=1:
         Vmod = -2.5*log10(b*c * scalar_Sun*scalar_Earth/scalar * (cos(lambda_p-alpha_p) + cos_lambda_p +
         sin_lambda_p*sin(lambda_p-alpha_p) * log(1.0 / tan(0.5*lambda_p) / tan(0.5*(alpha_p-lambda_p)))));
                         
@@ -327,24 +333,23 @@ __device__ CHI_FLOAT chi2one(struct parameters_struct params, struct obs_data *s
 
 __device__ void params2x(int *LAM, CHI_FLOAT *x, struct parameters_struct *params, CHI_FLOAT sLimits[][N_INDEPEND])
 // Converting from dimensional params structure to dimensionless array x. Used for plotting. 
-// Broken for now!
+// P_PHI and RANDOM_BC are not supported!
 {    
     int iparam = -1;
     
-    iparam++; x[iparam] = (params->theta_M - sLimits[0][iparam]) / (sLimits[1][iparam] - sLimits[0][iparam]);
-    iparam++; x[iparam] = (params->phi_M - sLimits[0][iparam]) / (sLimits[1][iparam] - sLimits[0][iparam]);
-    iparam++; x[iparam] = (params->phi_0 - sLimits[0][iparam]) / (sLimits[1][iparam] - sLimits[0][iparam]);
-    iparam++; x[iparam] = (params->L - sLimits[0][iparam]) / (sLimits[1][iparam] - sLimits[0][iparam]);
-    iparam++; x[iparam] = (log(params->c_tumb) - sLimits[0][iparam]) / (sLimits[1][iparam] - sLimits[0][iparam]);
+    iparam++; x[iparam] = (params->theta_M - sLimits[0][iparam]) / (sLimits[1][iparam] - sLimits[0][iparam]); // 0
+    iparam++; x[iparam] = (params->phi_M - sLimits[0][iparam]) / (sLimits[1][iparam] - sLimits[0][iparam]); // 1
+    iparam++; x[iparam] = (params->phi_0 - sLimits[0][iparam]) / (sLimits[1][iparam] - sLimits[0][iparam]); // 2
+    iparam++; x[iparam] = (params->L - sLimits[0][iparam]) / (sLimits[1][iparam] - sLimits[0][iparam]); // 3
+    iparam++; x[iparam] = (log(params->c_tumb) - sLimits[0][iparam]) / (sLimits[1][iparam] - sLimits[0][iparam]); // 4
     
-    // New method for b_tumb:
-    iparam++; x[iparam] = (params->c_tumb/params->b_tumb - params->c_tumb) / (1.0 - params->c_tumb);
+    iparam++; x[iparam] = log(params->b_tumb)/log(params->c_tumb); // 5
 
     double Is = (1.0+params->b_tumb*params->b_tumb) / (params->b_tumb*params->b_tumb+params->c_tumb*params->c_tumb);
     double Ii = (1.0+params->c_tumb*params->c_tumb) / (params->b_tumb*params->b_tumb+params->c_tumb*params->c_tumb);
 
     *LAM = params->Es > 1.0/Ii;
-    iparam++;
+    iparam++; // 6
     if (*LAM)
     // LAM: Es>1.0/Ii
         x[iparam] = 0.5*((params->Es-1.0/Ii) / (1.0-1.0/Ii) + 1.0);
@@ -366,6 +371,11 @@ __device__ void params2x(int *LAM, CHI_FLOAT *x, struct parameters_struct *param
         psi_min = -psi_max;
     }
     x[iparam] = (params->psi_0 - psi_min) / (psi_max - psi_min);
+
+#ifdef BC
+    iparam++; x[iparam] = (log(params->c) - sLimits[0][4]) / (sLimits[1][4] - sLimits[0][4]); // 8
+    iparam++; x[iparam] = log(params->b)/log(params->c); // 9
+#endif    
     
     return;
 }    
@@ -522,7 +532,7 @@ __global__ void chi2_gpu (struct obs_data *dData, int N_data, int N_filters,
     __shared__ volatile int s_thread_id[BSIZE];
     int i, j;
     struct parameters_struct params;
-    CHI_FLOAT delta_V[MAX_FILTERS];
+    CHI_FLOAT delta_V[N_FILTERS];
     
     // Not efficient, for now:
     if (threadIdx.x == 0)
@@ -535,6 +545,10 @@ __global__ void chi2_gpu (struct obs_data *dData, int N_data, int N_filters,
             sLimits[1][i] = dLimits[1][i];
         }
     }
+#ifdef REOPT
+    // Reading the initial point from device memory
+        params = d_params0;
+#endif        
     
     // Downhill simplex optimization approach
     
@@ -542,6 +556,10 @@ __global__ void chi2_gpu (struct obs_data *dData, int N_data, int N_filters,
     
     // Global thread index:
     int id = threadIdx.x + blockDim.x*blockIdx.x;
+
+    // Generating initial state:
+//    curandState localState;
+//    curand_init ( (unsigned long long)seed, id, 0, &localState );
     
     // Reading the global states from device memory:
     curandState localState = globalState[id];
@@ -553,19 +571,28 @@ __global__ void chi2_gpu (struct obs_data *dData, int N_data, int N_filters,
     int ind[N_PARAMS+1]; // Indexes to the sorted array (point index)
     
     int LAM;
+    
+#ifdef REOPT
+    params2x(&LAM, x[0], &params, sLimits);    
+    // Random displacement of the initial point, uniformly distributed within +-0.5*DX_RAND:
+    for (i=0; i<N_PARAMS; i++)
+    {
+        x[0][i] = x[0][i] + DX_RAND*(curand_uniform(&localState)-0.5);
+    }
+#else    
     // Initial random point
     for (i=0; i<N_PARAMS; i++)
     {
-#ifdef BC
- #ifndef RANDOM_BC
+ #ifdef BC
+  #ifndef RANDOM_BC
         // Initial vales of c/b are equal to initial values of c_tumb/b_tumb:
         if (i >= N_PARAMS-2)
         {
             x[0][i] = x[0][i-4];
             continue;
         }
+  #endif        
  #endif        
-#endif        
         float r = curand_uniform(&localState);
         if (i == 6)
         {
@@ -582,6 +609,7 @@ __global__ void chi2_gpu (struct obs_data *dData, int N_data, int N_filters,
         // The DX_INI business is to prevent the initial simplex going beyong the limits (???)
             x[0][i] = 1e-6 + (1.0-DX_INI-2e-6) * r;
     }
+#endif // REOPT    
     
     // Simplex initialization
     for (j=1; j<N_PARAMS+1; j++)
@@ -589,9 +617,19 @@ __global__ void chi2_gpu (struct obs_data *dData, int N_data, int N_filters,
         for (i=0; i<N_PARAMS; i++)
         {
             if (i == j-1)
+            {
+#ifdef REOPT
+                // In REOPT mode, initial displacements are random, with log distrubution between DX_MIN and DX_MAX:
+                CHI_FLOAT dx_ini = exp(curand_uniform(&localState) * (DX_MAX-DX_MIN) + DX_MIN);
+                x[j][i] = x[0][i] + dx_ini;
+#else                
                 x[j][i] = x[0][i] + DX_INI;
+#endif                
+            }
             else
+            {
                 x[j][i] = x[0][i];
+            }
         }
     }
     
@@ -847,7 +885,7 @@ __global__ void chi2_plot (struct obs_data *dData, int N_data, int N_filters,
                           struct parameters_struct *d_params, struct obs_data *dPlot, int Nplot, struct parameters_struct params)
 // CUDA kernel to compute plot data from input params structure
 {        
-    CHI_FLOAT delta_V[MAX_FILTERS];
+    CHI_FLOAT delta_V[N_FILTERS];
 
     // Global thread index for points:
     int id = threadIdx.x + blockDim.x*blockIdx.x;

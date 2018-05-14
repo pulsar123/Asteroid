@@ -293,6 +293,15 @@ if (Nplot > 0)
             hPlot[iplot].MJD = tplot;
             quadratic_interpolation(tplot, &(hPlot[iplot].E_x), &(hPlot[iplot].E_y), &(hPlot[iplot].E_z), &(hPlot[iplot].S_x), &(hPlot[iplot].S_y), &(hPlot[iplot].S_z));
             hPlot[iplot].V = 0.0;            
+
+            E = sqrt(hPlot[iplot].E_x*hPlot[iplot].E_x + hPlot[iplot].E_y*hPlot[iplot].E_y+ hPlot[iplot].E_z*hPlot[iplot].E_z);
+            S = sqrt(hPlot[iplot].S_x*hPlot[iplot].S_x + hPlot[iplot].S_y*hPlot[iplot].S_y+ hPlot[iplot].S_z*hPlot[iplot].S_z);
+            hPlot[iplot].E_x = hPlot[iplot].E_x / E;
+            hPlot[iplot].E_y = hPlot[iplot].E_y / E;
+            hPlot[iplot].E_z = hPlot[iplot].E_z / E;
+            hPlot[iplot].S_x = hPlot[iplot].S_x / S;
+            hPlot[iplot].S_y = hPlot[iplot].S_y / S;
+            hPlot[iplot].S_z = hPlot[iplot].S_z / S;
         }
         
         

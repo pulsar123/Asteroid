@@ -44,7 +44,7 @@ const float BC_DEV1 = 1.1; //1.3
 
 // GPU optimization parameters:
 const int BSIZE = 256;   // Threads in a block (64 ... 1024, step of 64); 384; 256
-const int N_BLOCKS = 56*5000; // Should be proportional to the number of SMs (56 for P100); code runtime and memory consumed on GPU is proportional to this number; x1000 for 1 day
+const int N_BLOCKS = 56*50; // Should be proportional to the number of SMs (56 for P100); code runtime and memory consumed on GPU is proportional to this number; x1000 for 1 day
 //const int N_SERIAL = 1; // number of serial iglob loops inside the kernel (>=1)
 //const int N_WARPS = BSIZE / 32;
 
@@ -55,9 +55,9 @@ const double TIME_STEP = 1e-2;  // 3e-3
 #ifdef TIMING
 const unsigned int N_STEPS = 100; 
 #else
-const unsigned int N_STEPS = 7500; // Number of simplex steps per CUDA block (per simplex run) 27,000 per hour (N=7; BS=256; NB=56*4)
+const unsigned int N_STEPS = 75000; // Number of simplex steps per CUDA block (per simplex run) 27,000 per hour (N=7; BS=256; NB=56*4)
 #endif
-const unsigned int DT_DUMP = 300; // Time in seconds between results dump (to stdout)
+const unsigned int DT_DUMP = 30; // Time in seconds between results dump (to stdout)
 const int N_WRITE = 1; // Every N_WRITE dumps make a dump to results.dat file
 const CHI_FLOAT DX_INI = 0.01;  // Scale-free initial step
 const CHI_FLOAT SIZE_MIN = 1e-5; // Scale-free smallest simplex size (convergence criterion)
@@ -74,7 +74,7 @@ const int MAX_FILE_NAME = 256;
 // Maximum number of chars in one line of a data file:
 const int MAX_LINE_LENGTH = 128;
 // Maximum number of filters:
-const int MAX_FILTERS = 100;
+//const int MAX_FILTERS = 100;
 // Maximum number nof data points:
 const int MAX_DATA = 400;
 
@@ -84,6 +84,14 @@ const int NPLOT = 6000;
 const int C_POINTS = 10;
 // Maximum relative deviation for each parameter when computing lines:
 const double DELTA_MAX = 0.001;
+
+// Only matter for REOPT option:
+// Minimum and maximum initial simplex step:
+const CHI_FLOAT DX_MIN = -9.2; // log(0.0001)
+const CHI_FLOAT DX_MAX = -3.51; // log(0.03) -3.51
+// Initial point is randomly shifted along each dimension by maximum 1/2 of the following amount (dimensionless):
+const CHI_FLOAT DX_RAND = 0.03; 
+
 
 // Speed of light (au/day):
 const double light_speed = 173.144632674;
@@ -151,7 +159,7 @@ __global__ void chi2_plot(struct obs_data *, int, int,
 #define EXTERN extern
 #endif
 
-EXTERN char all_filters[MAX_FILTERS];
+EXTERN char all_filters[N_FILTERS];
 
 
 EXTERN struct obs_data *hData;
@@ -182,6 +190,7 @@ EXTERN CHI_FLOAT h_chi2_lines[N_PARAMS][BSIZE*C_POINTS];
     EXTERN CHI_FLOAT *d_f;
     EXTERN int *d_steps;
     EXTERN struct parameters_struct *d_params;
+    EXTERN __device__ struct parameters_struct d_params0;
     EXTERN __device__ unsigned long long int d_sum;
     EXTERN __device__ unsigned long long int d_sum2;
     EXTERN __device__ int d_min;
