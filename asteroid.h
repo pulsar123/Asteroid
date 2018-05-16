@@ -55,7 +55,7 @@ const double TIME_STEP = 1e-2;  // 3e-3
 #ifdef TIMING
 const unsigned int N_STEPS = 100; 
 #else
-const unsigned int N_STEPS = 75000; // Number of simplex steps per CUDA block (per simplex run) 27,000 per hour (N=7; BS=256; NB=56*4)
+const unsigned int N_STEPS = 7500; // Number of simplex steps per CUDA block (per simplex run) 27,000 per hour (N=7; BS=256; NB=56*4)
 #endif
 const unsigned int DT_DUMP = 30; // Time in seconds between results dump (to stdout)
 const int N_WRITE = 1; // Every N_WRITE dumps make a dump to results.dat file

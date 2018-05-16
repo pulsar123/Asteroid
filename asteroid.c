@@ -22,6 +22,9 @@ int main (int argc,char **argv)
  #ifdef P_PHI
     double Pphi1, Pphi2;
  #endif
+ #ifdef P_PSI
+    double Ppsi1, Ppsi2;
+ #endif
     
     // Observational data:
     int N_data; // Number of data points
@@ -72,6 +75,13 @@ int main (int argc,char **argv)
         Pphi2 = atof(argv[4]);
     }
 #endif        
+#ifdef P_PSI
+    else if (argc == 5)
+    {
+        Ppsi1 = atof(argv[3]);
+        Ppsi2 = atof(argv[4]);
+    }
+#endif        
     else if (argc != 3)
     {
         printf("Arguments: obs_file  results_file\n");
@@ -80,6 +90,10 @@ int main (int argc,char **argv)
 #ifdef P_PHI
         printf("or\n");      
         printf("Arguments: obs_file  results_file  Pphi1  Pphi2 (hrs)\n");
+#endif        
+#ifdef P_PSI
+        printf("or\n");      
+        printf("Arguments: obs_file  results_file  Ppsi1  Ppsi2 (hrs)\n");
 #endif        
         exit(1);
     }
@@ -131,11 +145,16 @@ if (useGPU)
     iparam++;
     hLimits[0][iparam] = 48.0*PI / 8.5; // 8.5
     hLimits[1][iparam] = 48.0*PI / 0.4; // 0.4    
-    // In P_PHI mode has a different meaning: 48*pi/Pphi2 ... 48*pi/Pphi1 (used to generate L)
 #ifndef REOPT
+    // In P_PHI mode has a different meaning: 48*pi/Pphi2 ... 48*pi/Pphi1 (used to generate L)
     #ifdef P_PHI
     hLimits[0][iparam] = 48.0*PI / Pphi2;
     hLimits[1][iparam] = 48.0*PI / Pphi1;
+    #endif
+    // In P_PSI mode has a different meaning: Ppsi1 ... Ppsi2, days (used to derive L)
+    #ifdef P_PSI
+    hLimits[0][iparam] = Ppsi1/24.0;
+    hLimits[1][iparam] = Ppsi2/24.0;
     #endif
 #endif    
     

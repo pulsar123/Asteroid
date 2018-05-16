@@ -127,9 +127,7 @@ __device__ CHI_FLOAT chi2one(struct parameters_struct params, struct obs_data *s
     
     // Now we have a=1>b>c, and Il=1<Ii<Is
     // Axis of rotation can be either "a" (LAM) or "c" (SAM)
-    
-//    double Einv = 1.0/params.Es;
-    
+        
     double mu[3];
     double Ip = 0.5*(Ii_inv + Is_inv);
     double Im = 0.5*(Ii_inv - Is_inv);
@@ -333,7 +331,7 @@ __device__ CHI_FLOAT chi2one(struct parameters_struct params, struct obs_data *s
 
 __device__ void params2x(int *LAM, CHI_FLOAT *x, struct parameters_struct *params, CHI_FLOAT sLimits[][N_INDEPEND])
 // Converting from dimensional params structure to dimensionless array x. Used for plotting. 
-// P_PHI and RANDOM_BC are not supported!
+// P_PHI, P_PSI and RANDOM_BC are not supported!
 {    
     int iparam = -1;
     
@@ -396,8 +394,8 @@ __device__ int x2params(int LAM, CHI_FLOAT *x, struct parameters_struct *params,
             continue;
         
 #ifdef RELAXED
- #ifdef P_PHI
-        // Relaxing only c_tumb in P_PHI mode
+ #if defined(P_PHI) || defined(P_PSI)
+        // Relaxing only c_tumb in P_PHI / P_PSI modes
         if (i==4)
             continue;
  #else        
@@ -427,6 +425,7 @@ __device__ int x2params(int LAM, CHI_FLOAT *x, struct parameters_struct *params,
     iparam++;  params->phi_0 =       x[iparam] * (sLimits[1][iparam]-sLimits[0][iparam]) + sLimits[0][iparam]; // 2
     iparam++;  
 #ifndef P_PHI    
+    // In P_PSI mode, this computes P_psi from x, which is stored in params.L:
                params->L =           x[iparam] * (sLimits[1][iparam]-sLimits[0][iparam]) + sLimits[0][iparam]; // 3
 #endif    
     iparam++;  log_c =               x[iparam] * (sLimits[1][iparam]-sLimits[0][iparam]) + sLimits[0][iparam]; // 4
@@ -466,7 +465,33 @@ __device__ int x2params(int LAM, CHI_FLOAT *x, struct parameters_struct *params,
         params->L = (x[3] * (1.1733*sLimits[1][3]-sLimits[0][3]) + sLimits[0][3]) * Ii;
 //        params->L = (x[3] * (sLimits[1][3]-sLimits[0][3]*0.852297) + sLimits[0][3]*0.852297) * Ii;
     
-#endif        
+#endif
+#ifdef P_PSI    
+    // In P_PSI mode the actual optimiziation parameter is Ppsi which is stored in params.L, and L is derived from Ppsi and Is, Ii, Es
+    double Einv = 1.0/params->Es;
+    double k2;
+    if (LAM)
+        k2=(Is-Ii)*(Einv-1.0)/((Ii-1.0)*(Is-Einv));
+    else
+        k2=(Ii-1.0)*(Is-Einv)/((Is-Ii)*(Einv-1.0));
+    // Computing the complete eliptic integral K(k2) using the efficient AGM (arithemtic-geometric mean) method
+    // With double precision, converges to better than 1e-10 after 5 loops, for k2=0...9.999998e-01
+    double a = 1.0;   double g = sqrt(1.0-k2);
+    double a1, g1;
+    for (int i=0; i<5; i++)
+    {
+        a1 = 0.5 * (a+g);
+        g1 = sqrt(a*g);
+        a = a1;  g = g1;
+    }
+    // Now that we know K(k2)=PI/(a+g), we can derive L from Ppsi:
+    // Here the meaning of params.L changes: from Ppsi to L
+    if (LAM)
+        params->L = 4.0/params->L* PI/(a+g) *sqrt(Ii*Is/(params->Es*(Ii-1.0)*(Is-Einv)));
+    else
+        params->L = 4.0/params->L* PI/(a+g) *sqrt(Ii*Is/(params->Es*(Is-Ii)*(Einv-1.0)));
+    #endif    
+    
                 
     // Generating psi_0 (constrained by Es, Ii, Is)
     iparam++;  // 7
