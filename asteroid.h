@@ -88,9 +88,9 @@ const double DELTA_MAX = 0.001;
 // Only matter for REOPT option:
 // Minimum and maximum initial simplex step:
 const CHI_FLOAT DX_MIN = -9.2; // log(0.0001)
-const CHI_FLOAT DX_MAX = -3.51; // log(0.03) -3.51
+const CHI_FLOAT DX_MAX = -2.3; // log(0.1) -3.51
 // Initial point is randomly shifted along each dimension by maximum 1/2 of the following amount (dimensionless):
-const CHI_FLOAT DX_RAND = 0.03; 
+const CHI_FLOAT DX_RAND = 0.1; 
 
 
 // Speed of light (au/day):
