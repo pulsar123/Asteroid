@@ -288,6 +288,14 @@ __device__ CHI_FLOAT chi2one(struct parameters_struct params, struct obs_data *s
         // Simplest case of isotropic single-particle scattering, P(alpha)=1:
         Vmod = -2.5*log10(b*c * scalar_Sun*scalar_Earth/scalar * (cos(lambda_p-alpha_p) + cos_lambda_p +
         sin_lambda_p*sin(lambda_p-alpha_p) * log(1.0 / tan(0.5*lambda_p) / tan(0.5*(alpha_p-lambda_p)))));
+        
+#ifdef DARK_SIDE
+        // cos of the angle between the normal to the disk (c) and the vector towards the observer:
+        double cE = c_x*sData[i].E_x + c_y*sData[i].E_y + c_z*sData[i].E_z;
+        // The trick: the disk side on the same side as the vector <c> is brighter than the opposite one:
+#define KAPPA 0.02        
+        Vmod = Vmod - 2.5*log10((cE+1.0)/2.0*(1.0-KAPPA)+KAPPA);
+#endif        
                         
         if (Nplot > 0)
         {

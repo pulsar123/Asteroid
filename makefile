@@ -1,7 +1,7 @@
 OPT=-O2 -DGPU -DRELAXED -DBC -DP_PSI -arch=sm_60
 INC=-I/usr/include/cuda -I.
 
-BINARY=asteroid1
+BINARY=asteroid2
 
 objects = asteroid.o read_data.o misc.o cuda.o gpu_prepare.o
 

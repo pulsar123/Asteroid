@@ -80,11 +80,11 @@ while (fgets(line, sizeof(line), fp))
         if (found)
         {
             all_filters[j] = filter;
-            j++;
-            printf("%d: %c\n", j, filter);
-            // Another special case - Wesley et al data (time is light travel corrected, and magnitudes are geometry and color corrected)
+            // A special case - Wesley et al data (time is light travel corrected, and magnitudes are geometry and color corrected)
             if (filter == 'W')
                 W_filter = j;
+            j++;
+            printf("%d: %c\n", j, filter);
         }
         // Translating filter char to filter number:
         for (k=0; k<j; k++)
