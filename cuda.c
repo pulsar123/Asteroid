@@ -9,6 +9,7 @@
 #include "asteroid.h"
 
 
+
 __device__ void ODE_func (double y[], double f[], double mu[])
 /* Three ODEs for the tumbling evolution of the three Euler angles, phi, theta, and psi.
    Derived in a manner similar to Kaasalainen 2001, but for the setup of Samarasinha and A'Hearn 1991
@@ -61,7 +62,7 @@ __device__ CHI_FLOAT chi2one(struct parameters_struct params, struct obs_data *s
     /*  Tumbling model description:
      
      Triaxial ellipsoid with physical axes a, b, c. a and c are extremal ,
-     b is always intermediate. (c < b < a=1) Photometric a,b,c can be totally different (not implemented yet).
+     b is always intermediate. (c < b < a=1) Photometric a,b,c can be totally different.
      
      The corresponding moments of inertia are Il (a), Ii (b), Is(c); Il < Ii < Is.
      
@@ -889,7 +890,7 @@ __global__ void chi2_gpu (struct obs_data *dData, int N_data, int N_filters,
 
 
 // For debugging:
-#ifdef DEBUG
+#ifdef DEBUG2
 __global__ void debug_kernel(struct parameters_struct params, struct obs_data *dData, int N_data, int N_filters)
 {
     __shared__ struct obs_data sData[MAX_DATA];
@@ -915,16 +916,18 @@ return;
 //++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 
 __global__ void chi2_plot (struct obs_data *dData, int N_data, int N_filters,
-                          struct parameters_struct *d_params, struct obs_data *dPlot, int Nplot, struct parameters_struct params)
+                          struct parameters_struct *d_params, struct obs_data *dPlot, int Nplot, struct parameters_struct params, double * d_dlsq2)
 // CUDA kernel to compute plot data from input params structure
-{        
+{     
+    __shared__ double sd2_min[BSIZE];
     CHI_FLOAT delta_V[N_FILTERS];
 
     // Global thread index for points:
     int id = threadIdx.x + blockDim.x*blockIdx.x;
     
-    if (id == 0 && blockIdx.y == 0)
+//    if (id == 0 && blockIdx.y == 0)    
         // Doing once per kernel
+    if (threadIdx.x == 0)
     {
         // Step one: computing constants for each filter using chi^2 method, and the chi2 value
         d_chi2_plot = chi2one(params, dData, N_data, N_filters, delta_V, 0);
@@ -934,65 +937,116 @@ __global__ void chi2_plot (struct obs_data *dData, int N_data, int N_filters,
 
     }
     
-
-    // Parameter index:
-    int iparam = blockIdx.y;            
-    // Changes from -DELTA_MAX to +DELTA_MAX:
-    // With id+1.0 we ensure that delta=0 corresponds to one of the threads
-    double delta = 2.0 * DELTA_MAX * ((id+1.0)/blockDim.x/gridDim.x - 0.5);
+    __syncthreads();
     
-    // Modyfing slightly the corresponding parameter:
-    switch (iparam)
+    int blockid = blockIdx.x + gridDim.x*blockIdx.y;
+
+#ifdef LSQ    
+    // Computing 2D least squares distances between the data points and the model
+    // Each block processes one data point
+    // Asssuming that the number of blocks is larger or equal to the number of data points!
+    int idata = blockid;
+    if (idata < N_data)
     {
-        case 0:
-        params.theta_M = params.theta_M + delta * (dLimits[1][iparam] - dLimits[0][iparam]);
-        break;
-
-        case 1:
-        params.phi_M = params.phi_M + delta * (dLimits[1][iparam] - dLimits[0][iparam]);
-        break;
-        
-        case 2:
-        params.phi_0 = params.phi_0 + delta * (dLimits[1][iparam] - dLimits[0][iparam]);
-        break;
-        
-        case 3:
-        params.L = params.L + delta * (dLimits[1][iparam] - dLimits[0][iparam]);
-        break;
-        
-        case 4:
-        params.c_tumb = params.c_tumb * exp(delta * (dLimits[1][iparam] - dLimits[0][iparam]));
-        break;
-        
-        case 5:
-//        params.b_tumb = params.b_tumb * exp(delta * (dLimits[1][4] - dLimits[0][4]));
-        params.b_tumb = params.b_tumb * exp(delta * (-log(params.c_tumb)));
-        break;
-
-        case 6:
-        params.Es = params.Es + delta*0.5;  //??
-        break;
-        
-        case 7:
-        params.psi_0 = params.psi_0 + delta*2.0*PI;
-        break;                    
-#ifdef BC
-        case 8:
-        params.c = params.c * exp(delta * (dLimits[1][4] - dLimits[0][4]));
-        break;
-
-        case 9:
-        params.b = params.b * exp(delta * (dLimits[1][4] - dLimits[0][4]));
-        break;
-#endif        
+        double d2_min = HUGE;
+        // Spreading N_plot model points over blockDim.x threads as evenly as possible:
+        for (int imodel=threadIdx.x; imodel<Nplot; imodel=imodel+blockDim.x)
+        {
+            double dist_t = (dPlot[imodel].MJD - dData[idata].MJD) / T_SCALE;
+            // To save some time:
+            if (fabs(dist_t) < 2.0)
+            {
+            double dist_V = (d_Vmod[imodel] - dData[idata].V) / V_SCALE;
+            // 2D (in t-V axes) distance between the imodel model point and idata data point, using scales V_SCALE and T_SCALE for the two axes:
+            double d2 = dist_V*dist_V + dist_t*dist_t;
+            // Per-thread minimum of d2:
+            if (d2 < d2_min)
+                d2_min = d2;
+            }
+        }
+        sd2_min[threadIdx.x] = d2_min;
+        __syncthreads();
+        // Binary reduction:
+        int nTotalThreads = blockDim.x;
+        while(nTotalThreads > 1)
+        {
+            int halfPoint = nTotalThreads / 2; // Number of active threads
+            if (threadIdx.x < halfPoint) {
+                int thread2 = threadIdx.x + halfPoint; // the second element index
+                double temp = sd2_min[thread2];
+                if (temp < sd2_min[threadIdx.x])
+                    sd2_min[threadIdx.x] = temp;
+            }
+            __syncthreads();
+            nTotalThreads = halfPoint; // Reducing the binary tree size by two
+        }
+        // At this point, the smallest d2 in the block is in sd2_min[0]
+        if (threadIdx.x == 0)
+            d_dlsq2[idata] = sd2_min[0];
     }
+#endif    
+
+#ifdef PROFILES
+    if (id < Nplot)
+    {
+        // Parameter index:
+        int iparam = blockIdx.y;            
+        // Changes from -DELTA_MAX to +DELTA_MAX:
+        // With id+1.0 we ensure that delta=0 corresponds to one of the threads
+        double delta = 2.0 * DELTA_MAX * ((id+1.0)/blockDim.x/gridDim.x - 0.5);
+        
+        // Modyfing slightly the corresponding parameter:
+        switch (iparam)
+        {
+            case 0:
+                params.theta_M = params.theta_M + delta * (dLimits[1][iparam] - dLimits[0][iparam]);
+                break;
+                
+            case 1:
+                params.phi_M = params.phi_M + delta * (dLimits[1][iparam] - dLimits[0][iparam]);
+                break;
+                
+            case 2:
+                params.phi_0 = params.phi_0 + delta * (dLimits[1][iparam] - dLimits[0][iparam]);
+                break;
+                
+            case 3:
+                params.L = params.L + delta * (dLimits[1][iparam] - dLimits[0][iparam]);
+                break;
+                
+            case 4:
+                params.c_tumb = params.c_tumb * exp(delta * (dLimits[1][iparam] - dLimits[0][iparam]));
+                break;
+                
+            case 5:
+                //        params.b_tumb = params.b_tumb * exp(delta * (dLimits[1][4] - dLimits[0][4]));
+                params.b_tumb = params.b_tumb * exp(delta * (-log(params.c_tumb)));
+                break;
+                
+            case 6:
+                params.Es = params.Es + delta*0.5;  //??
+                break;
+                
+            case 7:
+                params.psi_0 = params.psi_0 + delta*2.0*PI;
+                break;                    
+                #ifdef BC
+            case 8:
+                params.c = params.c * exp(delta * (dLimits[1][4] - dLimits[0][4]));
+                break;
+                
+            case 9:
+                params.b = params.b * exp(delta * (dLimits[1][4] - dLimits[0][4]));
+                break;
+                #endif        
+        }
+        
+        // Computing the chi2 for the shifted parameter:
+        d_chi2_lines[iparam][id] = chi2one(params, dData, N_data, N_filters, delta_V, 0);
+    }
+#endif    
     
-    // Computing the chi2 for the shifted parameter:
-    d_chi2_lines[iparam][id] = chi2one(params, dData, N_data, N_filters, delta_V, 0);
-    
-    
-    
- return;   
+    return;   
 }
 
 
@@ -1022,7 +1076,3 @@ __global__ void setup_kernel ( curandState * state, unsigned long seed, CHI_FLOA
     
     return;
 } 
-
-
-
-

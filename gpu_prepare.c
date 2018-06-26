@@ -18,6 +18,9 @@ int gpu_prepare(int N_data, int N_filters, int N_threads, int Nplot)
     {
         ERR(cudaMallocHost(&dPlot, Nplot * sizeof(struct obs_data)));    
         ERR(cudaMemcpy(dPlot, hPlot, Nplot * sizeof(struct obs_data), cudaMemcpyHostToDevice));
+
+        ERR(cudaMalloc(&d_dlsq2, N_data * sizeof(double)));    
+        ERR(cudaMallocHost(&h_dlsq2, N_data * sizeof(double)));    
     }
     
     return 0;

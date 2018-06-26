@@ -143,8 +143,8 @@ if (useGPU)
     
     // (3) Angular momentum L value, radians/day; if P is perdiod in hours, L=48*pi/P
     iparam++;
-    hLimits[0][iparam] = 48.0*PI / 8.5; // 8.5
-    hLimits[1][iparam] = 48.0*PI / 0.4; // 0.4    
+    hLimits[0][iparam] = 48.0*PI / 10; // 8.5
+    hLimits[1][iparam] = 48.0*PI / 0.1; // 0.4    
 #ifndef REOPT
     // In P_PHI mode has a different meaning: 48*pi/Pphi2 ... 48*pi/Pphi1 (used to generate L)
     #ifdef P_PHI
@@ -196,7 +196,7 @@ if (useGPU)
         cudaEventRecord(start, 0);
         #endif        
         
-        #ifdef DEBUG
+        #ifdef DEBUG2
         debug_kernel<<<1, 1>>>(params, dData, N_data, N_filters);
         #endif        
         
@@ -371,18 +371,86 @@ if (useGPU)
     {
         printf("\n*** Plotting ***\n\n");
         
-        dim3 NB(C_POINTS, N_PARAMS);
+        int NX;
+        int NX1 = N_data/N_PARAMS+1;
+        if (C_POINTS > NX1)
+            NX = C_POINTS;
+        else
+            NX = NX1;
+
+#ifdef PROFILES        
+        dim3 NB(NX, N_PARAMS);
+#else        
+        //??? Not the proper way
+        dim3 NB (1, 1);
+#endif        
         
         // Running the CUDA kernel to produce the plot data from params:
-        chi2_plot<<<NB, BSIZE>>>(dData, N_data, N_filters, d_params, dPlot, Nplot, params);
-        
-        ERR(cudaMemcpyFromSymbol(&h_Vmod, d_Vmod, Nplot*sizeof(double), 0, cudaMemcpyDeviceToHost));
-        ERR(cudaMemcpyFromSymbol(&h_chi2_plot, d_chi2_plot, sizeof(CHI_FLOAT), 0, cudaMemcpyDeviceToHost));
-        ERR(cudaMemcpyFromSymbol(&h_chi2_lines, d_chi2_lines, sizeof(h_chi2_lines), 0, cudaMemcpyDeviceToHost));
+        chi2_plot<<<NB, BSIZE>>>(dData, N_data, N_filters, d_params, dPlot, Nplot, params, d_dlsq2);
         ERR(cudaDeviceSynchronize());
         
-        printf("chi2_plot = %13.6e\n", h_chi2_plot);
+        ERR(cudaMemcpyFromSymbol(&h_Vmod, d_Vmod, Nplot*sizeof(double), 0, cudaMemcpyDeviceToHost));
+#ifdef PROFILES        
+        ERR(cudaMemcpyFromSymbol(&h_chi2_plot, d_chi2_plot, sizeof(CHI_FLOAT), 0, cudaMemcpyDeviceToHost));
+        ERR(cudaMemcpyFromSymbol(&h_chi2_lines, d_chi2_lines, sizeof(h_chi2_lines), 0, cudaMemcpyDeviceToHost));
+#endif        
+#ifdef LSQ
+        ERR(cudaMemcpy(h_dlsq2, d_dlsq2, N_data*sizeof(double), cudaMemcpyDeviceToHost));
+#endif        
+        ERR(cudaDeviceSynchronize());
+
+        // Finding minima and computing periodogramm
+        minima(dPlot, h_Vmod, Nplot);
+        for (int j=0; j<NCL_MAX; j++)
+            printf("%d %f %f %f %f\n", j, cl_fr[j], 24.0/cl_fr[j], 48.0/cl_fr[j], cl_H[j]);
         
+//        double d2 = 0.0;
+        /*
+        for (i=0; i<N_data; i++)
+            d2 = d2 + h_dlsq2[i];
+        */
+        double d2[6], w[6];
+        int ind;
+        for (i=0; i<6; i++)
+        {
+            d2[i] = 0.0;
+            w[i] = 0.0;
+        }
+        for (i=0; i<N_data; i++)
+        {
+            if (hData[i].MJD < 0.5)
+                ind = 0;
+            else if (hData[i].MJD < 1.5)
+                ind = 1;
+            else if (hData[i].MJD < 2.7)
+                ind = 2;
+            else if (hData[i].MJD < 3.7)
+                ind = 3;
+            else if (hData[i].MJD < 4.5)
+                ind = 4;
+            else
+                ind = 5;                                
+            d2[ind] = d2[ind] + h_dlsq2[i];
+            w[ind] = w[ind] + 1;
+        }
+        double sum = 0.0;
+        double W;
+        double SW = 0.0;
+        for (i=0; i<6; i++)
+        {
+            if (i == 2 || i == 3)
+        // Giving extra weight to multi-featured regions 2 and 3:
+                W = 2;
+            else
+                W = 1;
+            sum = sum + W*d2[i]/w[i];
+            SW = SW + W;
+        }
+        double dist = sqrt(sum/SW);
+        
+        printf("chi2_plot = %13.6e, lsq = %13.6e\n", h_chi2_plot, dist);
+        
+#ifndef NOPRINT
         fp = fopen("model.dat", "w");
         for (i=0; i<Nplot; i++)
             fprintf(fp, "%13.6e %13.6e\n", hPlot[i].MJD, h_Vmod[i]);
@@ -407,7 +475,7 @@ if (useGPU)
             fprintf(fp, "\n");
         }
         fclose(fp);
-        
+#endif        
     }        
     
 }

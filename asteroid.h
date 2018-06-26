@@ -44,7 +44,11 @@ const float BC_DEV1 = 1.1; //1.3
 
 // GPU optimization parameters:
 const int BSIZE = 256;   // Threads in a block (64 ... 1024, step of 64); 384; 256
-const int N_BLOCKS = 56*50; // Should be proportional to the number of SMs (56 for P100); code runtime and memory consumed on GPU is proportional to this number; x1000 for 1 day
+#ifdef DEBUG
+const int N_BLOCKS = 56*1;
+#else
+const int N_BLOCKS = 56*5000; // Should be proportional to the number of SMs (56 for P100); code runtime and memory consumed on GPU is proportional to this number; x1000 for 1 day
+#endif
 //const int N_SERIAL = 1; // number of serial iglob loops inside the kernel (>=1)
 //const int N_WARPS = BSIZE / 32;
 
@@ -57,7 +61,11 @@ const unsigned int N_STEPS = 100;
 #else
 const unsigned int N_STEPS = 7500; // Number of simplex steps per CUDA block (per simplex run) 27,000 per hour (N=7; BS=256; NB=56*4)
 #endif
-const unsigned int DT_DUMP = 30; // Time in seconds between results dump (to stdout)
+#ifdef DEBUG
+const unsigned int DT_DUMP = 30;
+#else
+const unsigned int DT_DUMP = 300; // Time in seconds between results dump (to stdout)
+#endif
 const int N_WRITE = 1; // Every N_WRITE dumps make a dump to results.dat file
 const CHI_FLOAT DX_INI = 0.01;  // Scale-free initial step
 const CHI_FLOAT SIZE_MIN = 1e-5; // Scale-free smallest simplex size (convergence criterion)
@@ -67,6 +75,7 @@ const CHI_FLOAT GAMMA_SIM = 2.0;
 const CHI_FLOAT RHO_SIM   = 0.5;
 const CHI_FLOAT SIGMA_SIM = 0.5;
 
+
 const CHI_FLOAT SIZE2_MIN = SIZE_MIN * SIZE_MIN;
 
 // Maximum number of chars in a file name:
@@ -75,7 +84,7 @@ const int MAX_FILE_NAME = 256;
 const int MAX_LINE_LENGTH = 128;
 // Maximum number of filters:
 //const int MAX_FILTERS = 100;
-// Maximum number nof data points:
+// Maximum number of data points:
 const int MAX_DATA = 400;
 
 // Number of time points for plotting
@@ -84,6 +93,9 @@ const int NPLOT = 6000;
 const int C_POINTS = 10;
 // Maximum relative deviation for each parameter when computing lines:
 const double DELTA_MAX = 0.001;
+// Scales for the V and t axes when computing the 2D least squares distances between the data and model:
+const double V_SCALE = 1.0;  // in magnitudes
+const double T_SCALE = 0.06;  // in days
 
 // Only matter for REOPT option:
 // Minimum and maximum initial simplex step:
@@ -91,6 +103,9 @@ const CHI_FLOAT DX_MIN = -9.2; // log(0.0001)
 const CHI_FLOAT DX_MAX = -2.3; // log(0.1) -3.51
 // Initial point is randomly shifted along each dimension by maximum 1/2 of the following amount (dimensionless):
 const CHI_FLOAT DX_RAND = 0.1; 
+
+// Maximum number of clusters in minima() periodogram search
+const int NCL_MAX = 5;
 
 
 // Speed of light (au/day):
@@ -134,6 +149,8 @@ int quadratic_interpolation(double, double *,double *,double *, double *,double 
 int timeval_subtract (double *, struct timeval *, struct timeval *);
 __device__ __host__ void iglob_to_params(int *, struct parameters_struct *);
 __device__ __host__ void iloc_to_params(long int *, struct parameters_struct *);
+int cmpdouble (const void * a, const void * b);
+int minima(struct obs_data * dPlot, double * Vm, int Nplot);
 
 #ifdef GPU
 
@@ -142,8 +159,8 @@ int gpu_prepare(int, int, int, int);
 __global__ void setup_kernel ( curandState *, unsigned long, CHI_FLOAT *, int*);
 __global__ void chi2_gpu(struct obs_data *, int, int, curandState*, CHI_FLOAT*, struct parameters_struct*, int*);
 __global__ void chi2_plot(struct obs_data *, int, int,
-                          struct parameters_struct *, struct obs_data *, int, struct parameters_struct);
-  #ifdef DEBUG
+                          struct parameters_struct *, struct obs_data *, int, struct parameters_struct, double *);
+  #ifdef DEBUG2
   __global__ void debug_kernel(struct parameters_struct, struct obs_data *, int, int);
   #endif
 #endif
@@ -177,6 +194,8 @@ EXTERN double hMJD0;
 
 EXTERN CHI_FLOAT * d_chi2_min;
 EXTERN CHI_FLOAT * h_chi2_min;
+EXTERN double * d_dlsq2;
+EXTERN double * h_dlsq2;
 EXTERN long int * d_iloc_min;
 EXTERN long int * h_iloc_min;
 
@@ -205,6 +224,8 @@ EXTERN CHI_FLOAT h_chi2_lines[N_PARAMS][BSIZE*C_POINTS];
     EXTERN int h_max;
     EXTERN unsigned int h_block_counter;
 
+    EXTERN double cl_fr[NCL_MAX];
+    EXTERN double cl_H[NCL_MAX];
 
 #endif
 
