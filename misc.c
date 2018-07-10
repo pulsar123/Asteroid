@@ -83,7 +83,15 @@ int minima(struct obs_data * dPlot, double * Vm, int Nplot)
                 printf ("N>NMIN_MAX!\n");
                 exit(1);
             }
+#ifdef PARABOLIC_MAX
+            //Fitting a parabola to the three points (i-1), i, (i+1)
+            double a = ((Vm[i+1]-Vm[i])/(dPlot[i+1].MJD-dPlot[i].MJD) - (Vm[i]-Vm[i-1])/(dPlot[i].MJD-dPlot[i-1].MJD)) / (dPlot[i+1].MJD-dPlot[i-1].MJD);
+            double b = (Vm[i]-Vm[i-1])/(dPlot[i].MJD-dPlot[i-1].MJD) - a*(dPlot[i].MJD+dPlot[i-1].MJD);
+            // Maximum point for the parabola:
+            t[N-1] = -b/2.0/a;
+#else
             t[N-1] = dPlot[i].MJD;
+#endif            
         }
     }
     
@@ -119,8 +127,8 @@ int minima(struct obs_data * dPlot, double * Vm, int Nplot)
     // Sorting dt:
     qsort(dt, M, sizeof(double), cmpdouble);
     
-    int NN = 1000;   // Number of histogram bins
-    double sgm = 0.2;  // Maximum fractional deviation of a given frequency from a histogram fr value to be counted as a match
+    int NN = 10000;   // Number of histogram bins
+    double sgm = 0.1;  // Maximum fractional deviation of a given frequency from a histogram fr value to be counted as a match
     double dt0 = 1.0/24.0;  // Minimum histogram dt
     double dt2 = 80.0/24.0; // Maximum histogram dt
     double s0 = 3;  // How many sigmas above the histogram noise to count as a significant peak
@@ -130,7 +138,7 @@ int minima(struct obs_data * dPlot, double * Vm, int Nplot)
     double * fr = (double*)malloc(NN*sizeof(double));
     double * H = (double*)malloc(NN*sizeof(double));
     int * marked = (int*)malloc(NN*sizeof(int));
-    
+        
     double m = 0.0;
     for (int i=0; i<NN; i++) 
     {
@@ -140,11 +148,26 @@ int minima(struct obs_data * dPlot, double * Vm, int Nplot)
         for (int j=0; j<M; j++)
         {
             double dv=fabs(dt[j]/dt1-int(dt[j]/dt1+0.5));
+#ifdef MINIMA_SPLINE
+            // Using M4 B-spline function instead of step function
+            double q = dv / sgm;
+            double H1;
+            double q1 = 1.0 - q;
+            double q2 = 2.0 - q;
+            if (q <= 1.0)
+                H1 = 0.25*q2*q2*q2 - q1*q1*q1;
+            else if (q <= 2.0)
+                H1 = 0.25*q2*q2*q2;
+            else
+                H1 = 0.0;
+            H[i] = H[i] + H1;
+#else            
             if (dv < sgm)
                 // Current time interval is within fractional sgm from the histogram bin value, 1/fr[i], so we are counting it as good
             {
                 H[i] = H[i] + 1.0;
             }        
+#endif            
         }
         m = m + H[i];
     }
@@ -167,13 +190,21 @@ int minima(struct obs_data * dPlot, double * Vm, int Nplot)
     // Histogram std:
     s = sqrt(s/(NN-1));
     
+#ifdef MINIMA_PRINT
+    FILE * fp_minima = fopen("min_profile.dat","w");
+#endif    
     // Normalizing the histogram by mean and std:
     for (int i=0; i<NN; i++) 
     {
         H[i] = (H[i]-m)/s;
         marked[i] = 0;
+        #ifdef MINIMA_PRINT
+        fprintf(fp_minima, "%lf %lf\n", fr[i], H[i]);
+        #endif
     }
-    
+#ifdef MINIMA_PRINT
+    fclose(fp_minima);
+#endif    
     // Cluster boundaries are determined by this H lowest value:
     double cl_min = s0;
     

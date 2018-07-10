@@ -401,8 +401,15 @@ if (useGPU)
 
         // Finding minima and computing periodogramm
         minima(dPlot, h_Vmod, Nplot);
+        
         for (int j=0; j<NCL_MAX; j++)
-            printf("%d %f %f %f %f\n", j, cl_fr[j], 24.0/cl_fr[j], 48.0/cl_fr[j], cl_H[j]);
+//            if (cl_fr[j] > 0.0)
+        //        printf("%d %f %f %f %f\n", j, cl_fr[j], 24.0/cl_fr[j], 48.0/cl_fr[j], cl_H[j]);
+                printf ("%f ", cl_fr[j]);
+        for (int j=0; j<NCL_MAX; j++)
+                printf ("%f ", cl_H[j]);
+        printf("\n");
+            
         
 //        double d2 = 0.0;
         /*

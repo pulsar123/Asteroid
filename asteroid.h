@@ -53,7 +53,7 @@ const int N_BLOCKS = 56*5000; // Should be proportional to the number of SMs (56
 //const int N_WARPS = BSIZE / 32;
 
 // ODE time step (days):
-const double TIME_STEP = 1e-2;  // 3e-3
+const double TIME_STEP = 1e-2;  // 1e-2
 
 // Simplex parameters:
 #ifdef TIMING
@@ -88,7 +88,7 @@ const int MAX_LINE_LENGTH = 128;
 const int MAX_DATA = 400;
 
 // Number of time points for plotting
-const int NPLOT = 6000;
+const int NPLOT = 60000; // 6000 !!!
 // Times BSIZE will give the total number of points for lines:
 const int C_POINTS = 10;
 // Maximum relative deviation for each parameter when computing lines:
