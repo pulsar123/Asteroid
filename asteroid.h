@@ -88,7 +88,7 @@ const int MAX_LINE_LENGTH = 128;
 const int MAX_DATA = 400;
 
 // Number of time points for plotting
-const int NPLOT = 60000; // 6000 !!!
+const int NPLOT = 6000; // 6000 !!!
 // Times BSIZE will give the total number of points for lines:
 const int C_POINTS = 10;
 // Maximum relative deviation for each parameter when computing lines:
