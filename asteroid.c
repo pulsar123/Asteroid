@@ -22,9 +22,13 @@ int main (int argc,char **argv)
  #ifdef P_PHI
     double Pphi1, Pphi2;
  #endif
- #ifdef P_PSI
-    double Ppsi1, Ppsi2;
+ #if defined(P_PSI) || defined(P_BOTH)
+   double Ppsi1, Ppsi2;
  #endif
+#ifdef P_BOTH
+   double P_phi;
+   float hPphi;
+#endif   
     
     // Observational data:
     int N_data; // Number of data points
@@ -82,6 +86,15 @@ int main (int argc,char **argv)
         Ppsi2 = atof(argv[4]);
     }
 #endif        
+#ifdef P_BOTH
+    else if (argc == 6)
+    {
+        Ppsi1 = atof(argv[3]);
+        Ppsi2 = atof(argv[4]);
+        P_phi = atof(argv[5]);
+        hPphi = P_phi / 24.0 / (2*PI);
+    }
+#endif        
     else if (argc != 3)
     {
         printf("Arguments: obs_file  results_file\n");
@@ -94,6 +107,10 @@ int main (int argc,char **argv)
 #ifdef P_PSI
         printf("or\n");      
         printf("Arguments: obs_file  results_file  Ppsi1  Ppsi2 (hrs)\n");
+#endif        
+#ifdef P_BOTH
+        printf("or\n");      
+        printf("Arguments: obs_file  results_file  Ppsi1  Ppsi2  Pphi (hrs)\n");
 #endif        
         exit(1);
     }
@@ -152,7 +169,7 @@ if (useGPU)
     hLimits[1][iparam] = 48.0*PI / Pphi1;
     #endif
     // In P_PSI mode has a different meaning: Ppsi1 ... Ppsi2, days (used to derive L)
-    #ifdef P_PSI
+    #if defined(P_PSI) || defined(P_BOTH)
     hLimits[0][iparam] = Ppsi1/24.0;
     hLimits[1][iparam] = Ppsi2/24.0;
     #endif
@@ -164,7 +181,9 @@ if (useGPU)
     hLimits[1][iparam] = log(1.0);                
     
     ERR(cudaMemcpyToSymbol(dLimits, hLimits, 2*N_INDEPEND*sizeof(CHI_FLOAT), 0, cudaMemcpyHostToDevice));                
-    
+#ifdef P_BOTH
+    ERR(cudaMemcpyToSymbol(dPphi, &hPphi, sizeof(float), 0, cudaMemcpyHostToDevice));                
+#endif    
     
     if (Nplot == 0)
     {

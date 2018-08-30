@@ -403,8 +403,8 @@ __device__ int x2params(int LAM, CHI_FLOAT *x, struct parameters_struct *params,
             continue;
         
 #ifdef RELAXED
- #if defined(P_PHI) || defined(P_PSI)
-        // Relaxing only c_tumb in P_PHI / P_PSI modes
+ #if defined(P_PHI) || defined(P_PSI) || defined(P_BOTH)
+        // Relaxing only c_tumb in P_PHI / P_PSI / combined modes
         if (i==4)
             continue;
  #else        
@@ -463,20 +463,20 @@ __device__ int x2params(int LAM, CHI_FLOAT *x, struct parameters_struct *params,
 
 #ifdef P_PHI
         /* Using the empirical fact that for a wide range of c, b, Es, L parameters, Pphi = S0*2*pi/Es/L (SAM)
-         * and S1*2*pi*Ii/L (LAM) with ~20% accuracy; S0=[1,1.1733], S1=[1,1.2067]. 
+         * and S1*2*pi*Ii/L (LAM) with ~20% accuracy; S0=[1,S_LAM0], S1=[1,S_LAM1]. 
          * This allows an easy constraint on L if the range of Pphi is given. 
          * When generating L, we use both the S0/1 ranges, and the given Phi1...Pphi2 range.
          */
     if (LAM)
-        params->L = (x[3] * (1.2067*sLimits[1][3]-sLimits[0][3]) + sLimits[0][3]) / params->Es;
+        params->L = (x[3] * (S_LAM0*sLimits[1][3]-sLimits[0][3]) + sLimits[0][3]) / params->Es;
 //        params->L = (x[3] * (sLimits[1][3]-sLimits[0][3]*0.828706) + sLimits[0][3]*0.828706) / params->Es;
     else
-        params->L = (x[3] * (1.1733*sLimits[1][3]-sLimits[0][3]) + sLimits[0][3]) * Ii;
+        params->L = (x[3] * (S_LAM1*sLimits[1][3]-sLimits[0][3]) + sLimits[0][3]) * Ii;
 //        params->L = (x[3] * (sLimits[1][3]-sLimits[0][3]*0.852297) + sLimits[0][3]*0.852297) * Ii;
     
 #endif
-#ifdef P_PSI    
-    // In P_PSI mode the actual optimiziation parameter is Ppsi which is stored in params.L, and L is derived from Ppsi and Is, Ii, Es
+#if defined(P_PSI) || defined(P_BOTH)
+    // In P_PSI/combined modes the actual optimiziation parameter is Ppsi which is stored in params.L, and L is derived from Ppsi and Is, Ii, Es
     double Einv = 1.0/params->Es;
     double k2;
     if (LAM)
@@ -499,7 +499,25 @@ __device__ int x2params(int LAM, CHI_FLOAT *x, struct parameters_struct *params,
         params->L = 4.0/params->L* PI/(a+g) *sqrt(Ii*Is/(params->Es*(Ii-1.0)*(Is-Einv)));
     else
         params->L = 4.0/params->L* PI/(a+g) *sqrt(Ii*Is/(params->Es*(Is-Ii)*(Einv-1.0)));
-    #endif    
+ #ifdef P_BOTH    
+    double S;
+    // Here dPphi = P_phi / (2*PI)
+    if (LAM == 0)
+    {
+        S = params->L * dPphi * params->Es;
+        if (S<1.0 || S > S_LAM0)
+            // Out of the emprirical boundaries for P_phi constraining:
+            return 1;
+    }
+    else
+    {
+        S = params->L * dPphi  / Ii;
+        if (S<1.0 || S > S_LAM1)
+            // Out of the emprirical boundaries for P_phi constraining:
+            return 1;
+    }
+ #endif
+#endif    
     
                 
     // Generating psi_0 (constrained by Es, Ii, Is)
@@ -670,7 +688,12 @@ __global__ void chi2_gpu (struct obs_data *dData, int N_data, int N_filters,
     // Computing the initial function values (chi2):        
     for (j=0; j<N_PARAMS+1; j++)
     {
+#ifdef P_BOTH
+        if (x2params(LAM, x[j], &params, sLimits))
+            return;
+#else        
         x2params(LAM, x[j], &params, sLimits);
+#endif        
         f[j] = chi2one(params, sData, N_data, N_filters, delta_V, 0);    
     }
         

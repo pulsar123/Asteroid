@@ -111,6 +111,10 @@ const int NCL_MAX = 5;
 // Speed of light (au/day):
 const double light_speed = 173.144632674;
 
+// Empirical coefficients for P_phi constraining, for LAM=0 and 1 cases:
+const double S_LAM0 = 1.1733;
+const double S_LAM1 = 1.2067;
+
 // Parameters structure:
 struct parameters_struct {
     // Independent parameters:
@@ -226,6 +230,7 @@ EXTERN CHI_FLOAT h_chi2_lines[N_PARAMS][BSIZE*C_POINTS];
 
     EXTERN double cl_fr[NCL_MAX];
     EXTERN double cl_H[NCL_MAX];
+EXTERN __device__ float dPphi;
 
 #endif
 
