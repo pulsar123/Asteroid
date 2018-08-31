@@ -507,14 +507,14 @@ __device__ int x2params(int LAM, CHI_FLOAT *x, struct parameters_struct *params,
         S = params->L * dPphi * params->Es;
         if (S<1.0 || S > S_LAM0)
             // Out of the emprirical boundaries for P_phi constraining:
-            return 1;
+            return 2;
     }
     else
     {
         S = params->L * dPphi  / Ii;
         if (S<1.0 || S > S_LAM1)
             // Out of the emprirical boundaries for P_phi constraining:
-            return 1;
+            return 2;
     }
  #endif
 #endif    
@@ -624,6 +624,13 @@ __global__ void chi2_gpu (struct obs_data *dData, int N_data, int N_filters,
     
     int LAM;
     
+#ifdef P_BOTH
+    bool failed;
+    for (int itry=0; itry<100; itry++)
+    {
+#endif
+    
+    
 #ifdef REOPT
     params2x(&LAM, x[0], &params, sLimits);    
     // Random displacement of the initial point, uniformly distributed within +-0.5*DX_RAND:
@@ -686,20 +693,34 @@ __global__ void chi2_gpu (struct obs_data *dData, int N_data, int N_filters,
     }
     
     // Computing the initial function values (chi2):        
+#ifdef P_BOTH
+    failed = 0;
+#endif    
     for (j=0; j<N_PARAMS+1; j++)
     {
 #ifdef P_BOTH
         if (x2params(LAM, x[j], &params, sLimits))
-            return;
+            failed = 1;
 #else        
         x2params(LAM, x[j], &params, sLimits);
 #endif        
         f[j] = chi2one(params, sData, N_data, N_filters, delta_V, 0);    
     }
+    
+#ifdef P_BOTH
+    if (failed == 0)
+        break;
+    }  // end of for loop
+#endif
+    
         
     // The main simplex loop
     while (1)
     {
+#ifdef P_BOTH
+        if (failed == 1)
+            break;
+#endif
         l++;  // Incrementing the global (for the whole lifetime of the thread) simplex steps counter by one
         
         // Sorting the simplex:
@@ -864,7 +885,14 @@ __global__ void chi2_gpu (struct obs_data *dData, int N_data, int N_filters,
     }  // inner while loop
     
     
+#ifdef P_BOTH
+    if (failed == 1)
+            s_f[threadIdx.x] = 1e30;
+    else
+        s_f[threadIdx.x] = f[ind[0]];
+#else        
     s_f[threadIdx.x] = f[ind[0]];
+#endif
     s_thread_id[threadIdx.x] = threadIdx.x;
     
     __syncthreads();
