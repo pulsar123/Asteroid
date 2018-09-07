@@ -575,13 +575,15 @@ __device__ int x2params(int LAM, CHI_FLOAT *x, struct parameters_struct *params,
 //++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 
 __global__ void chi2_gpu (struct obs_data *dData, int N_data, int N_filters,
-                          curandState* globalState, CHI_FLOAT *d_f, struct parameters_struct *d_params, int *d_steps)
+                          curandState* globalState, CHI_FLOAT *d_f, struct parameters_struct *d_params)
 // CUDA kernel computing chi^2 on GPU
 {        
     __shared__ struct obs_data sData[MAX_DATA];
     __shared__ CHI_FLOAT sLimits[2][N_INDEPEND];
     __shared__ volatile CHI_FLOAT s_f[BSIZE];
     __shared__ volatile int s_thread_id[BSIZE];
+//    __shared__ CHI_FLOAT s_f[BSIZE];
+//    __shared__ int s_thread_id[BSIZE];
     int i, j;
     struct parameters_struct params;
     CHI_FLOAT delta_V[N_FILTERS];
@@ -626,7 +628,8 @@ __global__ void chi2_gpu (struct obs_data *dData, int N_data, int N_filters,
     
 #ifdef P_BOTH
     bool failed;
-    for (int itry=0; itry<100; itry++)
+//    for (int itry=0; itry<100; itry++)
+    while (1)
     {
 #endif
     
@@ -700,7 +703,10 @@ __global__ void chi2_gpu (struct obs_data *dData, int N_data, int N_filters,
     {
 #ifdef P_BOTH
         if (x2params(LAM, x[j], &params, sLimits))
+        {
             failed = 1;
+            break;
+        }
 #else        
         x2params(LAM, x[j], &params, sLimits);
 #endif        
@@ -863,7 +869,7 @@ __global__ void chi2_gpu (struct obs_data *dData, int N_data, int N_filters,
         }
         
         // If all else fails - shrink
-        bool failed = 0;
+        bool bad = 0;
         for (j=1; j<N_PARAMS+1; j++)
         {
             for (i=0; i<N_PARAMS; i++)
@@ -871,12 +877,12 @@ __global__ void chi2_gpu (struct obs_data *dData, int N_data, int N_filters,
                 x[ind[j]][i] = x[ind[0]][i] + SIGMA_SIM*(x[ind[j]][i] - x[ind[0]][i]);
             }           
             if (x2params(LAM, x[ind[j]],&params,sLimits))
-                failed = 1;
+                bad = 1;
             else
                 f[ind[j]] = chi2one(params, sData, N_data, N_filters, delta_V, 0);
         }
         // We failed the optimization
-        if (failed)
+        if (bad)
         {
             f[ind[0]] = 1e30;
             break;
@@ -886,7 +892,7 @@ __global__ void chi2_gpu (struct obs_data *dData, int N_data, int N_filters,
     
     
 #ifdef P_BOTH
-    if (failed == 1)
+    if (failed == 1 || f[ind[0]] < 1e-5)
             s_f[threadIdx.x] = 1e30;
     else
         s_f[threadIdx.x] = f[ind[0]];
@@ -917,22 +923,15 @@ __global__ void chi2_gpu (struct obs_data *dData, int N_data, int N_filters,
     }
     // At this point, the smallest chi2 in the block is in s_f[0]
     
-    if (threadIdx.x == s_thread_id[0])
+    if (threadIdx.x == s_thread_id[0] && s_f[0] < d_f[blockIdx.x])
+    // Keeping the current best result if it's better than the previous kernel result for the same blockID
     {
-        unsigned int blockID = atomicAdd(&d_block_counter, 1);
         // Copying the found minimum to device memory:
-        d_f[blockID] = s_f[0];
+        d_f[blockIdx.x] = s_f[0];
         x2params(LAM, x[ind[0]],&params,sLimits);
-        d_params[blockID] = params;
-        d_steps[blockID] = l;
+        d_params[blockIdx.x] = params;
     }
-    
-    // Very expensive: probably should only be used for debugging:
-    atomicAdd(&d_sum, (unsigned long long)l);
-    atomicAdd(&d_sum2, (unsigned long long)l*(unsigned long long)l);
-    atomicMin(&d_min, l);
-    atomicMax(&d_max, l);
-        
+            
     return;        
     
 }
@@ -1103,7 +1102,7 @@ __global__ void chi2_plot (struct obs_data *dData, int N_data, int N_filters,
 
 
 //--------------------------------------------------------------------------------------------------------------------------------------------------------------------------
-__global__ void setup_kernel ( curandState * state, unsigned long seed, CHI_FLOAT *d_f, int *d_steps )
+__global__ void setup_kernel ( curandState * state, unsigned long seed, CHI_FLOAT *d_f)
 {
     // Global thread index:
     unsigned long long id = blockIdx.x*blockDim.x + threadIdx.x;
@@ -1113,16 +1112,6 @@ __global__ void setup_kernel ( curandState * state, unsigned long seed, CHI_FLOA
     if (threadIdx.x==0)
     {
         d_f[blockIdx.x] = 1e30;    
-        d_steps[blockIdx.x] = -1;    
-    }
-
-    if (threadIdx.x==0 && blockIdx.x==0)
-    {
-        d_block_counter = 0;
-        d_sum = 0;
-        d_sum2 = 0;
-        d_min = 2e9;
-        d_max = 0;
     }
     
     return;

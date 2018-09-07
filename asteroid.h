@@ -47,7 +47,7 @@ const int BSIZE = 256;   // Threads in a block (64 ... 1024, step of 64); 384; 2
 #ifdef DEBUG
 const int N_BLOCKS = 56*1;
 #else
-const int N_BLOCKS = 56*5000; // Should be proportional to the number of SMs (56 for P100); code runtime and memory consumed on GPU is proportional to this number; x1000 for 1 day
+const int N_BLOCKS = 56*10; // Should be proportional to the number of SMs (56 for P100); code runtime and memory consumed on GPU is proportional to this number; x1000 for 1 day
 #endif
 //const int N_SERIAL = 1; // number of serial iglob loops inside the kernel (>=1)
 //const int N_WARPS = BSIZE / 32;
@@ -56,7 +56,7 @@ const int N_BLOCKS = 56*5000; // Should be proportional to the number of SMs (56
 const double TIME_STEP = 1e-2;  // 1e-2
 
 // Simplex parameters:
-#ifdef TIMING
+#if defined(TIMING) || defined(DEBUG)
 const unsigned int N_STEPS = 100; 
 #else
 const unsigned int N_STEPS = 7500; // Number of simplex steps per CUDA block (per simplex run) 27,000 per hour (N=7; BS=256; NB=56*4)
@@ -160,8 +160,8 @@ int minima(struct obs_data * dPlot, double * Vm, int Nplot);
 
 int gpu_prepare(int, int, int, int);
 
-__global__ void setup_kernel ( curandState *, unsigned long, CHI_FLOAT *, int*);
-__global__ void chi2_gpu(struct obs_data *, int, int, curandState*, CHI_FLOAT*, struct parameters_struct*, int*);
+__global__ void setup_kernel ( curandState *, unsigned long, CHI_FLOAT *);
+__global__ void chi2_gpu(struct obs_data *, int, int, curandState*, CHI_FLOAT*, struct parameters_struct*);
 __global__ void chi2_plot(struct obs_data *, int, int,
                           struct parameters_struct *, struct obs_data *, int, struct parameters_struct, double *);
   #ifdef DEBUG2
@@ -211,7 +211,6 @@ EXTERN CHI_FLOAT h_chi2_plot;
 EXTERN __device__ CHI_FLOAT d_chi2_lines[N_PARAMS][BSIZE*C_POINTS];
 EXTERN CHI_FLOAT h_chi2_lines[N_PARAMS][BSIZE*C_POINTS];
     EXTERN CHI_FLOAT *d_f;
-    EXTERN int *d_steps;
     EXTERN struct parameters_struct *d_params;
     EXTERN __device__ struct parameters_struct d_params0;
     EXTERN __device__ unsigned long long int d_sum;
@@ -220,7 +219,6 @@ EXTERN CHI_FLOAT h_chi2_lines[N_PARAMS][BSIZE*C_POINTS];
     EXTERN __device__ int d_max;
     EXTERN __device__ unsigned int d_block_counter;
     EXTERN CHI_FLOAT *h_f;
-    EXTERN int *h_steps;
     EXTERN struct parameters_struct *h_params;
     EXTERN unsigned long long int h_sum;
     EXTERN unsigned long long int h_sum2;
