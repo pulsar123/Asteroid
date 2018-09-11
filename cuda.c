@@ -13,7 +13,10 @@
 __device__ void ODE_func (double y[], double f[], double mu[])
 /* Three ODEs for the tumbling evolution of the three Euler angles, phi, theta, and psi.
    Derived in a manner similar to Kaasalainen 2001, but for the setup of Samarasinha and A'Hearn 1991
-   (a > b > c; Il > Ii > Is; either a or c can be the axis of rotation). The setup of Kaasalainen 2001 results
+   (a > b > c; Il > Ii > Is; either a or c can be the axis of rotation). This is so called "L-convention"
+   (Samarasinha & Mueller 2015).
+   
+   The setup of Kaasalainen 2001 results
    in large derivatives, and low accuracy and instability of ODEs for small I1.
    
    Here Ip=(1/Ii+1/Is)/2; Im=(1/Ii-1/Is)/2.
@@ -931,6 +934,10 @@ __global__ void chi2_gpu (struct obs_data *dData, int N_data, int N_filters,
         x2params(LAM, x[ind[0]],&params,sLimits);
         d_params[blockIdx.x] = params;
     }
+            
+
+    // Writing the global states from device memory:
+    globalState[id] = localState;
             
     return;        
     
