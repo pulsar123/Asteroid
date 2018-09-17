@@ -12,21 +12,21 @@
 
 __device__ void ODE_func (double y[], double f[], double mu[])
 /* Three ODEs for the tumbling evolution of the three Euler angles, phi, theta, and psi.
-   Derived in a manner similar to Kaasalainen 2001, but for the setup of Samarasinha and A'Hearn 1991
-   (a > b > c; Il > Ii > Is; either a or c can be the axis of rotation). This is so called "L-convention"
-   (Samarasinha & Mueller 2015).
-   
-   The setup of Kaasalainen 2001 results
-   in large derivatives, and low accuracy and instability of ODEs for small I1.
-   
-   Here Ip=(1/Ii+1/Is)/2; Im=(1/Ii-1/Is)/2.
-   */
+ *   Derived in a manner similar to Kaasalainen 2001, but for the setup of Samarasinha and A'Hearn 1991
+ *   (a > b > c; Il > Ii > Is; either a or c can be the axis of rotation). This is so called "L-convention"
+ *   (Samarasinha & Mueller 2015).
+ *   
+ *   The setup of Kaasalainen 2001 results
+ *   in large derivatives, and low accuracy and instability of ODEs for small I1.
+ *   
+ *   Here Ip=(1/Ii+1/Is)/2; Im=(1/Ii-1/Is)/2.
+ */
 
 {    
-// mu[0,1,2] -> L, Ip, Im
-//    double phi = y[0];
-//    double theta = y[1];
-//    double psi = y[2];
+    // mu[0,1,2] -> L, Ip, Im
+    //    double phi = y[0];
+    //    double theta = y[1];
+    //    double psi = y[2];
     
     // dphi/dt:
     f[0] = mu[0]*(mu[1]-mu[2]*cos(2.0*y[2]));
@@ -39,8 +39,7 @@ __device__ void ODE_func (double y[], double f[], double mu[])
 }
 
 
-
-__device__ CHI_FLOAT chi2one(struct parameters_struct params, struct obs_data *sData, int N_data, int N_filters, CHI_FLOAT *delta_V, int Nplot)
+__device__ CHI_FLOAT chi2one(struct parameters_struct params, struct obs_data *sData, int N_data, int N_filters, CHI_FLOAT *delta_V, int Nplot, struct chi2_struct *s_chi2_params)
 // Computung chi^2 for a single model parameters combination, on GPU, by a single thread
 {
     int i, m;
@@ -51,9 +50,9 @@ __device__ CHI_FLOAT chi2one(struct parameters_struct params, struct obs_data *s
     double sum_y2[N_FILTERS];
     double sum_y[N_FILTERS];
     double sum_w[N_FILTERS];
-
-//!!! Seems to speed up a bit ODE code: - but probably breaks  __syncthreads at the end of chi2_gpu?
-//    __syncthreads();
+    
+    //!!! Seems to speed up a bit ODE code: - but probably breaks  __syncthreads at the end of chi2_gpu?
+    //    __syncthreads();
     
     for (m=0; m<N_filters; m++)
     {
@@ -63,43 +62,43 @@ __device__ CHI_FLOAT chi2one(struct parameters_struct params, struct obs_data *s
     }
     
     /*  Tumbling model description:
-     
-     Triaxial ellipsoid with physical axes a, b, c. a and c are extremal ,
-     b is always intermediate. (c < b < a=1) Photometric a,b,c can be totally different.
-     
-     The corresponding moments of inertia are Il (a), Ii (b), Is(c); Il < Ii < Is.
-     
-     Input parameters with fixed constraints (5): 
-      - <M>: angular momentum vector described by params.theta_M and params.phi_M
-      - phi_0: initial Euler angle for precession, 0...2*pi
-      - L: angular momentum L value, radians/day; if P is perdiod in hours, L=48*pi/P
-      - c_tumb: log10 of the physical (tumbling) value of the smallest axis c size; c < b < a=1
-      
-     Derived values:
-      - Ii_inv = 1/Ii; inverse principle moment of inertia Ii
-      - Is_inv = 1/Is; inverse principle moment of inertia Is
-      
-     Parameters which are constrained by other parameters (3):
-      - b_tumb: log10 of the physical (tumbling) value of the intermediate axis b size; constrained by c: log10(b)=log10(c)...0
-      - Es: dimensionless total energy, constrained by Ii: SAM: Es<1/Ii; LAM: Es>1/Ii
-      - psi_0: initial Euler angle of rotation of the body, constrained (only for SAM) by Ii, Is, Einv=1/Es: psi_max=atan(sqrt(Ii*(Is-Einv)/Is/(Einv-Ii))); psi_0=[-psi_max,psi_max]
-      
-     Derived values:
-      - theta_0: initial Euler nutation angle; 0 ... pi range, derived from Ii, Is, Es, psi_0
-     
-     Time integration to compute the three Euler angles (phi, psi, theta) values for all observed data points
-      - Initial conditions: phi_0, psi_0, theta_0
-      - Parameters needed: L, Ip=0.5*(Ii_inv+Is_inv); Im=0.5*(Ii_inv-Is_inv);  
-      - time step - macro parameter TIME_STEP (days)
-     
+     *     
+     *     Triaxial ellipsoid with physical axes a, b, c. a and c are extremal ,
+     *     b is always intermediate. (c < b < a=1) Photometric a,b,c can be totally different.
+     *     
+     *     The corresponding moments of inertia are Il (a), Ii (b), Is(c); Il < Ii < Is.
+     *     
+     *     Input parameters with fixed constraints (5): 
+     *      - <M>: angular momentum vector described by params.theta_M and params.phi_M
+     *      - phi_0: initial Euler angle for precession, 0...2*pi
+     *      - L: angular momentum L value, radians/day; if P is perdiod in hours, L=48*pi/P
+     *      - c_tumb: log10 of the physical (tumbling) value of the smallest axis c size; c < b < a=1
+     *      
+     *     Derived values:
+     *      - Ii_inv = 1/Ii; inverse principle moment of inertia Ii
+     *      - Is_inv = 1/Is; inverse principle moment of inertia Is
+     *      
+     *     Parameters which are constrained by other parameters (3):
+     *      - b_tumb: log10 of the physical (tumbling) value of the intermediate axis b size; constrained by c: log10(b)=log10(c)...0
+     *      - Es: dimensionless total energy, constrained by Ii: SAM: Es<1/Ii; LAM: Es>1/Ii
+     *      - psi_0: initial Euler angle of rotation of the body, constrained (only for SAM) by Ii, Is, Einv=1/Es: psi_max=atan(sqrt(Ii*(Is-Einv)/Is/(Einv-Ii))); psi_0=[-psi_max,psi_max]
+     *      
+     *     Derived values:
+     *      - theta_0: initial Euler nutation angle; 0 ... pi range, derived from Ii, Is, Es, psi_0
+     *     
+     *     Time integration to compute the three Euler angles (phi, psi, theta) values for all observed data points
+     *      - Initial conditions: phi_0, psi_0, theta_0
+     *      - Parameters needed: L, Ip=0.5*(Ii_inv+Is_inv); Im=0.5*(Ii_inv-Is_inv);  
+     *      - time step - macro parameter TIME_STEP (days)
+     *     
      */
-        
+    
     // We work in the inertial observed (Solar barycentric) frame of reference X, Y, Z.
     // By applying sequentially the three Euler angles of the asteroid (which we compute by solving the three ODEs numerically),
     // we derive the asteroid's internal axes (coinciding with b, c, a for x, y, z)
     // orienation in the barycentric frame of reference. This allows us to compute the orientation of the asteroid->sun and asteroid->earth
     // vectors in the asteroid's frame of reference, which is then used to compute it's apparent brightness for the observer.
-
+    
     // Calculations which are time independent:            
     
     // In tumbling mode, the vector M is the angular momentum vector (fixed in the inertial - barycentric - frame of reference)
@@ -108,19 +107,19 @@ __device__ CHI_FLOAT chi2one(struct parameters_struct params, struct obs_data *s
     double M_x = sin(params.theta_M)*cos(params.phi_M);
     double M_y = sin(params.theta_M)*sin(params.phi_M);
     double M_z = cos(params.theta_M);
-        
+    
     // In the new inertial frame of reference with the <M> vector being the z-axis, we arbitrarily choose the x-axis, <XM>, to be [y x M].
     // It is fixed in the inertial frame of reference, so can be computed here:
     // Made a unit vector
     double XM = sqrt(M_z*M_z+M_x*M_x);
     double XM_x = M_z / XM;
-//    double XM_y = 0.0;
+    //    double XM_y = 0.0;
     double XM_z = -M_x / XM;
     // The third axis, YM, is derived as [M x XM]; a unit vector by design:
     double YM_x = M_y*XM_z;
     double YM_y = M_z*XM_x - M_x*XM_z;
     double YM_z = -M_y*XM_x;
-
+    
     // We set Il (moment of inertia corresponding to the largest axis, a) to 1.
     // Shortest axis (c), largest moment of inertia:
     double Is = (1.0+params.b_tumb*params.b_tumb)/(params.b_tumb*params.b_tumb+params.c_tumb*params.c_tumb);
@@ -131,7 +130,7 @@ __device__ CHI_FLOAT chi2one(struct parameters_struct params, struct obs_data *s
     
     // Now we have a=1>b>c, and Il=1<Ii<Is
     // Axis of rotation can be either "a" (LAM) or "c" (SAM)
-        
+    
     double mu[3];
     double Ip = 0.5*(Ii_inv + Is_inv);
     double Im = 0.5*(Ii_inv - Is_inv);
@@ -144,7 +143,14 @@ __device__ CHI_FLOAT chi2one(struct parameters_struct params, struct obs_data *s
     // Initial value of the Euler angle theta is determined by other parameters:
     double theta = asin(sqrt((params.Es-1.0)/(sin(params.psi_0)*sin(params.psi_0)*(Ii_inv-Is_inv)+Is_inv-1.0)));    
     double psi = params.psi_0;
-            
+    
+    #ifdef NUDGE    
+    float t_mod[M_MAX], V_mod[M_MAX];
+    float t_old[2];
+    float V_old[2];
+    int M = 0;
+    #endif    
+    
     // The loop over all data points    
     for (i=0; i<N_data; i++)
     {                                
@@ -162,7 +168,7 @@ __device__ CHI_FLOAT chi2one(struct parameters_struct params, struct obs_data *s
             h = (sData[i].MJD - sData[i-1].MJD) / N_steps;
             
             double y[3];
-           
+            
             // Initial angles values = the old values, from the previous i cycle:
             y[0] = phi;
             y[1] = theta;
@@ -174,36 +180,36 @@ __device__ CHI_FLOAT chi2one(struct parameters_struct params, struct obs_data *s
                 double K1[3], K2[3], K3[3], K4[3], f[3];
                 
                 ODE_func (y, K1, mu);
-        
+                
                 int j;
                 for (j=0; j<3; j++)
                     f[j] = y[j] + 0.5*h*K1[j];
                 ODE_func (f, K2, mu);
-        
+                
                 for (j=0; j<3; j++)
                     f[j] = y[j] + 0.5*h*K2[j];
                 ODE_func (f, K3, mu);
-        
+                
                 for (j=0; j<3; j++)
                     f[j] = y[j] + h*K3[j];
                 ODE_func (f, K4, mu);
-        
+                
                 for (j=0; j<3; j++)
                     y[j] = y[j] + 1/6.0 * h *(K1[j] + 2*K2[j] + 2*K3[j] + K4[j]);
             }
-        
-
+            
+            
             // New (current) values of the Euler angles derived from solving the ODEs:
             phi = y[0];
             theta = y[1];
             psi = y[2];                    
         }                
-
+        
         // At this point we know the three Euler angles for the current moment of time (data point) - phi, theta, psi.
         
         double cos_phi = cos(phi);
         double sin_phi = sin(phi);
-
+        
         // Components of the node vector N=[M x a], derived by rotating vector XM towards vector YM by Euler angle phi
         // It is unit by design
         // Using XM_y = 0
@@ -229,7 +235,7 @@ __device__ CHI_FLOAT chi2one(struct parameters_struct params, struct obs_data *s
         double w_x = a_y*N_z - a_z*N_y;
         double w_y = a_z*N_x - a_x*N_z;
         double w_z = a_x*N_y - a_y*N_x;
-
+        
         double sin_psi = sin(psi);
         double cos_psi = cos(psi);
         
@@ -243,7 +249,7 @@ __device__ CHI_FLOAT chi2one(struct parameters_struct params, struct obs_data *s
         double c_x = a_y*b_z - a_z*b_y;
         double c_y = a_z*b_x - a_x*b_z;
         double c_z = a_x*b_y - a_y*b_x;
-
+        
         
         // Earth vector in the new (a,b,c) basis; according to my tests in brightness.c, the correct brightness curve is observed when
         // the following sequence is used: a, c, b, for Ep_x,y,z.
@@ -259,13 +265,13 @@ __device__ CHI_FLOAT chi2one(struct parameters_struct params, struct obs_data *s
         // Now that we converted the Earth and Sun vectors to the internal asteroidal basis (a,b,c),
         // we can apply the formalism of Muinonen & Lumme, 2015 to calculate the brightness of the asteroid.
         
-#ifdef BC
+        #ifdef BC
         double b = params.b;
         double c = params.c;
-#else
+        #else
         double b = params.b_tumb;
         double c = params.c_tumb;
-#endif        
+        #endif        
         
         // The two scalars from eq.(12) of Muinonen & Lumme, 2015; assuming a=1
         scalar_Sun   = sqrt(Sp_x*Sp_x + Sp_y*Sp_y/(b*b) + Sp_z*Sp_z/(c*c));
@@ -283,24 +289,24 @@ __device__ CHI_FLOAT chi2one(struct parameters_struct params, struct obs_data *s
         lambda_p = atan2(sin_lambda_p, cos_lambda_p);
         
         // Solar phase angle:
-//        double cos_alpha = Sp_x*Ep_x + Sp_y*Ep_y + Sp_z*Ep_z;
+        //        double cos_alpha = Sp_x*Ep_x + Sp_y*Ep_y + Sp_z*Ep_z;
         // Single-particle phase scattering function:
-//        const double g_HG = 0;
-//        double P_alpha = (1.0 - g_HG*g_HG) / (1.0 + g_HG*g_HG + 2.0*g_HG*cos_alpha);
+        //        const double g_HG = 0;
+        //        double P_alpha = (1.0 - g_HG*g_HG) / (1.0 + g_HG*g_HG + 2.0*g_HG*cos_alpha);
         
         // Asteroid's model visual brightness, from eq.(10):
         // Simplest case of isotropic single-particle scattering, P(alpha)=1:
         Vmod = -2.5*log10(b*c * scalar_Sun*scalar_Earth/scalar * (cos(lambda_p-alpha_p) + cos_lambda_p +
         sin_lambda_p*sin(lambda_p-alpha_p) * log(1.0 / tan(0.5*lambda_p) / tan(0.5*(alpha_p-lambda_p)))));
         
-#ifdef DARK_SIDE
+        #ifdef DARK_SIDE
         // cos of the angle between the normal to the disk (c) and the vector towards the observer:
         double cE = c_x*sData[i].E_x + c_y*sData[i].E_y + c_z*sData[i].E_z;
         // The trick: the disk side on the same side as the vector <c> is brighter than the opposite one:
-#define KAPPA 0.02        
+        #define KAPPA 0.02        
         Vmod = Vmod - 2.5*log10((cE+1.0)/2.0*(1.0-KAPPA)+KAPPA);
-#endif        
-                        
+        #endif        
+        
         if (Nplot > 0)
         {
             d_Vmod[i] = Vmod + delta_V[0]; //???
@@ -315,6 +321,51 @@ __device__ CHI_FLOAT chi2one(struct parameters_struct params, struct obs_data *s
             sum_y[m] = sum_y[m] + y*sData[i].w;
             sum_w[m] = sum_w[m] + sData[i].w;
         }
+        #ifdef NUDGE
+        // Determining if the previous time point was a local minimum
+        if (i < 2)
+        {
+            t_old[i] = sData[i].MJD;
+            V_old[i] = Vmod;
+        }
+        else
+        {
+            if (V_old[1]>V_old[0] && V_old[1]>=Vmod) 
+                // We just found a brightness minimum (V maximum), between i-2 ... i
+            {
+                boolean local=0;
+                for (int imin=0; imin<s_chi2_params.N_obs; imin++)
+                    // If the model minimum at t_old[1] is within DT_MAX2 days from any observed minimum in s_chi2_params structure, we mark it as local.
+                    // It can now contribute to the merit function calculations later in the kernel.
+                    if (fabs(t_old[1]-s_chi2_params.t_obs[imin]) < DT_MAX2)
+                        local = 1;
+                if (local)
+                // Only memorising model minima in the vicinity of observed minima (within DT_MAX2 days) - along the time axis:
+                {
+                    M++;  // Counter of model minima in the vicinity of observed minima in t dimension
+                    if (M > M_MAX)
+                    {
+                        // Too many local minima - a fail:
+                        return 1e30;
+                    }
+                    // Using parabolic approximatioin to find the precise location of the local model minimum in the [i-2 ... i] interval
+                    //Fitting a parabola to the three last points:
+                    double a = ((Vmod-V_old[1])/(sData[i].MJD-t_old[1]) - (V_old[1]-V_old[0])/(t_old[1]-t_old[0])) / (sData[i].MJD-t_old[0]);
+                    double b = (V_old[1]-V_old[0])/(t_old[1]-t_old[0]) - a*(t_old[1]+t_old[0]);
+                    double c = V_old[1] - a*t_old[1]*t_old[1] - b*t_old[1];
+                    // Maximum point for the parabola:
+                    t_mod[M-1] = -b/2.0/a;
+                    V_mod[M-1] = a*sData[i].MJD*sData[i].MJD + b*sData[i].MJD + c;
+                }
+            }
+            
+            // Shifting the values:
+            t_old[0] = t_old[1];
+            V_old[0] = V_old[1];
+            t_old[1] = sData[i].MJD;
+            V_old[1] = Vmod;           
+        }
+        #endif
         
     } // data points loop
     
@@ -334,7 +385,71 @@ __device__ CHI_FLOAT chi2one(struct parameters_struct params, struct obs_data *s
     }   
     
     chi2a = chi2a / (N_data - N_PARAMS - N_filters);
+    
+    #ifdef NUDGE
+    // Here we will modify the chi2a value based on how close model minima are to the corresponding observed minima (in 2D - both t and V axes),
+    // and will punish if the number of model local minima gets too high.    
+    float S_M = 0.0;
+    float P_tot = 1.0;
+    for (int imod=0; imod < M; imod++)
+        // Loop over all detected local model minima
+    {
+        for (int iobs=0; iobs < s_chi2_params.N_obs; iobs++)
+            // Loop over all the observed minima in s_chi2_params structure
+        {
+            float dt = fabs(t_mod[imod]-s_chi2_params.t_obs[iobs]);
+            if (dt < DT_MAX2)
+                // Only local model minima are processed
+            {
+                if (dt > DT_MAX)
+                    // dt is between DT_MAX and DT_MAX2; we use this transition area to punish for too many model minima; it doesn't contribute to nudging
+                {
+                    // x=0 when data minimum enters the remote (DT_MAX2) vicinity of the iobs observed minimum, and becomes 1 when it enters the close (DT_MAX) vicinity:
+                    float x = (DT_MAX2 - dt) / (DT_MAX2 - DT_MAX);
+                    S_M = S_M + x*x*(-2.0*x+3.0); // Computing the effective number of model minima, using a cubic spline
+                }
+                else
+                    // Inside the DT_MAX area
+                {
+                    S_M = S_M + 1.0;
+                    // !!! Only works properly if N_filters=1 !!!
+                    float dV = V_mod[imod] + delta_V[0] - s_chi2_params.V_obs[iobs];
+                    // 2D distance of the model minimum from the observed one, with different scales for t and V axes, normalized to DT_MAX and DV_MAX, respectively:
+                    float x = sqrt(dt*dt/DT_MAX/DT_MAX + dV*dV/DV_MAX/DV_MAX);
+                    if (x < 1.0)
+                        // The model minimum is inside the 2D vicinity area near the observed minimum
+                    {
+                        float P_i = x*x*(-2.0*x+3.0); // Using a cubic spline for a smooth reward function
+                        // Computing the cumulative reward function based on how close model minima are to observed ones.
+                        // 0<P_MIN<1 sets how strong the reward is (the closer to 0, the stronger)
+                        P_tot = P_tot * (P_MIN*(1.0 + P_MIN2*P_i));                    
+                    }
+                }
+            }
+        }
+    }
+    P_tot = powf(P_tot, 1.0/NOBS_MAX); // Normalizing the reward to the number of observed minima
+    // P_tot is the reward factor for how close all observed minima are to model minima. It varies between P_MIN (likely a perfect match) to 1 (no match)
+    if (P_tot < P_MIN)
+        // This might happen if there is more than one model minimum per observed one; we don't want to encourage that:
+        P_tot = P_MIN;
 
+    float P_M;
+    if (S_M < N_MAX2)
+        P_M = 1.0;
+    else if (S_M < N_MAX)
+    {
+        float x = (S_M-N_MAX2) / (N_MAX-N_MAX2);
+        // ??? I could introduce a const parameter to regulate the strength of the punishment
+        P_M = 1.0 + x*x*(-2*x+3); // Using cubic spline to smoothen the punishment function for too many model minima; varies from 1 (no punishment) to 2 (maximum punishment)
+    }
+    else
+        P_M = 2.0; // Will need to change if the strength of punishment is an ajustable parameter
+    
+    // Applying the reward and the punishment to chi2:
+    chi2a = chi2a * P_tot * P_tot;
+    #endif
+    
     return chi2a;
 }           
 
@@ -354,17 +469,17 @@ __device__ void params2x(int *LAM, CHI_FLOAT *x, struct parameters_struct *param
     iparam++; x[iparam] = (log(params->c_tumb) - sLimits[0][iparam]) / (sLimits[1][iparam] - sLimits[0][iparam]); // 4
     
     iparam++; x[iparam] = log(params->b_tumb)/log(params->c_tumb); // 5
-
+    
     double Is = (1.0+params->b_tumb*params->b_tumb) / (params->b_tumb*params->b_tumb+params->c_tumb*params->c_tumb);
     double Ii = (1.0+params->c_tumb*params->c_tumb) / (params->b_tumb*params->b_tumb+params->c_tumb*params->c_tumb);
-
+    
     *LAM = params->Es > 1.0/Ii;
     iparam++; // 6
     if (*LAM)
-    // LAM: Es>1.0/Ii
+        // LAM: Es>1.0/Ii
         x[iparam] = 0.5*((params->Es-1.0/Ii) / (1.0-1.0/Ii) + 1.0);
     else
-    // SAM: Es<1.0/Ii
+        // SAM: Es<1.0/Ii
         x[iparam] = 0.5*(params->Es-1.0/Is) / (1.0/Ii - 1.0/Is);
     
     // Generating psi_0 (constrained by Es, Ii, Is)
@@ -381,16 +496,16 @@ __device__ void params2x(int *LAM, CHI_FLOAT *x, struct parameters_struct *param
         psi_min = -psi_max;
     }
     x[iparam] = (params->psi_0 - psi_min) / (psi_max - psi_min);
-
-#ifdef BC
+    
+    #ifdef BC
     iparam++; x[iparam] = (log(params->c) - sLimits[0][4]) / (sLimits[1][4] - sLimits[0][4]); // 8
     iparam++; x[iparam] = log(params->b)/log(params->c); // 9
-#endif    
+    #endif    
     
     return;
 }    
-    
-    
+
+
 //+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 
 __device__ int x2params(int LAM, CHI_FLOAT *x, struct parameters_struct *params, CHI_FLOAT sLimits[][N_INDEPEND])
@@ -405,22 +520,22 @@ __device__ int x2params(int LAM, CHI_FLOAT *x, struct parameters_struct *params,
         if (i==1 || i==2 || i==7 && LAM)
             continue;
         
-#ifdef RELAXED
- #if defined(P_PHI) || defined(P_PSI) || defined(P_BOTH)
+        #ifdef RELAXED
+        #if defined(P_PHI) || defined(P_PSI) || defined(P_BOTH)
         // Relaxing only c_tumb in P_PHI / P_PSI / combined modes
         if (i==4)
             continue;
- #else        
+        #else        
         // Relaxing L and c_tumb: (physical values are enforced below)
         if (i==3 || i==4)
             continue;
- #endif
- #ifdef BC        
+        #endif
+        #ifdef BC        
         // Relaxing c:
         if (i==N_PARAMS-2)
             continue;
- #endif        
-#endif
+        #endif        
+        #endif
         if (x[i]<0.0 || x[i]>=1.0)
             failed = 1;
     }
@@ -436,49 +551,49 @@ __device__ int x2params(int LAM, CHI_FLOAT *x, struct parameters_struct *params,
     iparam++;  params->phi_M =       x[iparam] * (sLimits[1][iparam]-sLimits[0][iparam]) + sLimits[0][iparam]; // 1
     iparam++;  params->phi_0 =       x[iparam] * (sLimits[1][iparam]-sLimits[0][iparam]) + sLimits[0][iparam]; // 2
     iparam++;  
-#ifndef P_PHI    
+    #ifndef P_PHI    
     // In P_PSI mode, this computes P_psi from x, which is stored in params.L:
-               params->L =           x[iparam] * (sLimits[1][iparam]-sLimits[0][iparam]) + sLimits[0][iparam]; // 3
-#endif    
+    params->L =           x[iparam] * (sLimits[1][iparam]-sLimits[0][iparam]) + sLimits[0][iparam]; // 3
+    #endif    
     iparam++;  log_c =               x[iparam] * (sLimits[1][iparam]-sLimits[0][iparam]) + sLimits[0][iparam]; // 4
-               params->c_tumb = exp(log_c);
-
+    params->c_tumb = exp(log_c);
+    
     // Dependent parameters:
     iparam++;  double log_b =              x[iparam] * log_c; // 5
-               params->b_tumb = exp(log_b);
-// New: in this units, best results distribution looks much flatter; it gurantees b=c...1:
-// It can become unstable or fail if c_tumb->0               
-//    iparam++;  params->b_tumb = 1.0/(x[iparam]*(1.0/params->c_tumb-1.0)+1.0);
+    params->b_tumb = exp(log_b);
+    // New: in this units, best results distribution looks much flatter; it gurantees b=c...1:
+    // It can become unstable or fail if c_tumb->0               
+    //    iparam++;  params->b_tumb = 1.0/(x[iparam]*(1.0/params->c_tumb-1.0)+1.0);
     
     // Derived values:
     double Is = (1.0+params->b_tumb*params->b_tumb) / (params->b_tumb*params->b_tumb+params->c_tumb*params->c_tumb);
     double Ii = (1.0+params->c_tumb*params->c_tumb) / (params->b_tumb*params->b_tumb+params->c_tumb*params->c_tumb);
-
+    
     // Dependent parameters:    
     iparam++;  // 6  
     // Dimensionless total energy (excitation degree)
     if (LAM)
-    // LAM: Es>1.0/Ii
+        // LAM: Es>1.0/Ii
         params->Es=2.0*(x[iparam]-0.5)*(1.0-1.0/Ii)+1.0/Ii;
     else
-    // SAM: Es<1.0/Ii
+        // SAM: Es<1.0/Ii
         params->Es=2.0*x[iparam]*(1.0/Ii-1.0/Is)+1.0/Is;
-
-#ifdef P_PHI
-        /* Using the empirical fact that for a wide range of c, b, Es, L parameters, Pphi = S0*2*pi/Es/L (SAM)
-         * and S1*2*pi*Ii/L (LAM) with ~20% accuracy; S0=[1,S_LAM0], S1=[1,S_LAM1]. 
-         * This allows an easy constraint on L if the range of Pphi is given. 
-         * When generating L, we use both the S0/1 ranges, and the given Phi1...Pphi2 range.
-         */
+    
+    #ifdef P_PHI
+    /* Using the empirical fact that for a wide range of c, b, Es, L parameters, Pphi = S0*2*pi/Es/L (SAM)
+     * and S1*2*pi*Ii/L (LAM) with ~20% accuracy; S0=[1,S_LAM0], S1=[1,S_LAM1]. 
+     * This allows an easy constraint on L if the range of Pphi is given. 
+     * When generating L, we use both the S0/1 ranges, and the given Phi1...Pphi2 range.
+     */
     if (LAM)
         params->L = (x[3] * (S_LAM0*sLimits[1][3]-sLimits[0][3]) + sLimits[0][3]) / params->Es;
-//        params->L = (x[3] * (sLimits[1][3]-sLimits[0][3]*0.828706) + sLimits[0][3]*0.828706) / params->Es;
+    //        params->L = (x[3] * (sLimits[1][3]-sLimits[0][3]*0.828706) + sLimits[0][3]*0.828706) / params->Es;
     else
         params->L = (x[3] * (S_LAM1*sLimits[1][3]-sLimits[0][3]) + sLimits[0][3]) * Ii;
-//        params->L = (x[3] * (sLimits[1][3]-sLimits[0][3]*0.852297) + sLimits[0][3]*0.852297) * Ii;
+    //        params->L = (x[3] * (sLimits[1][3]-sLimits[0][3]*0.852297) + sLimits[0][3]*0.852297) * Ii;
     
-#endif
-#if defined(P_PSI) || defined(P_BOTH)
+    #endif
+    #if defined(P_PSI) || defined(P_BOTH)
     // In P_PSI/combined modes the actual optimiziation parameter is Ppsi which is stored in params.L, and L is derived from Ppsi and Is, Ii, Es
     double Einv = 1.0/params->Es;
     double k2;
@@ -502,7 +617,7 @@ __device__ int x2params(int LAM, CHI_FLOAT *x, struct parameters_struct *params,
         params->L = 4.0/params->L* PI/(a+g) *sqrt(Ii*Is/(params->Es*(Ii-1.0)*(Is-Einv)));
     else
         params->L = 4.0/params->L* PI/(a+g) *sqrt(Ii*Is/(params->Es*(Is-Ii)*(Einv-1.0)));
- #ifdef P_BOTH    
+    #ifdef P_BOTH    
     double S;
     // Here dPphi = P_phi / (2*PI)
     if (LAM == 0)
@@ -519,10 +634,10 @@ __device__ int x2params(int LAM, CHI_FLOAT *x, struct parameters_struct *params,
             // Out of the emprirical boundaries for P_phi constraining:
             return 2;
     }
- #endif
-#endif    
+    #endif
+    #endif    
     
-                
+    
     // Generating psi_0 (constrained by Es, Ii, Is)
     iparam++;  // 7
     double psi_min, psi_max;
@@ -537,38 +652,38 @@ __device__ int x2params(int LAM, CHI_FLOAT *x, struct parameters_struct *params,
         psi_min = -psi_max;
     }
     params->psi_0 = x[iparam]*(psi_max-psi_min) + psi_min;
-
-#ifdef BC
- #ifdef RANDOM_BC
+    
+    #ifdef BC
+    #ifdef RANDOM_BC
     iparam++;  double log_c_dev = (x[iparam]-0.5)*BC_DEV1*2; // 8
     params->c = exp(log_c_dev + log_c);
     iparam++;  double log_b_dev = (x[iparam]-0.5)*BC_DEV1*2; // 9
     params->b = exp(log_b_dev + log_b);
     if (fabs(log_c_dev) > BC_DEV_MAX || fabs(log_b_dev) > BC_DEV_MAX)
         return 1;
- #else    
+    #else    
     iparam++;  double log_c2 = x[iparam] * (sLimits[1][4]-sLimits[0][4]) + sLimits[0][4]; // 8
-  #ifdef RELAXED
-  // Minimum enforcement on c2 in relaxed mode:
+    #ifdef RELAXED
+    // Minimum enforcement on c2 in relaxed mode:
     if (log_c2 > 0.0)
         return 1;
-  #endif  
+    #endif  
     params->c = exp(log_c2);
     // Enforcing the same order (a=1>b>c) aw with tumb values (a_tumb=1>b_tumb>c_tumb):
     iparam++;  double log_b2 =              x[iparam] * log_c2; // 9
-               params->b = exp(log_b2);
+    params->b = exp(log_b2);
     if (fabs(log_c2-log_c) > BC_DEV_MAX || fabs(log_b2-log_b) > BC_DEV_MAX)
         return 1;
- #endif               
-//    iparam++;  double log_b = x[iparam] * (sLimits[1][4]-sLimits[0][4]) + sLimits[0][4]; // 9
-//    params->b = exp(log_b);
-//    if (fabs(log_c2-log_c)>BC_DEV_MAX || fabs(log_b-log(params->b_tumb))>BC_DEV_MAX)
-#endif    
-#ifdef RELAXED
-// Enforcing minimum limits on physical values of L and c:
+    #endif               
+    //    iparam++;  double log_b = x[iparam] * (sLimits[1][4]-sLimits[0][4]) + sLimits[0][4]; // 9
+    //    params->b = exp(log_b);
+    //    if (fabs(log_c2-log_c)>BC_DEV_MAX || fabs(log_b-log(params->b_tumb))>BC_DEV_MAX)
+    #endif    
+    #ifdef RELAXED
+    // Enforcing minimum limits on physical values of L and c:
     if (params->L<0.0 || log_c>0.0)
         return 1;
-#endif
+    #endif
     
     return 0;
 }
@@ -585,8 +700,9 @@ __global__ void chi2_gpu (struct obs_data *dData, int N_data, int N_filters,
     __shared__ CHI_FLOAT sLimits[2][N_INDEPEND];
     __shared__ volatile CHI_FLOAT s_f[BSIZE];
     __shared__ volatile int s_thread_id[BSIZE];
-//    __shared__ CHI_FLOAT s_f[BSIZE];
-//    __shared__ int s_thread_id[BSIZE];
+    //    __shared__ CHI_FLOAT s_f[BSIZE];
+    //    __shared__ int s_thread_id[BSIZE];
+    __shared__ struct chi2_struct s_chi2_params;
     int i, j;
     struct parameters_struct params;
     CHI_FLOAT delta_V[N_FILTERS];
@@ -601,11 +717,16 @@ __global__ void chi2_gpu (struct obs_data *dData, int N_data, int N_filters,
             sLimits[0][i] = dLimits[0][i];
             sLimits[1][i] = dLimits[1][i];
         }
+        #ifdef NUDGE
+        // Copying the data on the observed minima from device to shared memory:
+        s_chi2_params = d_chi2_params;
+        #endif
+        
     }
-#ifdef REOPT
+    #ifdef REOPT
     // Reading the initial point from device memory
-        params = d_params0;
-#endif        
+    params = d_params0;
+    #endif        
     
     // Downhill simplex optimization approach
     
@@ -613,10 +734,10 @@ __global__ void chi2_gpu (struct obs_data *dData, int N_data, int N_filters,
     
     // Global thread index:
     int id = threadIdx.x + blockDim.x*blockIdx.x;
-
+    
     // Generating initial state:
-//    curandState localState;
-//    curand_init ( (unsigned long long)seed, id, 0, &localState );
+    //    curandState localState;
+    //    curand_init ( (unsigned long long)seed, id, 0, &localState );
     
     // Reading the global states from device memory:
     curandState localState = globalState[id];
@@ -629,107 +750,107 @@ __global__ void chi2_gpu (struct obs_data *dData, int N_data, int N_filters,
     
     int LAM;
     
-#ifdef P_BOTH
+    #ifdef P_BOTH
     bool failed;
-//    for (int itry=0; itry<100; itry++)
+    //    for (int itry=0; itry<100; itry++)
     while (1)
     {
-#endif
-    
-    
-#ifdef REOPT
-    params2x(&LAM, x[0], &params, sLimits);    
-    // Random displacement of the initial point, uniformly distributed within +-0.5*DX_RAND:
-    for (i=0; i<N_PARAMS; i++)
-    {
-        x[0][i] = x[0][i] + DX_RAND*(curand_uniform(&localState)-0.5);
-    }
-#else    
-    // Initial random point
-    for (i=0; i<N_PARAMS; i++)
-    {
- #ifdef BC
-  #ifndef RANDOM_BC
-        // Initial vales of c/b are equal to initial values of c_tumb/b_tumb:
-        if (i >= N_PARAMS-2)
-        {
-            x[0][i] = x[0][i-4];
-            continue;
-        }
-  #endif        
- #endif        
-        float r = curand_uniform(&localState);
-        if (i == 6)
-        {
-            // Using the x value for Es to determine the mode (1:LAM. 0:SAM)
-            LAM = r>=0.5;
-            if (LAM==0)
-                // Interval 1e-6 ... 0.5-DX_INI-1e-6:
-                x[0][i] = 1e-6 + (1-2*DX_INI-4e-6) * r;
-            else
-                // Interval 0.5+1e-6 ... 1-DX_INI-1e-6:
-                x[0][i] = 0.5 + 1e-6 + (1-2*DX_INI-4e-6) * (r-0.5);
-        }
-        else
-        // The DX_INI business is to prevent the initial simplex going beyong the limits (???)
-            x[0][i] = 1e-6 + (1.0-DX_INI-2e-6) * r;
-    }
-#endif // REOPT    
-    
-    // Simplex initialization
-    for (j=1; j<N_PARAMS+1; j++)
-    {
+        #endif
+        
+        
+        #ifdef REOPT
+        params2x(&LAM, x[0], &params, sLimits);    
+        // Random displacement of the initial point, uniformly distributed within +-0.5*DX_RAND:
         for (i=0; i<N_PARAMS; i++)
         {
-            if (i == j-1)
+            x[0][i] = x[0][i] + DX_RAND*(curand_uniform(&localState)-0.5);
+        }
+        #else    
+        // Initial random point
+        for (i=0; i<N_PARAMS; i++)
+        {
+            #ifdef BC
+            #ifndef RANDOM_BC
+            // Initial vales of c/b are equal to initial values of c_tumb/b_tumb:
+            if (i >= N_PARAMS-2)
             {
-#ifdef REOPT
-                // In REOPT mode, initial displacements are random, with log distrubution between DX_MIN and DX_MAX:
-                CHI_FLOAT dx_ini = exp(curand_uniform(&localState) * (DX_MAX-DX_MIN) + DX_MIN);
-                x[j][i] = x[0][i] + dx_ini;
-#else                
-                x[j][i] = x[0][i] + DX_INI;
-#endif                
+                x[0][i] = x[0][i-4];
+                continue;
+            }
+            #endif        
+            #endif        
+            float r = curand_uniform(&localState);
+            if (i == 6)
+            {
+                // Using the x value for Es to determine the mode (1:LAM. 0:SAM)
+                LAM = r>=0.5;
+                if (LAM==0)
+                    // Interval 1e-6 ... 0.5-DX_INI-1e-6:
+                    x[0][i] = 1e-6 + (1-2*DX_INI-4e-6) * r;
+                else
+                    // Interval 0.5+1e-6 ... 1-DX_INI-1e-6:
+                    x[0][i] = 0.5 + 1e-6 + (1-2*DX_INI-4e-6) * (r-0.5);
             }
             else
+                // The DX_INI business is to prevent the initial simplex going beyong the limits (???)
+                x[0][i] = 1e-6 + (1.0-DX_INI-2e-6) * r;
+        }
+        #endif // REOPT    
+        
+        // Simplex initialization
+        for (j=1; j<N_PARAMS+1; j++)
+        {
+            for (i=0; i<N_PARAMS; i++)
             {
-                x[j][i] = x[0][i];
+                if (i == j-1)
+                {
+                    #ifdef REOPT
+                    // In REOPT mode, initial displacements are random, with log distrubution between DX_MIN and DX_MAX:
+                    CHI_FLOAT dx_ini = exp(curand_uniform(&localState) * (DX_MAX-DX_MIN) + DX_MIN);
+                    x[j][i] = x[0][i] + dx_ini;
+                    #else                
+                    x[j][i] = x[0][i] + DX_INI;
+                    #endif                
+                }
+                else
+                {
+                    x[j][i] = x[0][i];
+                }
             }
         }
-    }
-    
-    // Computing the initial function values (chi2):        
-#ifdef P_BOTH
-    failed = 0;
-#endif    
-    for (j=0; j<N_PARAMS+1; j++)
-    {
-#ifdef P_BOTH
-        if (x2params(LAM, x[j], &params, sLimits))
-        {
-            failed = 1;
-            break;
-        }
-#else        
-        x2params(LAM, x[j], &params, sLimits);
-#endif        
-        f[j] = chi2one(params, sData, N_data, N_filters, delta_V, 0);    
-    }
-    
-#ifdef P_BOTH
-    if (failed == 0)
-        break;
-    }  // end of for loop
-#endif
-    
         
+        // Computing the initial function values (chi2):        
+        #ifdef P_BOTH
+        failed = 0;
+        #endif    
+        for (j=0; j<N_PARAMS+1; j++)
+        {
+            #ifdef P_BOTH
+            if (x2params(LAM, x[j], &params, sLimits))
+            {
+                failed = 1;
+                break;
+            }
+            #else        
+            x2params(LAM, x[j], &params, sLimits);
+            #endif        
+            f[j] = chi2one(params, sData, N_data, N_filters, delta_V, 0, &s_chi2_params);    
+        }
+        
+        #ifdef P_BOTH
+        if (failed == 0)
+            break;
+    }  // end of for loop
+    #endif
+    
+    
     // The main simplex loop
     while (1)
     {
-#ifdef P_BOTH
+        #ifdef P_BOTH
         if (failed == 1)
             break;
-#endif
+        #endif
         l++;  // Incrementing the global (for the whole lifetime of the thread) simplex steps counter by one
         
         // Sorting the simplex:
@@ -804,7 +925,7 @@ __global__ void chi2_gpu (struct obs_data *dData, int N_data, int N_filters,
         if (x2params(LAM, x_r,&params,sLimits))
             f_r = 1e30;
         else
-            f_r = chi2one(params, sData, N_data, N_filters, delta_V, 0);
+            f_r = chi2one(params, sData, N_data, N_filters, delta_V, 0, &s_chi2_params);
         if (f_r >= f[ind[0]] && f_r < f[ind[N_PARAMS-1]])
         {
             // Replacing the worst point with the reflected point:
@@ -828,7 +949,7 @@ __global__ void chi2_gpu (struct obs_data *dData, int N_data, int N_filters,
             if (x2params(LAM, x_e,&params,sLimits))
                 f_e = 1e30;
             else
-                f_e = chi2one(params, sData, N_data, N_filters, delta_V, 0);
+                f_e = chi2one(params, sData, N_data, N_filters, delta_V, 0, &s_chi2_params);
             if (f_e < f_r)
             {
                 // Replacing the worst point with the expanded point:
@@ -859,7 +980,7 @@ __global__ void chi2_gpu (struct obs_data *dData, int N_data, int N_filters,
         if (x2params(LAM, x_r,&params,sLimits))
             f_r = 1e30;
         else
-            f_r = chi2one(params, sData, N_data, N_filters, delta_V, 0);
+            f_r = chi2one(params, sData, N_data, N_filters, delta_V, 0, &s_chi2_params);
         if (f_r < f[ind[N_PARAMS]])
         {
             // Replacing the worst point with the contracted point:
@@ -882,7 +1003,7 @@ __global__ void chi2_gpu (struct obs_data *dData, int N_data, int N_filters,
             if (x2params(LAM, x[ind[j]],&params,sLimits))
                 bad = 1;
             else
-                f[ind[j]] = chi2one(params, sData, N_data, N_filters, delta_V, 0);
+                f[ind[j]] = chi2one(params, sData, N_data, N_filters, delta_V, 0, &s_chi2_params);
         }
         // We failed the optimization
         if (bad)
@@ -894,14 +1015,14 @@ __global__ void chi2_gpu (struct obs_data *dData, int N_data, int N_filters,
     }  // inner while loop
     
     
-#ifdef P_BOTH
+    #ifdef P_BOTH
     if (failed == 1 || f[ind[0]] < 1e-5)
-            s_f[threadIdx.x] = 1e30;
+        s_f[threadIdx.x] = 1e30;
     else
         s_f[threadIdx.x] = f[ind[0]];
-#else        
+    #else        
     s_f[threadIdx.x] = f[ind[0]];
-#endif
+    #endif
     s_thread_id[threadIdx.x] = threadIdx.x;
     
     __syncthreads();
@@ -927,18 +1048,18 @@ __global__ void chi2_gpu (struct obs_data *dData, int N_data, int N_filters,
     // At this point, the smallest chi2 in the block is in s_f[0]
     
     if (threadIdx.x == s_thread_id[0] && s_f[0] < d_f[blockIdx.x])
-    // Keeping the current best result if it's better than the previous kernel result for the same blockID
+        // Keeping the current best result if it's better than the previous kernel result for the same blockID
     {
         // Copying the found minimum to device memory:
         d_f[blockIdx.x] = s_f[0];
         x2params(LAM, x[ind[0]],&params,sLimits);
         d_params[blockIdx.x] = params;
     }
-            
-
+    
+    
     // Writing the global states from device memory:
     globalState[id] = localState;
-            
+    
     return;        
     
 }
@@ -960,11 +1081,12 @@ __global__ void debug_kernel(struct parameters_struct params, struct obs_data *d
         for (i=0; i<N_data; i++)
             sData[i] = dData[i];
     }
-
-f = chi2one(params, sData, N_data, N_filters, delta_V, 0);
     
-return;
-
+    // !!! Will not work in NUDGE mode - NULL
+    f = chi2one(params, sData, N_data, N_filters, delta_V, 0, NULL);
+    
+    return;
+    
 }
 
 #endif
@@ -973,32 +1095,33 @@ return;
 //++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 
 __global__ void chi2_plot (struct obs_data *dData, int N_data, int N_filters,
-                          struct parameters_struct *d_params, struct obs_data *dPlot, int Nplot, struct parameters_struct params, double * d_dlsq2)
+                           struct parameters_struct *d_params, struct obs_data *dPlot, int Nplot, struct parameters_struct params, double * d_dlsq2)
 // CUDA kernel to compute plot data from input params structure
 {     
     __shared__ double sd2_min[BSIZE];
     CHI_FLOAT delta_V[N_FILTERS];
-
+    
     // Global thread index for points:
     int id = threadIdx.x + blockDim.x*blockIdx.x;
     
-//    if (id == 0 && blockIdx.y == 0)    
-        // Doing once per kernel
+    //    if (id == 0 && blockIdx.y == 0)    
+    // Doing once per kernel
     if (threadIdx.x == 0)
     {
+        // !!! Will not work in NUDGE mode - NULL
         // Step one: computing constants for each filter using chi^2 method, and the chi2 value
-        d_chi2_plot = chi2one(params, dData, N_data, N_filters, delta_V, 0);
-    
+        d_chi2_plot = chi2one(params, dData, N_data, N_filters, delta_V, 0, NULL);
+        
         // Step two: computing the Nplots data points using the delta_V values from above:
-        chi2one(params, dPlot, Nplot, N_filters, delta_V, Nplot);
-
+        chi2one(params, dPlot, Nplot, N_filters, delta_V, Nplot, NULL);
+        
     }
     
     __syncthreads();
     
     int blockid = blockIdx.x + gridDim.x*blockIdx.y;
-
-#ifdef LSQ    
+    
+    #ifdef LSQ    
     // Computing 2D least squares distances between the data points and the model
     // Each block processes one data point
     // Asssuming that the number of blocks is larger or equal to the number of data points!
@@ -1013,12 +1136,12 @@ __global__ void chi2_plot (struct obs_data *dData, int N_data, int N_filters,
             // To save some time:
             if (fabs(dist_t) < 2.0)
             {
-            double dist_V = (d_Vmod[imodel] - dData[idata].V) / V_SCALE;
-            // 2D (in t-V axes) distance between the imodel model point and idata data point, using scales V_SCALE and T_SCALE for the two axes:
-            double d2 = dist_V*dist_V + dist_t*dist_t;
-            // Per-thread minimum of d2:
-            if (d2 < d2_min)
-                d2_min = d2;
+                double dist_V = (d_Vmod[imodel] - dData[idata].V) / V_SCALE;
+                // 2D (in t-V axes) distance between the imodel model point and idata data point, using scales V_SCALE and T_SCALE for the two axes:
+                double d2 = dist_V*dist_V + dist_t*dist_t;
+                // Per-thread minimum of d2:
+                if (d2 < d2_min)
+                    d2_min = d2;
             }
         }
         sd2_min[threadIdx.x] = d2_min;
@@ -1041,9 +1164,9 @@ __global__ void chi2_plot (struct obs_data *dData, int N_data, int N_filters,
         if (threadIdx.x == 0)
             d_dlsq2[idata] = sd2_min[0];
     }
-#endif    
-
-#ifdef PROFILES
+    #endif    
+    
+    #ifdef PROFILES
     if (id < Nplot)
     {
         // Parameter index:
@@ -1099,9 +1222,10 @@ __global__ void chi2_plot (struct obs_data *dData, int N_data, int N_filters,
         }
         
         // Computing the chi2 for the shifted parameter:
-        d_chi2_lines[iparam][id] = chi2one(params, dData, N_data, N_filters, delta_V, 0);
+        // !!! Will not work in NUDGE mode - NULL
+        d_chi2_lines[iparam][id] = chi2one(params, dData, N_data, N_filters, delta_V, 0, NULL);
     }
-#endif    
+    #endif    
     
     return;   
 }

@@ -274,3 +274,37 @@ int minima(struct obs_data * dPlot, double * Vm, int Nplot)
     
     return 0;
 }
+
+
+#ifdef NUDGE
+int prepare_chi2_params()
+{
+    struct chi2_struct h_chi2_params;
+    char line[MAX_LINE_LENGTH];
+    float t_obs, V_obs;
+    
+    FILE *f1 = fopen("observed.min","r");
+    
+    int i = -1;
+    while (fgets(line, sizeof(line), f1)) 
+    {
+        i++;
+        if (i >= NOBS_MAX)
+        {
+            printf ("Too many lines in observed.min file! (>NOBS_MAX)!\n");
+            exit (1);
+        }
+        // The brightness minima times and magnitudes, in converted coordinates (the ones used to compute chi2)
+        sscanf(line, "%f %f", &t_obs, &V_obs);
+        h_chi2_params.t_obs[i] = t_obs;
+        h_chi2_params.V_obs[i] = V_obs;
+    }
+    fclose(f1);
+    
+    // Number of observed minima:
+    h_chi2_params.N_obs = M - 1;
+    
+    // Copying the observed minima data to GPU:
+    ERR(cudaMemcpyToSymbol(d_chi2_params, h_chi2_params, sizeof(struct chi2_struct), 0, cudaMemcpyHostToDevice));
+}
+#endif

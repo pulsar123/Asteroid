@@ -185,6 +185,11 @@ int main (int argc,char **argv)
         ERR(cudaMemcpyToSymbol(dPphi, &hPphi, sizeof(float), 0, cudaMemcpyHostToDevice));                
         #endif    
         
+#ifdef NUDGE
+        prepare_chi2_params();
+#endif
+        
+        
         if (Nplot == 0)
         {
             printf("\n*** Simplex optimization ***\n\n");

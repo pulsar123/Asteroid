@@ -21,6 +21,7 @@ int gpu_prepare(int N_data, int N_filters, int N_threads, int Nplot)
         ERR(cudaMallocHost(&h_dlsq2, N_data * sizeof(double)));    
     }
     
+    
     return 0;
 }
 #endif

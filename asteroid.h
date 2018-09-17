@@ -1,4 +1,4 @@
-/*  Header file for the ABC (Asteroid Brightness in CUDA) project
+r/*  Header file for the ABC (Asteroid Brightness in CUDA) project
  */
 
 #ifndef ASTEROID_H
@@ -115,6 +115,29 @@ const double light_speed = 173.144632674;
 const double S_LAM0 = 1.1733;
 const double S_LAM1 = 1.2067;
 
+#ifdef NUDGE
+const int M_MAX = 30;  // Maximum number of model local minima
+const float M_MAX2 = 20;  // Soft limit on the number of local model minima (should be between NOBS_MAX and M_MAX); if M>N_MAX2, we start to punsih chi2
+const int NOBS_MAX = 10;  // Maximum number of observed minima
+const float DT_MAX = 0.12;  // Maximum 1D distance between observed and model minima in days
+const float DV_MAX = 2.4;  // Maximum 1D distance between observed and model minima in brightness magnitudes
+const float D2_MAX = sqrt(2)*DT_MAX;  // Maximum 2D distance between observed and model minima in equivalent days
+const float DT_MAX2 = 1.5 * DT_MAX; // Additional multipler for DT_MAX defining the time window size (relative to observed minima) where model minima are memorized
+const float P_MIN = 0.5;  // Reward strength for closeness of model minima to observed ones; 0...1; ->0 is the strongest reward
+const float P_MIN2 = 1/P_MIN - 1;  // derived parameter
+double V_obs0[NOBS_MAX];
+double t_obs0[NOBS_MAX];
+#endif
+
+// Structure to bring auxilary parameters to chi2one
+struct chi2_struct {
+    #ifdef NUDGE
+    float t_obs[NOBS_MAX];
+    float V_obs[NOBS_MAX];
+    int N_obs;
+    #endif    
+};
+
 // Parameters structure:
 struct parameters_struct {
     // Independent parameters:
@@ -133,16 +156,16 @@ struct parameters_struct {
 
 // Observational data arrays:
 struct obs_data {
-float V;  // visual magnitude array, mag
-float w;  // 1-sgm error bar squared for V array, mag
-double E_x;  // asteroid->Earth vector in barycentric FoR array, au
-double E_y;  // asteroid->Earth vector in barycentric FoR array, au
-double E_z;  // asteroid->Earth vector in barycentric FoR array, au
-double S_x;  // asteroid->Sun vector in barycentric FoR array, au
-double S_y;  // asteroid->Sun vector in barycentric FoR array, au
-double S_z;  // asteroid->Sun vector in barycentric FoR array, au
-double MJD;  // asteroid time (without time delay)
-int Filter;  // Filter code array
+    float V;  // visual magnitude array, mag
+    float w;  // 1-sgm error bar squared for V array, mag
+    double E_x;  // asteroid->Earth vector in barycentric FoR array, au
+    double E_y;  // asteroid->Earth vector in barycentric FoR array, au
+    double E_z;  // asteroid->Earth vector in barycentric FoR array, au
+    double S_x;  // asteroid->Sun vector in barycentric FoR array, au
+    double S_y;  // asteroid->Sun vector in barycentric FoR array, au
+    double S_z;  // asteroid->Sun vector in barycentric FoR array, au
+    double MJD;  // asteroid time (without time delay)
+    int Filter;  // Filter code array
 };
 
 
@@ -164,9 +187,9 @@ __global__ void setup_kernel ( curandState *, unsigned long, CHI_FLOAT *);
 __global__ void chi2_gpu(struct obs_data *, int, int, curandState*, CHI_FLOAT*, struct parameters_struct*);
 __global__ void chi2_plot(struct obs_data *, int, int,
                           struct parameters_struct *, struct obs_data *, int, struct parameters_struct, double *);
-  #ifdef DEBUG2
-  __global__ void debug_kernel(struct parameters_struct, struct obs_data *, int, int);
-  #endif
+#ifdef DEBUG2
+__global__ void debug_kernel(struct parameters_struct, struct obs_data *, int, int);
+#endif
 #endif
 
 
@@ -205,30 +228,35 @@ EXTERN long int * h_iloc_min;
 
 EXTERN __device__ CHI_FLOAT d_chi2_plot;
 EXTERN CHI_FLOAT h_chi2_plot;
-    EXTERN __device__ CHI_FLOAT dLimits[2][N_INDEPEND];
-    EXTERN __device__ double d_Vmod[NPLOT];
-    EXTERN double h_Vmod[NPLOT];
+EXTERN __device__ CHI_FLOAT dLimits[2][N_INDEPEND];
+EXTERN __device__ double d_Vmod[NPLOT];
+EXTERN double h_Vmod[NPLOT];
 EXTERN __device__ CHI_FLOAT d_chi2_lines[N_PARAMS][BSIZE*C_POINTS];
 EXTERN CHI_FLOAT h_chi2_lines[N_PARAMS][BSIZE*C_POINTS];
-    EXTERN CHI_FLOAT *d_f;
-    EXTERN struct parameters_struct *d_params;
-    EXTERN __device__ struct parameters_struct d_params0;
-    EXTERN __device__ unsigned long long int d_sum;
-    EXTERN __device__ unsigned long long int d_sum2;
-    EXTERN __device__ int d_min;
-    EXTERN __device__ int d_max;
-    EXTERN __device__ unsigned int d_block_counter;
-    EXTERN CHI_FLOAT *h_f;
-    EXTERN struct parameters_struct *h_params;
-    EXTERN unsigned long long int h_sum;
-    EXTERN unsigned long long int h_sum2;
-    EXTERN int h_min;
-    EXTERN int h_max;
-    EXTERN unsigned int h_block_counter;
+EXTERN CHI_FLOAT *d_f;
+EXTERN struct parameters_struct *d_params;
+EXTERN __device__ struct parameters_struct d_params0;
+EXTERN __device__ unsigned long long int d_sum;
+EXTERN __device__ unsigned long long int d_sum2;
+EXTERN __device__ int d_min;
+EXTERN __device__ int d_max;
+EXTERN __device__ unsigned int d_block_counter;
+EXTERN CHI_FLOAT *h_f;
+EXTERN struct parameters_struct *h_params;
+EXTERN unsigned long long int h_sum;
+EXTERN unsigned long long int h_sum2;
+EXTERN int h_min;
+EXTERN int h_max;
+EXTERN unsigned int h_block_counter;
 
-    EXTERN double cl_fr[NCL_MAX];
-    EXTERN double cl_H[NCL_MAX];
+EXTERN double cl_fr[NCL_MAX];
+EXTERN double cl_H[NCL_MAX];
+
 EXTERN __device__ float dPphi;
+
+#ifdef NUDGE
+EXTERN __device__ struct chi2_struct d_chi2_params;
+#endif
 
 #endif
 

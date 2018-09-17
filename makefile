@@ -12,6 +12,7 @@
 # MINIMA_PRINT : dumping periodogramm (fr, H) as min_profile.dat, in misc.c
 # MINIMA_SPLINE : if defined, use spline-smoothed method to compute the periodogramm (only used with MINIMA_PRINT)
 # NOPRINT : if defined, do not create files model.dat, data.dat, lines.dat
+# NUDGE : nudging the model minima towards the observed minima (in 2D - t,V coordinates) during optimization
 # PARABOLIC_MAX : use more accurate (parabola) method to find brightness minima when doing periodogramm (only with MINIMA_PRINT)
 # P_BOTH : combined P_psi and P_phi constraints (input args: P_psi1 P_psi2 P_phi). P_Psi is a free parameter, P_phi is a constant. A rejection method is used during optimization.
 # P_PHI : if defined, Pphi1 Pphi2 args need to be provided; L is no longer an input parameter, and is computed from P_phi using an approximate empirical relation
