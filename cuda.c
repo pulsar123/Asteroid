@@ -333,11 +333,11 @@ __device__ CHI_FLOAT chi2one(struct parameters_struct params, struct obs_data *s
             if (V_old[1]>V_old[0] && V_old[1]>=Vmod) 
                 // We just found a brightness minimum (V maximum), between i-2 ... i
             {
-                boolean local=0;
-                for (int imin=0; imin<s_chi2_params.N_obs; imin++)
+                bool local=0;
+                for (int ii=0; ii<s_chi2_params->N_obs; ii++)
                     // If the model minimum at t_old[1] is within DT_MAX2 days from any observed minimum in s_chi2_params structure, we mark it as local.
                     // It can now contribute to the merit function calculations later in the kernel.
-                    if (fabs(t_old[1]-s_chi2_params.t_obs[imin]) < DT_MAX2)
+                    if (fabs(t_old[1]-s_chi2_params->t_obs[ii]) < DT_MAX2)
                         local = 1;
                 if (local)
                 // Only memorising model minima in the vicinity of observed minima (within DT_MAX2 days) - along the time axis:
@@ -394,10 +394,10 @@ __device__ CHI_FLOAT chi2one(struct parameters_struct params, struct obs_data *s
     for (int imod=0; imod < M; imod++)
         // Loop over all detected local model minima
     {
-        for (int iobs=0; iobs < s_chi2_params.N_obs; iobs++)
+        for (int iobs=0; iobs < s_chi2_params->N_obs; iobs++)
             // Loop over all the observed minima in s_chi2_params structure
         {
-            float dt = fabs(t_mod[imod]-s_chi2_params.t_obs[iobs]);
+            float dt = fabs(t_mod[imod]-s_chi2_params->t_obs[iobs]);
             if (dt < DT_MAX2)
                 // Only local model minima are processed
             {
@@ -413,7 +413,7 @@ __device__ CHI_FLOAT chi2one(struct parameters_struct params, struct obs_data *s
                 {
                     S_M = S_M + 1.0;
                     // !!! Only works properly if N_filters=1 !!!
-                    float dV = V_mod[imod] + delta_V[0] - s_chi2_params.V_obs[iobs];
+                    float dV = V_mod[imod] + delta_V[0] - s_chi2_params->V_obs[iobs];
                     // 2D distance of the model minimum from the observed one, with different scales for t and V axes, normalized to DT_MAX and DV_MAX, respectively:
                     float x = sqrt(dt*dt/DT_MAX/DT_MAX + dV*dV/DV_MAX/DV_MAX);
                     if (x < 1.0)
@@ -435,16 +435,16 @@ __device__ CHI_FLOAT chi2one(struct parameters_struct params, struct obs_data *s
         P_tot = P_MIN;
 
     float P_M;
-    if (S_M < N_MAX2)
+    if (S_M < M_MAX2)
         P_M = 1.0;
-    else if (S_M < N_MAX)
+    else if (S_M < M_MAX)
     {
-        float x = (S_M-N_MAX2) / (N_MAX-N_MAX2);
+        float x = (S_M-M_MAX2) / (M_MAX-M_MAX2);
         // ??? I could introduce a const parameter to regulate the strength of the punishment
-        P_M = 1.0 + x*x*(-2*x+3); // Using cubic spline to smoothen the punishment function for too many model minima; varies from 1 (no punishment) to 2 (maximum punishment)
+        P_M = 1.0 + 3*x*x*(-2*x+3); // Using cubic spline to smoothen the punishment function for too many model minima; varies from 1 (no punishment) to 4 (maximum punishment)
     }
     else
-        P_M = 2.0; // Will need to change if the strength of punishment is an ajustable parameter
+        P_M = 4.0; // Will need to change if the strength of punishment is an ajustable parameter
     
     // Applying the reward and the punishment to chi2:
     chi2a = chi2a * P_tot * P_tot;

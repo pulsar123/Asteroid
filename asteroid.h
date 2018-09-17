@@ -1,4 +1,4 @@
-r/*  Header file for the ABC (Asteroid Brightness in CUDA) project
+/*  Header file for the ABC (Asteroid Brightness in CUDA) project
  */
 
 #ifndef ASTEROID_H
@@ -125,8 +125,6 @@ const float D2_MAX = sqrt(2)*DT_MAX;  // Maximum 2D distance between observed an
 const float DT_MAX2 = 1.5 * DT_MAX; // Additional multipler for DT_MAX defining the time window size (relative to observed minima) where model minima are memorized
 const float P_MIN = 0.5;  // Reward strength for closeness of model minima to observed ones; 0...1; ->0 is the strongest reward
 const float P_MIN2 = 1/P_MIN - 1;  // derived parameter
-double V_obs0[NOBS_MAX];
-double t_obs0[NOBS_MAX];
 #endif
 
 // Structure to bring auxilary parameters to chi2one
@@ -178,6 +176,7 @@ __device__ __host__ void iglob_to_params(int *, struct parameters_struct *);
 __device__ __host__ void iloc_to_params(long int *, struct parameters_struct *);
 int cmpdouble (const void * a, const void * b);
 int minima(struct obs_data * dPlot, double * Vm, int Nplot);
+int prepare_chi2_params();
 
 #ifdef GPU
 

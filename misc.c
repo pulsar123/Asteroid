@@ -302,9 +302,11 @@ int prepare_chi2_params()
     fclose(f1);
     
     // Number of observed minima:
-    h_chi2_params.N_obs = M - 1;
+    h_chi2_params.N_obs = i + 1;
     
     // Copying the observed minima data to GPU:
-    ERR(cudaMemcpyToSymbol(d_chi2_params, h_chi2_params, sizeof(struct chi2_struct), 0, cudaMemcpyHostToDevice));
+    ERR(cudaMemcpyToSymbol(d_chi2_params, &h_chi2_params, sizeof(struct chi2_struct), 0, cudaMemcpyHostToDevice));
+    
+    return 0;
 }
 #endif
