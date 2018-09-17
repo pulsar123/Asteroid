@@ -355,7 +355,7 @@ __device__ CHI_FLOAT chi2one(struct parameters_struct params, struct obs_data *s
                     double c = V_old[1] - a*t_old[1]*t_old[1] - b*t_old[1];
                     // Maximum point for the parabola:
                     t_mod[M-1] = -b/2.0/a;
-                    V_mod[M-1] = a*sData[i].MJD*sData[i].MJD + b*sData[i].MJD + c;
+                    V_mod[M-1] = a*t_mod[M-1]*t_mod[M-1] + b*t_mod[M-1] + c;
                 }
             }
             
@@ -446,8 +446,10 @@ __device__ CHI_FLOAT chi2one(struct parameters_struct params, struct obs_data *s
     else
         P_M = 4.0; // Will need to change if the strength of punishment is an ajustable parameter
     
+    // !!! Need to fix edge effects!!!
+    // Also, should only reward when chi2 is good enough
     // Applying the reward and the punishment to chi2:
-    chi2a = chi2a * P_tot * P_tot;
+    chi2a = chi2a * P_tot * P_M;
     #endif
     
     return chi2a;
