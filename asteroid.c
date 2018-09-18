@@ -211,6 +211,13 @@ int main (int argc,char **argv)
 #ifdef NUDGE
         prepare_chi2_params();
 #endif
+#ifdef P_BOTH
+        struct x2_struct x2_params;
+        x2_params.Pphi = hPphi;
+        #ifdef PHI2
+        x2_params.Pphi2 = hPphi2;
+        #endif
+#endif
         
         
         if (Nplot == 0)
@@ -254,7 +261,7 @@ int main (int argc,char **argv)
                 #endif        
                 
                 // The kernel (using stream 0):
-                chi2_gpu<<<N_BLOCKS, BSIZE>>>(dData, N_data, N_filters, d_states, d_f, d_params);
+                chi2_gpu<<<N_BLOCKS, BSIZE>>>(dData, N_data, N_filters, d_states, d_f, d_params, x2_params);
                 
                 #ifdef TIMING
                 cudaEventRecord(stop, 0);

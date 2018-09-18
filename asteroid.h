@@ -123,7 +123,7 @@ const float DT_MAX = 0.06;  // Maximum 1D distance between observed and model mi
 const float DV_MAX = 1.2;  // Maximum 1D distance between observed and model minima in brightness magnitudes; 2.4
 const float D2_MAX = sqrt(2)*DT_MAX;  // Maximum 2D distance between observed and model minima in equivalent days
 const float DT_MAX2 = 1.5 * DT_MAX; // Additional multipler for DT_MAX defining the time window size (relative to observed minima) where model minima are memorized
-const float P_MIN = 0.5;  // Reward strength for closeness of model minima to observed ones; 0...1; ->0 is the strongest reward
+const float P_MIN = 0.1;  // Reward strength for closeness of model minima to observed ones; 0...1; ->0 is the strongest reward
 const float P_MIN2 = 1/P_MIN - 1;  // derived parameter
 #endif
 
@@ -133,6 +133,16 @@ struct chi2_struct {
     float t_obs[NOBS_MAX];
     float V_obs[NOBS_MAX];
     int N_obs;
+    #endif    
+};
+
+// Structure used to pass parameters to x2params (from chi2gpu)
+struct x2_struct {
+    #ifdef P_BOTH
+    float Pphi;
+    #ifdef PHI2
+    float Pphi2;
+    #endif
     #endif    
 };
 
@@ -183,7 +193,7 @@ int prepare_chi2_params();
 int gpu_prepare(int, int, int, int);
 
 __global__ void setup_kernel ( curandState *, unsigned long, CHI_FLOAT *);
-__global__ void chi2_gpu(struct obs_data *, int, int, curandState*, CHI_FLOAT*, struct parameters_struct*);
+__global__ void chi2_gpu(struct obs_data *, int, int, curandState*, CHI_FLOAT*, struct parameters_struct*, struct x2_struct);
 __global__ void chi2_plot(struct obs_data *, int, int,
                           struct parameters_struct *, struct obs_data *, int, struct parameters_struct, double *);
 #ifdef DEBUG2
@@ -251,9 +261,9 @@ EXTERN unsigned int h_block_counter;
 EXTERN double cl_fr[NCL_MAX];
 EXTERN double cl_H[NCL_MAX];
 
-EXTERN __device__ float dPphi;
+//EXTERN __device__ float dPphi;
 #ifdef PHI2
-EXTERN __device__ float dPphi2;
+//EXTERN __device__ float dPphi2;
 #endif
 
 #ifdef NUDGE

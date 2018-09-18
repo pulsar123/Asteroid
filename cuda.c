@@ -510,7 +510,7 @@ __device__ void params2x(int *LAM, CHI_FLOAT *x, struct parameters_struct *param
 
 //+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 
-__device__ int x2params(int LAM, CHI_FLOAT *x, struct parameters_struct *params, CHI_FLOAT sLimits[][N_INDEPEND])
+__device__ int x2params(int LAM, CHI_FLOAT *x, struct parameters_struct *params, CHI_FLOAT sLimits[][N_INDEPEND], struct x2_struct *s_x2_params)
 {
     double log_c; 
     
@@ -628,9 +628,9 @@ __device__ int x2params(int LAM, CHI_FLOAT *x, struct parameters_struct *params,
     if (LAM == 0)
     {
         // !!! Very inefficient (reading dPphi / dPphi2) from device memory
-        S = params->L * dPphi * params->Es;
+        S = params->L * s_x2_params->Pphi * params->Es;
         #ifdef PHI2
-        S2 = params->L * dPphi2 * params->Es;
+        S2 = params->L * s_x2_params->Pphi2 * params->Es;
         #endif
         #ifdef PHI2
         if (S2<1.0 || S > S_LAM0)
@@ -642,9 +642,9 @@ __device__ int x2params(int LAM, CHI_FLOAT *x, struct parameters_struct *params,
     }
     else
     {
-        S = params->L * dPphi  / Ii;
+        S = params->L * s_x2_params->Pphi  / Ii;
         #ifdef PHI2
-        S2 = params->L * dPphi2  / Ii;
+        S2 = params->L * s_x2_params->Pphi2  / Ii;
         #endif
         #ifdef PHI2
         if (S2<1.0 || S > S_LAM1)
@@ -713,7 +713,7 @@ __device__ int x2params(int LAM, CHI_FLOAT *x, struct parameters_struct *params,
 //++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 
 __global__ void chi2_gpu (struct obs_data *dData, int N_data, int N_filters,
-                          curandState* globalState, CHI_FLOAT *d_f, struct parameters_struct *d_params)
+                          curandState* globalState, CHI_FLOAT *d_f, struct parameters_struct *d_params, struct x2_struct x2_params)
 // CUDA kernel computing chi^2 on GPU
 {        
     __shared__ struct obs_data sData[MAX_DATA];
@@ -723,6 +723,7 @@ __global__ void chi2_gpu (struct obs_data *dData, int N_data, int N_filters,
     //    __shared__ CHI_FLOAT s_f[BSIZE];
     //    __shared__ int s_thread_id[BSIZE];
     __shared__ struct chi2_struct s_chi2_params;
+    __shared__ struct x2_struct s_x2_params;
     int i, j;
     struct parameters_struct params;
     CHI_FLOAT delta_V[N_FILTERS];
@@ -741,7 +742,9 @@ __global__ void chi2_gpu (struct obs_data *dData, int N_data, int N_filters,
         // Copying the data on the observed minima from device to shared memory:
         s_chi2_params = d_chi2_params;
         #endif
-        
+        #ifdef P_BOTH
+        s_x2_params = x2_params;
+        #endif       
     }
     #ifdef REOPT
     // Reading the initial point from device memory
@@ -846,7 +849,7 @@ __global__ void chi2_gpu (struct obs_data *dData, int N_data, int N_filters,
         for (j=0; j<N_PARAMS+1; j++)
         {
             #ifdef P_BOTH
-            if (x2params(LAM, x[j], &params, sLimits))
+            if (x2params(LAM, x[j], &params, sLimits, &s_x2_params))
             {
                 failed = 1;
                 break;
@@ -942,7 +945,7 @@ __global__ void chi2_gpu (struct obs_data *dData, int N_data, int N_filters,
             x_r[i] = x0[i] + ALPHA_SIM*(x0[i] - x[ind[N_PARAMS]][i]);
         }
         CHI_FLOAT f_r;
-        if (x2params(LAM, x_r,&params,sLimits))
+        if (x2params(LAM, x_r,&params,sLimits, &s_x2_params))
             f_r = 1e30;
         else
             f_r = chi2one(params, sData, N_data, N_filters, delta_V, 0, &s_chi2_params);
@@ -966,7 +969,7 @@ __global__ void chi2_gpu (struct obs_data *dData, int N_data, int N_filters,
                 x_e[i] = x0[i] + GAMMA_SIM*(x_r[i] - x0[i]);
             }
             CHI_FLOAT f_e;
-            if (x2params(LAM, x_e,&params,sLimits))
+            if (x2params(LAM, x_e,&params,sLimits, &s_x2_params))
                 f_e = 1e30;
             else
                 f_e = chi2one(params, sData, N_data, N_filters, delta_V, 0, &s_chi2_params);
@@ -997,7 +1000,7 @@ __global__ void chi2_gpu (struct obs_data *dData, int N_data, int N_filters,
         {
             x_r[i] = x0[i] + RHO_SIM*(x[ind[N_PARAMS]][i] - x0[i]);
         }
-        if (x2params(LAM, x_r,&params,sLimits))
+        if (x2params(LAM, x_r,&params,sLimits, &s_x2_params))
             f_r = 1e30;
         else
             f_r = chi2one(params, sData, N_data, N_filters, delta_V, 0, &s_chi2_params);
@@ -1020,7 +1023,7 @@ __global__ void chi2_gpu (struct obs_data *dData, int N_data, int N_filters,
             {
                 x[ind[j]][i] = x[ind[0]][i] + SIGMA_SIM*(x[ind[j]][i] - x[ind[0]][i]);
             }           
-            if (x2params(LAM, x[ind[j]],&params,sLimits))
+            if (x2params(LAM, x[ind[j]],&params,sLimits, &s_x2_params))
                 bad = 1;
             else
                 f[ind[j]] = chi2one(params, sData, N_data, N_filters, delta_V, 0, &s_chi2_params);
@@ -1072,7 +1075,7 @@ __global__ void chi2_gpu (struct obs_data *dData, int N_data, int N_filters,
     {
         // Copying the found minimum to device memory:
         d_f[blockIdx.x] = s_f[0];
-        x2params(LAM, x[ind[0]],&params,sLimits);
+        x2params(LAM, x[ind[0]],&params,sLimits, &s_x2_params);
         d_params[blockIdx.x] = params;
     }
     
