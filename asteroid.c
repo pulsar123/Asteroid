@@ -28,6 +28,10 @@ int main (int argc,char **argv)
     #ifdef P_BOTH
     double P_phi;
     float hPphi;
+    #ifdef PHI2
+    double P_phi2;
+    float hPphi2;
+    #endif
     #endif   
     
     // Observational data:
@@ -87,6 +91,17 @@ int main (int argc,char **argv)
     }
     #endif        
     #ifdef P_BOTH
+    #ifdef PHI2
+    else if (argc == 7)
+    {
+        Ppsi1 = atof(argv[3]);
+        Ppsi2 = atof(argv[4]);
+        P_phi = atof(argv[5]);
+        hPphi = P_phi / 24.0 / (2*PI);
+        P_phi2 = atof(argv[6]);
+        hPphi2 = P_phi2 / 24.0 / (2*PI);
+    }
+    #else
     else if (argc == 6)
     {
         Ppsi1 = atof(argv[3]);
@@ -94,6 +109,7 @@ int main (int argc,char **argv)
         P_phi = atof(argv[5]);
         hPphi = P_phi / 24.0 / (2*PI);
     }
+    #endif
     #endif        
     else if (argc != 3)
     {
@@ -110,7 +126,11 @@ int main (int argc,char **argv)
         #endif        
         #ifdef P_BOTH
         printf("or\n");      
+        #ifdef PHI2
+        printf("Arguments: obs_file  results_file  Ppsi1  Ppsi2  Pphi1  Pphi2 (hrs)\n");
+        #else        
         printf("Arguments: obs_file  results_file  Ppsi1  Ppsi2  Pphi (hrs)\n");
+        #endif
         #endif        
         exit(1);
     }
@@ -168,10 +188,10 @@ int main (int argc,char **argv)
         hLimits[0][iparam] = 48.0*PI / Pphi2;
         hLimits[1][iparam] = 48.0*PI / Pphi1;
         #endif
-        // In P_PSI mode has a different meaning: Ppsi1 ... Ppsi2, days (used to derive L)
+        // In P_PSI mode has a different meaning: 1/Ppsi2 ... 1/Ppsi1, 1/days (used to derive L)
         #if defined(P_PSI) || defined(P_BOTH)
-        hLimits[0][iparam] = Ppsi1/24.0;
-        hLimits[1][iparam] = Ppsi2/24.0;
+        hLimits[0][iparam] = 24.0/Ppsi2;
+        hLimits[1][iparam] = 24.0/Ppsi1;
         #endif
         #endif    
         
@@ -183,6 +203,9 @@ int main (int argc,char **argv)
         ERR(cudaMemcpyToSymbol(dLimits, hLimits, 2*N_INDEPEND*sizeof(CHI_FLOAT), 0, cudaMemcpyHostToDevice));                
         #ifdef P_BOTH
         ERR(cudaMemcpyToSymbol(dPphi, &hPphi, sizeof(float), 0, cudaMemcpyHostToDevice));                
+        #ifdef PHI2
+        ERR(cudaMemcpyToSymbol(dPphi2, &hPphi2, sizeof(float), 0, cudaMemcpyHostToDevice));                
+        #endif        
         #endif    
         
 #ifdef NUDGE

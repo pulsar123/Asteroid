@@ -554,7 +554,7 @@ __device__ int x2params(int LAM, CHI_FLOAT *x, struct parameters_struct *params,
     iparam++;  params->phi_0 =       x[iparam] * (sLimits[1][iparam]-sLimits[0][iparam]) + sLimits[0][iparam]; // 2
     iparam++;  
     #ifndef P_PHI    
-    // In P_PSI mode, this computes P_psi from x, which is stored in params.L:
+    // In P_PSI mode, this computes 1/P_psi from x, which is stored in params.L:
     params->L =           x[iparam] * (sLimits[1][iparam]-sLimits[0][iparam]) + sLimits[0][iparam]; // 3
     #endif    
     iparam++;  log_c =               x[iparam] * (sLimits[1][iparam]-sLimits[0][iparam]) + sLimits[0][iparam]; // 4
@@ -614,25 +614,43 @@ __device__ int x2params(int LAM, CHI_FLOAT *x, struct parameters_struct *params,
         a = a1;  g = g1;
     }
     // Now that we know K(k2)=PI/(a+g), we can derive L from Ppsi:
-    // Here the meaning of params.L changes: from Ppsi to L
+    // Here the meaning of params.L changes: from 1/Ppsi to L
     if (LAM)
-        params->L = 4.0/params->L* PI/(a+g) *sqrt(Ii*Is/(params->Es*(Ii-1.0)*(Is-Einv)));
+        params->L = 4.0*params->L* PI/(a+g) *sqrt(Ii*Is/(params->Es*(Ii-1.0)*(Is-Einv)));
     else
-        params->L = 4.0/params->L* PI/(a+g) *sqrt(Ii*Is/(params->Es*(Is-Ii)*(Einv-1.0)));
+        params->L = 4.0*params->L* PI/(a+g) *sqrt(Ii*Is/(params->Es*(Is-Ii)*(Einv-1.0)));
     #ifdef P_BOTH    
     double S;
+    #ifdef PHI2
+    double S2;
+    #endif
     // Here dPphi = P_phi / (2*PI)
     if (LAM == 0)
     {
+        // !!! Very inefficient (reading dPphi / dPphi2) from device memory
         S = params->L * dPphi * params->Es;
+        #ifdef PHI2
+        S2 = params->L * dPphi2 * params->Es;
+        #endif
+        #ifdef PHI2
+        if (S2<1.0 || S > S_LAM0)
+        #else
         if (S<1.0 || S > S_LAM0)
+        #endif
             // Out of the emprirical boundaries for P_phi constraining:
             return 2;
     }
     else
     {
         S = params->L * dPphi  / Ii;
+        #ifdef PHI2
+        S2 = params->L * dPphi2  / Ii;
+        #endif
+        #ifdef PHI2
+        if (S2<1.0 || S > S_LAM1)
+        #else
         if (S<1.0 || S > S_LAM1)
+        #endif
             // Out of the emprirical boundaries for P_phi constraining:
             return 2;
     }

@@ -119,8 +119,8 @@ const double S_LAM1 = 1.2067;
 const int M_MAX = 30;  // Maximum number of model local minima
 const float M_MAX2 = 20;  // Soft limit on the number of local model minima (should be between NOBS_MAX and M_MAX); if M>N_MAX2, we start to punsih chi2
 const int NOBS_MAX = 10;  // Maximum number of observed minima
-const float DT_MAX = 0.12;  // Maximum 1D distance between observed and model minima in days
-const float DV_MAX = 2.4;  // Maximum 1D distance between observed and model minima in brightness magnitudes
+const float DT_MAX = 0.06;  // Maximum 1D distance between observed and model minima in days; 0.12
+const float DV_MAX = 1.2;  // Maximum 1D distance between observed and model minima in brightness magnitudes; 2.4
 const float D2_MAX = sqrt(2)*DT_MAX;  // Maximum 2D distance between observed and model minima in equivalent days
 const float DT_MAX2 = 1.5 * DT_MAX; // Additional multipler for DT_MAX defining the time window size (relative to observed minima) where model minima are memorized
 const float P_MIN = 0.5;  // Reward strength for closeness of model minima to observed ones; 0...1; ->0 is the strongest reward
@@ -252,6 +252,9 @@ EXTERN double cl_fr[NCL_MAX];
 EXTERN double cl_H[NCL_MAX];
 
 EXTERN __device__ float dPphi;
+#ifdef PHI2
+EXTERN __device__ float dPphi2;
+#endif
 
 #ifdef NUDGE
 EXTERN __device__ struct chi2_struct d_chi2_params;
