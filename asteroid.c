@@ -211,8 +211,8 @@ int main (int argc,char **argv)
 #ifdef NUDGE
         prepare_chi2_params();
 #endif
-#ifdef P_BOTH
         struct x2_struct x2_params;
+#ifdef P_BOTH
         x2_params.Pphi = hPphi;
         #ifdef PHI2
         x2_params.Pphi2 = hPphi2;

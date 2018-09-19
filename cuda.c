@@ -419,7 +419,10 @@ __device__ CHI_FLOAT chi2one(struct parameters_struct params, struct obs_data *s
                     if (x < 1.0)
                         // The model minimum is inside the 2D vicinity area near the observed minimum
                     {
-                        float P_i = x*x*(-2.0*x+3.0); // Using a cubic spline for a smooth reward function
+//                        float P_i = x*x*(-2.0*x+3.0); // Using a cubic spline for a smooth reward function
+                        // Using inverted Lorentzian function instead, with the core radius L_RC=0..1 (L_RC2=L_RC^2)
+                        // It is not perfect (at x=1 the derivative is not perfectly smooth, but good enogh for small L_RC)
+                        float P_i = L_A * x*x/(x*x + L_RC2);
                         // Computing the cumulative reward function based on how close model minima are to observed ones.
                         // 0<P_MIN<1 sets how strong the reward is (the closer to 0, the stronger)
                         P_tot = P_tot * (P_MIN*(1.0 + P_MIN2*P_i));                    
@@ -433,6 +436,14 @@ __device__ CHI_FLOAT chi2one(struct parameters_struct params, struct obs_data *s
     if (P_tot < P_MIN)
         // This might happen if there is more than one model minimum per observed one; we don't want to encourage that:
         P_tot = P_MIN;
+    if (chi2a > CHI2_1)
+        P_tot = 1.0;
+    else if (chi2a > CHI2_0)
+    {
+        float x = (CHI2_1 - chi2a) / (CHI2_1 - CHI2_0);
+        float beta = x*x*(-2*x+3);  // Using cubic spline for a smooth transition from the chi2a>CHI2_1 mode (P_tot=1) to chi2a<CHI2_0 mode (full P_tot)
+        P_tot = powf(P_tot, beta);
+    }
 
     float P_M;
     if (S_M < M_MAX2)
@@ -855,7 +866,7 @@ __global__ void chi2_gpu (struct obs_data *dData, int N_data, int N_filters,
                 break;
             }
             #else        
-            x2params(LAM, x[j], &params, sLimits);
+            x2params(LAM, x[j], &params, sLimits, &s_x2_params);
             #endif        
             f[j] = chi2one(params, sData, N_data, N_filters, delta_V, 0, &s_chi2_params);    
         }
