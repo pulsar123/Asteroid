@@ -277,7 +277,7 @@ int minima(struct obs_data * dPlot, double * Vm, int Nplot)
 
 
 #ifdef NUDGE
-int prepare_chi2_params()
+int prepare_chi2_params(int * N_data)
 {
     struct chi2_struct h_chi2_params;
     char line[MAX_LINE_LENGTH];
@@ -288,21 +288,32 @@ int prepare_chi2_params()
     int i = -1;
     while (fgets(line, sizeof(line), f1)) 
     {
-        i++;
-        if (i >= NOBS_MAX)
-        {
-            printf ("Too many lines in observed.min file! (>NOBS_MAX)!\n");
-            exit (1);
-        }
         // The brightness minima times and magnitudes, in converted coordinates (the ones used to compute chi2)
         sscanf(line, "%f %f", &t_obs, &V_obs);
-        h_chi2_params.t_obs[i] = t_obs;
-        h_chi2_params.V_obs[i] = V_obs;
+        const double small=0.05;
+        if (t_obs >= hMJD0-small && t_obs <= hData[*N_data-1].MJD+hMJD0+small)
+            // Only keeping the minima which are within the observed range
+        {
+            i++;
+            if (i >= NOBS_MAX)
+            {
+                printf ("Too many lines in observed.min file! (>NOBS_MAX)!\n");
+                exit (1);
+            }
+            h_chi2_params.t_obs[i] = t_obs - hMJD0;
+            h_chi2_params.V_obs[i] = V_obs;
+        }
     }
     fclose(f1);
     
     // Number of observed minima:
     h_chi2_params.N_obs = i + 1;
+    if (h_chi2_params.N_obs < 1)
+    {
+        printf ("No local minima in the data range!\n");
+        exit (1);
+    }
+    printf ("%d minima in observed.min\n", h_chi2_params.N_obs);
     
     // Copying the observed minima data to GPU:
     ERR(cudaMemcpyToSymbol(d_chi2_params, &h_chi2_params, sizeof(struct chi2_struct), 0, cudaMemcpyHostToDevice));

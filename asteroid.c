@@ -209,7 +209,7 @@ int main (int argc,char **argv)
         #endif    
         
 #ifdef NUDGE
-        prepare_chi2_params();
+        prepare_chi2_params(&N_data);
 #endif
         struct x2_struct x2_params;
 #ifdef P_BOTH
@@ -367,6 +367,10 @@ int main (int argc,char **argv)
             ERR(cudaDeviceSynchronize());
             
             ERR(cudaMemcpyFromSymbol(&h_Vmod, d_Vmod, Nplot*sizeof(double), 0, cudaMemcpyDeviceToHost));
+            ERR(cudaMemcpyFromSymbol(&h_delta_V0, d_delta_V0, sizeof(CHI_FLOAT), 0, cudaMemcpyDeviceToHost));
+            FILE * fV=fopen("delta_V","w");
+            fprintf(fV, "%8.4f\n", h_delta_V0);
+            fclose(fV);
             #ifdef PROFILES        
             ERR(cudaMemcpyFromSymbol(&h_chi2_plot, d_chi2_plot, sizeof(CHI_FLOAT), 0, cudaMemcpyDeviceToHost));
             ERR(cudaMemcpyFromSymbol(&h_chi2_lines, d_chi2_lines, sizeof(h_chi2_lines), 0, cudaMemcpyDeviceToHost));
@@ -437,12 +441,14 @@ int main (int argc,char **argv)
             #ifndef NOPRINT
             fp = fopen("model.dat", "w");
             for (i=0; i<Nplot; i++)
-                fprintf(fp, "%13.6e %13.6e\n", hPlot[i].MJD, h_Vmod[i]);
+                // The time here is corrected for light travel
+                fprintf(fp, "%13.7f %13.6e\n", hMJD0+hPlot[i].MJD, h_Vmod[i]);
             fclose(fp);
             
             fp = fopen("data.dat", "w");
             for (i=0; i<N_data; i++)
-                fprintf(fp, "%13.6e %13.6e %13.6e w\n", hData[i].MJD, hData[i].V, 1/sqrt(hData[i].w));
+                // The time here is corrected for light travel
+                fprintf(fp, "%13.7f %13.6e %13.6e w\n", hMJD0+hData[i].MJD, hData[i].V, 1/sqrt(hData[i].w));
             fclose(fp);
             
             fp = fopen("lines.dat", "w");

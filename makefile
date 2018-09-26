@@ -19,7 +19,7 @@
 # P_PSI : if defined, Ppsi1 Ppsi2 args need to be provided; L is no longer an input parameter, and is computed precisely from P_psi
 # PHI2 : additional option for P_BOTH. If defined, input args are P_psi1 P_psi2 P_phi1 P_phi2 (so both psi and phi have an explicit range)
 # PROFILES : if defined, write cross-sections along all parameter dimensions to lines.dat
-# RANDOM_BC : obsolete???
+# RANDOM_BC : for BC mode. If defined, initial guess for brightness b,c parameters are close (within exp(BC_DEV1)) to the kinematic b,c parameters.
 # RELAXED : during optimization, the free parameteres has the least possible degree of constraint.
 # REOPT : if defined, use the model point provided via args, and searhc for minima around it
 # TIMING : time the main kernel (chi2_gpu)
@@ -33,7 +33,7 @@ ifeq ($(CLUSTER),monk)
   ARCH=sm_20
 endif  
 
-OPT=-O2 -DGPU -DRELAXED -DBC -DP_PSI -DNUDGE -arch=$(ARCH)
+OPT=-O2 -DGPU -DRELAXED -DBC -DP_PSI -DNUDGE -DDEBUG -arch=$(ARCH)
 INC=-I/usr/include/cuda -I.
 
 BINARY=asteroid2

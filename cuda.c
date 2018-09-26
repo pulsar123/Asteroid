@@ -431,7 +431,7 @@ __device__ CHI_FLOAT chi2one(struct parameters_struct params, struct obs_data *s
             }
         }
     }
-    P_tot = powf(P_tot, 1.0/NOBS_MAX); // Normalizing the reward to the number of observed minima
+    P_tot = powf(P_tot, 1.0/s_chi2_params->N_obs); // Normalizing the reward to the number of observed minima
     // P_tot is the reward factor for how close all observed minima are to model minima. It varies between P_MIN (likely a perfect match) to 1 (no match)
     if (P_tot < P_MIN)
         // This might happen if there is more than one model minimum per observed one; we don't want to encourage that:
@@ -1145,6 +1145,7 @@ __global__ void chi2_plot (struct obs_data *dData, int N_data, int N_filters,
         // !!! Will not work in NUDGE mode - NULL
         // Step one: computing constants for each filter using chi^2 method, and the chi2 value
         d_chi2_plot = chi2one(params, dData, N_data, N_filters, delta_V, 0, NULL);
+        d_delta_V0 = delta_V[0];
         
         // Step two: computing the Nplots data points using the delta_V values from above:
         chi2one(params, dPlot, Nplot, N_filters, delta_V, Nplot, NULL);

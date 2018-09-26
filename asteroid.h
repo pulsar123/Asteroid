@@ -124,8 +124,8 @@ const float DV_MAX = 2.4;  // Maximum 1D distance between observed and model min
 const float D2_MAX = sqrt(2)*DT_MAX;  // Maximum 2D distance between observed and model minima in equivalent days
 const float DT_MAX2 = 1.5 * DT_MAX; // Additional multipler for DT_MAX defining the time window size (relative to observed minima) where model minima are memorized
 const float P_MIN = 0.1;  // Reward strength for closeness of model minima to observed ones; 0...1; ->0 is the strongest reward
-const float CHI2_0 = 100; // Below this value of chi2a, P_tot reward is fully applied
-const float CHI2_1 = 300; // Above this value of chi2a, P_tot reward is not applied. The CHI2_0 ... CHI2_1 is the transition zone
+const float CHI2_0 = 5; // Below this value of chi2a, P_tot reward is fully applied
+const float CHI2_1 = 30; // Above this value of chi2a, P_tot reward is not applied. The CHI2_0 ... CHI2_1 is the transition zone
 const float L_RC = 0.1; // Lorentzian core radius for the nudge function, range 0...1
 const float L_RC2 = L_RC * L_RC; // Derived parameter
 const float L_A = 1.0/(1.0-L_RC2/(1.0+L_RC2));  // Lorentzian scale parameter
@@ -191,7 +191,7 @@ __device__ __host__ void iglob_to_params(int *, struct parameters_struct *);
 __device__ __host__ void iloc_to_params(long int *, struct parameters_struct *);
 int cmpdouble (const void * a, const void * b);
 int minima(struct obs_data * dPlot, double * Vm, int Nplot);
-int prepare_chi2_params();
+int prepare_chi2_params(int *);
 
 #ifdef GPU
 
@@ -255,6 +255,8 @@ EXTERN __device__ unsigned long long int d_sum2;
 EXTERN __device__ int d_min;
 EXTERN __device__ int d_max;
 EXTERN __device__ unsigned int d_block_counter;
+EXTERN __device__ CHI_FLOAT d_delta_V0;
+EXTERN CHI_FLOAT h_delta_V0;
 EXTERN CHI_FLOAT *h_f;
 EXTERN struct parameters_struct *h_params;
 EXTERN unsigned long long int h_sum;
