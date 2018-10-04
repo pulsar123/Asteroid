@@ -24,6 +24,7 @@
 # RELAXED : during optimization, the free parameteres has the least possible degree of constraint.
 # REOPT : if defined, use the model point provided via args, and searhc for minima around it
 # TIMING : time the main kernel (chi2_gpu)
+# TREND : detrending the time evolution of the brightness, via the scaling parameter a (proxy for G-parameter from HG reflectivity law) - adds one free parameter
 # TUMBLE : obsolete (now tumbling is always enabled)
 
 ARCH=sm_60
@@ -34,7 +35,7 @@ ifeq ($(CLUSTER),monk)
   ARCH=sm_20
 endif  
 
-OPT=-O2 -DGPU -DRELAXED -DP_PSI -DBC -DNUDGE -DV1S -DDEBUG -arch=$(ARCH)
+OPT=-O2 -DGPU -DRELAXED -DP_PSI -DBC -DTREND -DDEBUG -arch=$(ARCH)
 INC=-I/usr/include/cuda -I.
 
 BINARY=asteroid2

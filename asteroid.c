@@ -40,7 +40,7 @@ int main (int argc,char **argv)
     int Nplot = 0;
     
     
-    if (argc == 10 || argc == 12)
+    if (argc == 13)
     {
         params.theta_M = atof(argv[2]);
         params.phi_M = atof(argv[3]);
@@ -50,15 +50,17 @@ int main (int argc,char **argv)
         params.b_tumb = atof(argv[7]);
         params.Es = atof(argv[8]);
         params.psi_0 = atof(argv[9]);
-        if (argc == 12)
-        {
-            params.c = atof(argv[10]);
-            params.b = atof(argv[11]);
-        }
+#ifdef BC
+        params.c = atof(argv[10]);
+        params.b = atof(argv[11]);
+#endif        
+#ifdef TREND
+        params.A = atof(argv[12]);
+#endif        
         Nplot = NPLOT; // Number of plot points
     }
-    #ifdef REOPT
-    else if (argc == 11 || argc == 13)
+#ifdef REOPT
+    else if (argc == 14)
     {
         params.theta_M = atof(argv[3]);
         params.phi_M = atof(argv[4]);
@@ -68,12 +70,13 @@ int main (int argc,char **argv)
         params.b_tumb = atof(argv[8]);
         params.Es = atof(argv[9]);
         params.psi_0 = atof(argv[10]);
-        if (argc == 13)
-        {
-            params.c = atof(argv[11]);
-            params.b = atof(argv[12]);
-        }
-        
+#ifdef BC
+        params.c = atof(argv[11]);
+        params.b = atof(argv[12]);
+#endif        
+#ifdef TREND
+        params.A = atof(argv[13]);
+#endif        
     }
     #endif
     #ifdef P_PHI
@@ -195,7 +198,15 @@ int main (int argc,char **argv)
         #endif
         #endif    
         
-        // (4) c_tumb (physical (tumbling) value of the axis c size; always smallest)
+        #ifdef TREND
+        // (4) scaling parameter "A" for de-trending the brightness curve, in magnitude/radian units (to be multiplied by the phase angle alpha to get magnitude correction):
+        // Physically plausible values are negative, -1.75 ... -0.5 mag/rad
+        iparam++;
+        hLimits[0][iparam] = -10;
+        hLimits[1][iparam] = 10;
+        #endif        
+        
+        // (5 or 4) c_tumb (physical (tumbling) value of the axis c size; always smallest)
         iparam++;
         hLimits[0][iparam] = log(0.002);
         hLimits[1][iparam] = log(1.0);                
@@ -293,7 +304,15 @@ int main (int argc,char **argv)
                         #ifdef BC
                         fprintf(fp,"%15.11f ",  params.c);
                         fprintf(fp,"%15.11f ",  params.b);
-                        #endif                    
+                        #else
+                        fprintf(fp,"%15.11f ",  params.c_tumb);
+                        fprintf(fp,"%15.11f ",  params.b_tumb);
+                        #endif
+                        #ifdef TREND
+                        fprintf(fp,"%15.11f ",  params.A);
+                        #else
+                        fprintf(fp,"%15.11f ",  0.0);
+                        #endif
                         fprintf(fp,"\n");
                     }
                     fclose(fp);
@@ -332,6 +351,11 @@ int main (int argc,char **argv)
                     printf("%15.11f ",  params.c_tumb);
                     printf("%15.11f ",  params.b_tumb);
                     #endif            
+                    #ifdef TREND
+                    printf("%15.11f ",  params.A);
+                    #else
+                    printf("%15.11f ",  0.0);
+                    #endif
                     printf("\n");
                     fflush(stdout);
                 }

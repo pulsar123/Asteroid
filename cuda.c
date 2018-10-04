@@ -68,11 +68,12 @@ __device__ CHI_FLOAT chi2one(struct parameters_struct params, struct obs_data *s
      *     
      *     The corresponding moments of inertia are Il (a), Ii (b), Is(c); Il < Ii < Is.
      *     
-     *     Input parameters with fixed constraints (5): 
+     *     Input parameters with fixed constraints (5-6): 
      *      - <M>: angular momentum vector described by params.theta_M and params.phi_M
      *      - phi_0: initial Euler angle for precession, 0...2*pi
      *      - L: angular momentum L value, radians/day; if P is perdiod in hours, L=48*pi/P
      *      - c_tumb: log10 of the physical (tumbling) value of the smallest axis c size; c < b < a=1
+     *      - A (only in TREND mode): scaling parameter "A" for de-trending the brightness curve, in magnitude/radian units (to be multiplied by the phase angle alpha to get magnitude correction)
      *      
      *     Derived values:
      *      - Ii_inv = 1/Ii; inverse principle moment of inertia Ii
@@ -293,16 +294,18 @@ __device__ CHI_FLOAT chi2one(struct parameters_struct params, struct obs_data *s
         sin_lambda_p = scalar_Earth*sin_alpha_p / scalar;
         lambda_p = atan2(sin_lambda_p, cos_lambda_p);
         
-        // Solar phase angle:
-        //        double cos_alpha = Sp_x*Ep_x + Sp_y*Ep_y + Sp_z*Ep_z;
-        // Single-particle phase scattering function:
-        //        const double g_HG = 0;
-        //        double P_alpha = (1.0 - g_HG*g_HG) / (1.0 + g_HG*g_HG + 2.0*g_HG*cos_alpha);
-        
         // Asteroid's model visual brightness, from eq.(10):
         // Simplest case of isotropic single-particle scattering, P(alpha)=1:
         Vmod = -2.5*log10(b*c * scalar_Sun*scalar_Earth/scalar * (cos(lambda_p-alpha_p) + cos_lambda_p +
         sin_lambda_p*sin(lambda_p-alpha_p) * log(1.0 / tan(0.5*lambda_p) / tan(0.5*(alpha_p-lambda_p)))));
+
+        #ifdef TREND
+        // Solar phase angle:
+        double alpha = acos(Sp_x*Ep_x + Sp_y*Ep_y + Sp_z*Ep_z);
+        // De-trending the brightness curve:
+        Vmod = Vmod - params.A*alpha;
+        #endif        
+        
         
         #ifdef DARK_SIDE
         // cos of the angle between the normal to the disk (c) and the vector towards the observer:
@@ -545,7 +548,7 @@ __device__ void params2x(int *LAM, CHI_FLOAT *x, struct parameters_struct *param
     x[iparam] = (params->psi_0 - psi_min) / (psi_max - psi_min);
     
     #ifdef BC
-    iparam++; x[iparam] = (log(params->c) - sLimits[0][4]) / (sLimits[1][4] - sLimits[0][4]); // 8
+    iparam++; x[iparam] = (log(params->c) - sLimits[0][4+DN_TREND]) / (sLimits[1][4+DN_TREND] - sLimits[0][4+DN_TREND]); // 8+DN_TREND
     iparam++; x[iparam] = log(params->b)/log(params->c); // 9
     #endif    
     
@@ -564,22 +567,22 @@ __device__ int x2params(int LAM, CHI_FLOAT *x, struct parameters_struct *params,
     for (int i=0; i<N_PARAMS; i++)
     {
         // Three parameters (phi_M, phi_0, and psi_0 - for LAM=1 only, can have any value during optimization:
-        if (i==1 || i==2 || i==7 && LAM)
+        if (i==1 || i==2 || i==7+DN_TREND && LAM)
             continue;
         
         #ifdef RELAXED
         #if defined(P_PHI) || defined(P_PSI) || defined(P_BOTH)
         // Relaxing only c_tumb in P_PHI / P_PSI / combined modes
-        if (i==4)
+        if (i==4+DN_TREND)
             continue;
         #else        
         // Relaxing L and c_tumb: (physical values are enforced below)
-        if (i==3 || i==4)
+        if (i==3 || i==4+DN_TREND)
             continue;
         #endif
         #ifdef BC        
         // Relaxing c:
-        if (i==N_PARAMS-2)
+        if (i == 8+DN_TREND)
             continue;
         #endif        
         #endif
@@ -587,7 +590,7 @@ __device__ int x2params(int LAM, CHI_FLOAT *x, struct parameters_struct *params,
             failed = 1;
     }
     // Crossing LAM <-> SAM is not allowed during optimization:
-    if (LAM==0 && x[6]>0.5 || LAM==1 && x[6]<0.5)
+    if (LAM==0 && x[6+DN_TREND]>0.5 || LAM==1 && x[6+DN_TREND]<0.5)
         failed = 1;
     if (failed)
         return failed;
@@ -602,11 +605,14 @@ __device__ int x2params(int LAM, CHI_FLOAT *x, struct parameters_struct *params,
     // In P_PSI mode, this computes 1/P_psi from x, which is stored in params.L:
     params->L =           x[iparam] * (sLimits[1][iparam]-sLimits[0][iparam]) + sLimits[0][iparam]; // 3
     #endif    
-    iparam++;  log_c =               x[iparam] * (sLimits[1][iparam]-sLimits[0][iparam]) + sLimits[0][iparam]; // 4
+    #ifdef TREND
+    iparam++;  params->A =     x[iparam] * (sLimits[1][iparam]-sLimits[0][iparam]) + sLimits[0][iparam]; // 4
+    #endif
+    iparam++;  log_c =               x[iparam] * (sLimits[1][iparam]-sLimits[0][iparam]) + sLimits[0][iparam]; // 4+DN_TREND
     params->c_tumb = exp(log_c);
     
     // Dependent parameters:
-    iparam++;  double log_b =              x[iparam] * log_c; // 5
+    iparam++;  double log_b =              x[iparam] * log_c; // 5+DN_TREND
     params->b_tumb = exp(log_b);
     // New: in this units, best results distribution looks much flatter; it gurantees b=c...1:
     // It can become unstable or fail if c_tumb->0               
@@ -617,7 +623,7 @@ __device__ int x2params(int LAM, CHI_FLOAT *x, struct parameters_struct *params,
     double Ii = (1.0+params->c_tumb*params->c_tumb) / (params->b_tumb*params->b_tumb+params->c_tumb*params->c_tumb);
     
     // Dependent parameters:    
-    iparam++;  // 6  
+    iparam++;  // 6+DN_TREND
     // Dimensionless total energy (excitation degree)
     if (LAM)
         // LAM: Es>1.0/Ii
@@ -704,7 +710,7 @@ __device__ int x2params(int LAM, CHI_FLOAT *x, struct parameters_struct *params,
     
     
     // Generating psi_0 (constrained by Es, Ii, Is)
-    iparam++;  // 7
+    iparam++;  // 7+DN_TREND
     double psi_min, psi_max;
     if (LAM)
     {
@@ -720,14 +726,14 @@ __device__ int x2params(int LAM, CHI_FLOAT *x, struct parameters_struct *params,
     
     #ifdef BC
     #ifdef RANDOM_BC
-    iparam++;  double log_c_dev = (x[iparam]-0.5)*BC_DEV1*2; // 8
+    iparam++;  double log_c_dev = (x[iparam]-0.5)*BC_DEV1*2; // 8+DN_TREND
     params->c = exp(log_c_dev + log_c);
-    iparam++;  double log_b_dev = (x[iparam]-0.5)*BC_DEV1*2; // 9
+    iparam++;  double log_b_dev = (x[iparam]-0.5)*BC_DEV1*2; // 9+DN_TREND
     params->b = exp(log_b_dev + log_b);
     if (fabs(log_c_dev) > BC_DEV_MAX || fabs(log_b_dev) > BC_DEV_MAX)
         return 1;
     #else    
-    iparam++;  double log_c2 = x[iparam] * (sLimits[1][4]-sLimits[0][4]) + sLimits[0][4]; // 8
+    iparam++;  double log_c2 = x[iparam] * (sLimits[1][4+DN_TREND]-sLimits[0][4+DN_TREND]) + sLimits[0][4+DN_TREND]; // 8+DN_TREND
     #ifdef RELAXED
     // Minimum enforcement on c2 in relaxed mode:
     if (log_c2 > 0.0)
@@ -735,21 +741,18 @@ __device__ int x2params(int LAM, CHI_FLOAT *x, struct parameters_struct *params,
     #endif  
     params->c = exp(log_c2);
     // Enforcing the same order (a=1>b>c) aw with tumb values (a_tumb=1>b_tumb>c_tumb):
-    iparam++;  double log_b2 =              x[iparam] * log_c2; // 9
+    iparam++;  double log_b2 =              x[iparam] * log_c2; // 9+DN_TREND
     params->b = exp(log_b2);
     if (fabs(log_c2-log_c) > BC_DEV_MAX || fabs(log_b2-log_b) > BC_DEV_MAX)
         return 1;
     #endif               
-    //    iparam++;  double log_b = x[iparam] * (sLimits[1][4]-sLimits[0][4]) + sLimits[0][4]; // 9
-    //    params->b = exp(log_b);
-    //    if (fabs(log_c2-log_c)>BC_DEV_MAX || fabs(log_b-log(params->b_tumb))>BC_DEV_MAX)
     #endif    
     #ifdef RELAXED
     // Enforcing minimum limits on physical values of L and c:
     if (params->L<0.0 || log_c>0.0)
         return 1;
     #endif
-    
+
     return 0;
 }
 
@@ -823,7 +826,7 @@ __global__ void chi2_gpu (struct obs_data *dData, int N_data, int N_filters,
     //    for (int itry=0; itry<100; itry++)
     while (1)
     {
-        #endif
+    #endif
         
         
         #ifdef REOPT
@@ -848,7 +851,7 @@ __global__ void chi2_gpu (struct obs_data *dData, int N_data, int N_filters,
             #endif        
             #endif        
             float r = curand_uniform(&localState);
-            if (i == 6)
+            if (i == 6+DN_TREND)
             {
                 // Using the x value for Es to determine the mode (1:LAM. 0:SAM)
                 LAM = r>=0.5;
@@ -1281,11 +1284,11 @@ __global__ void chi2_plot (struct obs_data *dData, int N_data, int N_filters,
                 break;                    
                 #ifdef BC
             case 8:
-                params.c = params.c * exp(delta * (dLimits[1][4] - dLimits[0][4]));
+                params.c = params.c * exp(delta * (dLimits[1][4+DN_TREND] - dLimits[0][4+DN_TREND]));
                 break;
                 
             case 9:
-                params.b = params.b * exp(delta * (dLimits[1][4] - dLimits[0][4]));
+                params.b = params.b * exp(delta * (dLimits[1][4+DN_TREND] - dLimits[0][4+DN_TREND]));
                 break;
                 #endif        
         }

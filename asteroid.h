@@ -25,13 +25,21 @@
 
 // Total number of parameters (inpendent and dependent):
 #ifdef BC
-const int N_PARAMS = 10;
+const int DN_BC = 2;
 #else
-const int N_PARAMS = 8;
+const int DN_BC = 0;
 #endif
 
+#ifdef TREND
+const int DN_TREND = 1;
+#else
+const int DN_TREND = 0;
+#endif
+
+const int N_PARAMS = 8 + DN_BC + DN_TREND;
+
 // Number of independent parameters:
-const int N_INDEPEND = 5;
+const int N_INDEPEND = 5 + DN_TREND;
 
 // Maximum number of filters:
 const int N_FILTERS = 1;
@@ -164,14 +172,19 @@ struct parameters_struct {
     double theta_M; // (angle between barycentric Z axis and angular momentum vector M); range 0...pi
     double phi_M;   // (polar angle for the angular momentum M in the barycentric FoR); range 0 ... 2*pi
     double phi_0;   // (initial Euler angle for precession); 0...2*pi
-    double L;       // Angular momentum L value, radians/day; if P is perdiod in hours, L=48*pi/P
+    double L;       // Angular momentum L value, radians/day; if P is perdiod in hours, L=48*pi/P    
+    #ifdef TREND
+    double A;       // scaling parameter "A" for de-trending the brightness curve, in magnitude/radian units (to be multiplied by the phase angle alpha to get magnitude correction)
+    #endif
     double c_tumb;  // physical (tumbling) value of the axis c size; always smallest
     // Dependent parameters:
     double b_tumb;  // physical (tumbling) value of the axis b size; c_tumb < b_tumb < 1
     double Es;      // dimensionless total energy (asteroid's excitation degree), constrained by b_tumb, c_tumb
     double psi_0;   // initial Euler angle of rotation of the body, constrained by b_tumb, c_tumb, Es
+    #ifdef BC    
     double c;       // Ellipsoid axis c/a size, for brightness purposes
     double b;       // Ellipsoid axis b/a size, for brightness purposes
+    #endif
 };
 
 // Observational data arrays:
