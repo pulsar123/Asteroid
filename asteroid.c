@@ -328,6 +328,9 @@ int main (int argc,char **argv)
                     #ifdef BC
                     printf("%15.11f ",  params.c);
                     printf("%15.11f ",  params.b);
+                    #else
+                    printf("%15.11f ",  params.c_tumb);
+                    printf("%15.11f ",  params.b_tumb);
                     #endif            
                     printf("\n");
                     fflush(stdout);

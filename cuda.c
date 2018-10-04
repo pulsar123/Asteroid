@@ -151,6 +151,11 @@ __device__ CHI_FLOAT chi2one(struct parameters_struct params, struct obs_data *s
     int M = 0;
     #endif    
     
+#ifdef MIN_DV
+    double Vmin = 1e20;
+    double Vmax = -1e20;
+#endif
+    
     // The loop over all data points    
     for (i=0; i<N_data; i++)
     {                                
@@ -367,6 +372,14 @@ __device__ CHI_FLOAT chi2one(struct parameters_struct params, struct obs_data *s
         }
         #endif
         
+        #ifdef MIN_DV
+        if (sData[i].MJD > DV_MARGIN && sData[i].MJD < sData[N_data-1].MJD-DV_MARGIN)
+            if (Vmod > Vmax)
+                Vmax = Vmod;
+            if (Vmod < Vmin)
+                Vmin = Vmod;
+        #endif
+        
     } // data points loop
     
     
@@ -414,6 +427,12 @@ __device__ CHI_FLOAT chi2one(struct parameters_struct params, struct obs_data *s
                     S_M = S_M + 1.0;
                     // !!! Only works properly if N_filters=1 !!!
                     float dV = V_mod[imod] + delta_V[0] - s_chi2_params->V_obs[iobs];
+                    #ifdef V1S
+                    // One-sided treatment of dV: if model minimum is below the observed one, keep dV=0 (don't punish). Only punish when dV>0.
+                    // This should promote minima which are at least as deep as the observed ones
+                    if (dV > 0.0)
+                        dV = 0.0;
+                    #endif                    
                     // 2D distance of the model minimum from the observed one, with different scales for t and V axes, normalized to DT_MAX and DV_MAX, respectively:
                     float x = sqrt(dt*dt/DT_MAX/DT_MAX + dV*dV/DV_MAX/DV_MAX);
                     if (x < 1.0)
@@ -462,6 +481,21 @@ __device__ CHI_FLOAT chi2one(struct parameters_struct params, struct obs_data *s
     // Applying the reward and the punishment to chi2:
     chi2a = chi2a * P_tot * P_M;
     #endif
+    
+#ifdef MIN_DV
+    double x = (Vmax-Vmin-DV_MIN1)/(DV_MIN2-DV_MIN1);
+    double P;
+    if (x < 0.0)
+        P = 1.0;
+    else if (x < 1.0)
+    {
+        // Merit function multiplier: P=1 when x->0 (dV->0), P=PV_MIN<1 when x>=1 (dV>=DV_MIN):
+        P = (1.0 - x*x*(-2*x+3))*(1.0-PV_MIN) + PV_MIN;
+    }
+    else
+        P = PV_MIN;
+    chi2a = chi2a * P;
+#endif
     
     return chi2a;
 }           

@@ -57,7 +57,7 @@ const double TIME_STEP = 1e-2;  // 1e-2
 
 // Simplex parameters:
 #if defined(TIMING) || defined(DEBUG)
-const unsigned int N_STEPS = 100; 
+const unsigned int N_STEPS = 1000; 
 #else
 const unsigned int N_STEPS = 7500; // Number of simplex steps per CUDA block (per simplex run) 27,000 per hour (N=7; BS=256; NB=56*4)
 #endif
@@ -120,16 +120,23 @@ const int M_MAX = 30;  // Maximum number of model local minima
 const float M_MAX2 = 20;  // Soft limit on the number of local model minima (should be between NOBS_MAX and M_MAX); if M>N_MAX2, we start to punsih chi2
 const int NOBS_MAX = 10;  // Maximum number of observed minima
 const float DT_MAX = 0.12;  // Maximum 1D distance between observed and model minima in days; 0.12
-const float DV_MAX = 2.4;  // Maximum 1D distance between observed and model minima in brightness magnitudes; 2.4
+const float DV_MAX = 1.2;  // Maximum 1D distance between observed and model minima in brightness magnitudes; 2.4
 const float D2_MAX = sqrt(2)*DT_MAX;  // Maximum 2D distance between observed and model minima in equivalent days
 const float DT_MAX2 = 1.5 * DT_MAX; // Additional multipler for DT_MAX defining the time window size (relative to observed minima) where model minima are memorized
 const float P_MIN = 0.1;  // Reward strength for closeness of model minima to observed ones; 0...1; ->0 is the strongest reward
 const float CHI2_0 = 5; // Below this value of chi2a, P_tot reward is fully applied
 const float CHI2_1 = 30; // Above this value of chi2a, P_tot reward is not applied. The CHI2_0 ... CHI2_1 is the transition zone
-const float L_RC = 0.1; // Lorentzian core radius for the nudge function, range 0...1
+const float L_RC = 0.3; // Lorentzian core radius for the nudge function, range 0...1
 const float L_RC2 = L_RC * L_RC; // Derived parameter
 const float L_A = 1.0/(1.0-L_RC2/(1.0+L_RC2));  // Lorentzian scale parameter
 const float P_MIN2 = 1/P_MIN - 1;  // derived parameter
+#endif
+
+#ifdef MIN_DV
+const float PV_MIN = 0.1; // chi2 reduction factor for large enough brightness fluctuations
+const float DV_MIN1 = 2.25; // delta V at which chi2 starts decreasing (merit function goes from 1 to PV_MIN)
+const float DV_MIN2 = 2.75; // delta V at which chi2 stops decreasing (merit function reached PV_MIN)
+const float DV_MARGIN = 0.05; // Margins on both sides of the obs. data where min/max is not computed (days)
 #endif
 
 // Structure to bring auxilary parameters to chi2one
