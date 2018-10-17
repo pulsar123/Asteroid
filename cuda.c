@@ -65,6 +65,8 @@ __device__ CHI_FLOAT chi2one(struct parameters_struct params, struct obs_data *s
      *     
      *     Triaxial ellipsoid with physical axes a, b, c. a and c are extremal ,
      *     b is always intermediate. (c < b < a=1) Photometric a,b,c can be totally different.
+     * 
+     *     The frame of reference is that of Samarasinha and A'Hearn 1991: b-c-a (i-s-l) stands for x-y-z
      *     
      *     The corresponding moments of inertia are Il (a), Ii (b), Is(c); Il < Ii < Is.
      *     
@@ -96,7 +98,7 @@ __device__ CHI_FLOAT chi2one(struct parameters_struct params, struct obs_data *s
     
     // We work in the inertial observed (Solar barycentric) frame of reference X, Y, Z.
     // By applying sequentially the three Euler angles of the asteroid (which we compute by solving the three ODEs numerically),
-    // we derive the asteroid's internal axes (coinciding with b, c, a for x, y, z)
+    // we derive the asteroid's internal axes (coinciding with b, c, a for x, y, z, or i, s, l)
     // orienation in the barycentric frame of reference. This allows us to compute the orientation of the asteroid->sun and asteroid->earth
     // vectors in the asteroid's frame of reference, which is then used to compute it's apparent brightness for the observer.
     
@@ -255,18 +257,24 @@ __device__ CHI_FLOAT chi2one(struct parameters_struct params, struct obs_data *s
         double c_x = a_y*b_z - a_z*b_y;
         double c_y = a_z*b_x - a_x*b_z;
         double c_z = a_x*b_y - a_y*b_x;
+
+        // Now following Muinonen & Lumme, 2015 to compute the visual brightness of the asteroid.
+        // Attention! My (Samarasinha and A'Hearn 1991) frame of reference is b-c-a, but the Muinonen's frame is a-b-c
+        // On 17.10.2018 the bug was fixed, and now I properly convert the Muinonen's equations to the b-c-a frame
         
-        
-        // Earth vector in the new (a,b,c) basis; according to my tests in brightness.c, the correct brightness curve is observed when
-        // the following sequence is used: a, c, b, for Ep_x,y,z.
-        Ep_x = a_x*sData[i].E_x + a_y*sData[i].E_y + a_z*sData[i].E_z;
+        // Earth vector in the new (b,c,a) basis
+        // Switching from Muinonen coords (abc) to Samarasinha coords (bca)
+        // BUG fixed!
+        Ep_x = b_x*sData[i].E_x + b_y*sData[i].E_y + b_z*sData[i].E_z;
         Ep_y = c_x*sData[i].E_x + c_y*sData[i].E_y + c_z*sData[i].E_z;
-        Ep_z = b_x*sData[i].E_x + b_y*sData[i].E_y + b_z*sData[i].E_z;
+        Ep_z = a_x*sData[i].E_x + a_y*sData[i].E_y + a_z*sData[i].E_z;
         
-        // Sun vector in the new (a,b,c) basis:-- should be (b,c,a)???
-        Sp_x = a_x*sData[i].S_x + a_y*sData[i].S_y + a_z*sData[i].S_z;
+        // Sun vector in the new (b,c,a) basis
+        // Switching from Muinonen coords (abc) to Samarasinha coords (bca)
+        // BUG fixed!
+        Sp_x = b_x*sData[i].S_x + b_y*sData[i].S_y + b_z*sData[i].S_z;
         Sp_y = c_x*sData[i].S_x + c_y*sData[i].S_y + c_z*sData[i].S_z;
-        Sp_z = b_x*sData[i].S_x + b_y*sData[i].S_y + b_z*sData[i].S_z;
+        Sp_z = a_x*sData[i].S_x + a_y*sData[i].S_y + a_z*sData[i].S_z;
         
         // Now that we converted the Earth and Sun vectors to the internal asteroidal basis (a,b,c),
         // we can apply the formalism of Muinonen & Lumme, 2015 to calculate the brightness of the asteroid.
@@ -280,11 +288,15 @@ __device__ CHI_FLOAT chi2one(struct parameters_struct params, struct obs_data *s
         #endif        
         
         // The two scalars from eq.(12) of Muinonen & Lumme, 2015; assuming a=1
-        scalar_Sun   = sqrt(Sp_x*Sp_x + Sp_y*Sp_y/(b*b) + Sp_z*Sp_z/(c*c));
-        scalar_Earth = sqrt(Ep_x*Ep_x + Ep_y*Ep_y/(b*b) + Ep_z*Ep_z/(c*c));
+        // Switching from Muinonen coords (abc) to Samarasinha coords (bca)
+        // BUG fixed!
+        scalar_Sun   = sqrt(Sp_x*Sp_x/(b*b) + Sp_y*Sp_y/(c*c) + Sp_z*Sp_z);
+        scalar_Earth = sqrt(Ep_x*Ep_x/(b*b) + Ep_y*Ep_y/(c*c) + Ep_z*Ep_z);
         
         // From eq.(13):
-        cos_alpha_p = (Sp_x*Ep_x + Sp_y*Ep_y/(b*b) + Sp_z*Ep_z/(c*c)) / (scalar_Sun * scalar_Earth);
+        // Switching from Muinonen coords (abc) to Samarasinha coords (bca)
+        // BUG fixed!
+        cos_alpha_p = (Sp_x*Ep_x/(b*b) + Sp_y*Ep_y/(c*c) + Sp_z*Ep_z) / (scalar_Sun * scalar_Earth);
         sin_alpha_p = sqrt(1.0 - cos_alpha_p*cos_alpha_p);
         alpha_p = atan2(sin_alpha_p, cos_alpha_p);
         
@@ -508,7 +520,7 @@ __device__ CHI_FLOAT chi2one(struct parameters_struct params, struct obs_data *s
 
 __device__ void params2x(int *LAM, CHI_FLOAT *x, struct parameters_struct *params, CHI_FLOAT sLimits[][N_INDEPEND])
 // Converting from dimensional params structure to dimensionless array x. Used for plotting. 
-// P_PHI, P_PSI and RANDOM_BC are not supported!
+// P_PHI, P_PSI, P_BOTH, TREND and RANDOM_BC are not supported!
 {    
     int iparam = -1;
     
@@ -834,9 +846,13 @@ __global__ void chi2_gpu (struct obs_data *dData, int N_data, int N_filters,
         // Random displacement of the initial point, uniformly distributed within +-0.5*DX_RAND:
         for (i=0; i<N_PARAMS; i++)
         {
+            #ifdef FREEZE_BC            
+            if (i==4+DN_TREND || i==5+DN_TREND || i==8+DN_TREND || i==9+DN_TREND)
+                continue;
+            #endif
             x[0][i] = x[0][i] + DX_RAND*(curand_uniform(&localState)-0.5);
         }
-        #else    
+        #else  // REOPT  
         // Initial random point
         for (i=0; i<N_PARAMS; i++)
         {
@@ -878,6 +894,10 @@ __global__ void chi2_gpu (struct obs_data *dData, int N_data, int N_filters,
                     #ifdef REOPT
                     // In REOPT mode, initial displacements are random, with log distrubution between DX_MIN and DX_MAX:
                     CHI_FLOAT dx_ini = exp(curand_uniform(&localState) * (DX_MAX-DX_MIN) + DX_MIN);
+                    #ifdef FREEZE_BC            
+                    if (i==4+DN_TREND || i==5+DN_TREND || i==8+DN_TREND || i==9+DN_TREND)
+                        dx_ini = 0.0;
+                    #endif
                     x[j][i] = x[0][i] + dx_ini;
                     #else                
                     x[j][i] = x[0][i] + DX_INI;
@@ -990,6 +1010,10 @@ __global__ void chi2_gpu (struct obs_data *dData, int N_data, int N_filters,
         CHI_FLOAT x_r[N_PARAMS];
         for (i=0; i<N_PARAMS; i++)
         {
+            #ifdef FREEZE_BC            
+            if (i==4+DN_TREND || i==5+DN_TREND || i==8+DN_TREND || i==9+DN_TREND)
+                continue;
+            #endif
             x_r[i] = x0[i] + ALPHA_SIM*(x0[i] - x[ind[N_PARAMS]][i]);
         }
         CHI_FLOAT f_r;
@@ -1014,6 +1038,10 @@ __global__ void chi2_gpu (struct obs_data *dData, int N_data, int N_filters,
             CHI_FLOAT x_e[N_PARAMS];
             for (i=0; i<N_PARAMS; i++)
             {
+                #ifdef FREEZE_BC            
+                if (i==4+DN_TREND || i==5+DN_TREND || i==8+DN_TREND || i==9+DN_TREND)
+                    continue;
+                #endif
                 x_e[i] = x0[i] + GAMMA_SIM*(x_r[i] - x0[i]);
             }
             CHI_FLOAT f_e;
@@ -1046,6 +1074,10 @@ __global__ void chi2_gpu (struct obs_data *dData, int N_data, int N_filters,
         // (Here we repurpose x_r and f_r for the contraction stuff)
         for (i=0; i<N_PARAMS; i++)
         {
+            #ifdef FREEZE_BC            
+            if (i==4+DN_TREND || i==5+DN_TREND || i==8+DN_TREND || i==9+DN_TREND)
+                continue;
+            #endif
             x_r[i] = x0[i] + RHO_SIM*(x[ind[N_PARAMS]][i] - x0[i]);
         }
         if (x2params(LAM, x_r,&params,sLimits, &s_x2_params))
