@@ -23,6 +23,43 @@ __device__ void ODE_func (double y[], double f[], double mu[])
  */
 
 {    
+    #ifdef TORQUE
+    // Simplest constant (in the co-moving frame) torque model applied to a tumbling atseroid. Solving 6 ODEs - three Euler equations of motion
+    // in the presence of constant torque, and three more to get the Euler angles phi, psi, theta.
+    
+    // mu[0]: (Is-Il)/Ii
+    // mu[1]: (Il-Ii)/Is
+    // mu[2]: (Ii-Is)/Il
+    // mu[3]: Ki/Ii
+    // mu[4]: Ks/Is
+    // mu[5]: Kl/Il
+    
+    // y[0]: Omega_i
+    // y[1]: Omega_s
+    // y[2]: Omega_l
+    // y[3]: phi
+    // y[4]: theta
+    // y[5]: psi
+    
+    // Three Euler equations of motion:
+    // d Omega_i /dt:
+    f[0] = mu[0]*y[1]*y[2] + mu[3];
+    // d Omega_s /dt:
+    f[1] = mu[1]*y[2]*y[0] + mu[4];
+    // d Omega_l /dt:
+    f[2] = mu[2]*y[0]*y[1] + mu[5];
+    
+    // Three ODEs for the three Euler angles
+    // dphi/dt:
+    f[3] = (y[0]*sin(y[5]) + y[1]*cos(y[5])) / sin(y[4]);
+    // dtheta/dt:
+    f[4] =  y[0]*cos(y[5]) - y[1]*sin(y[5]);
+    // dpsi/dt:
+    f[5] = y[2] - f[3]*cos(y[4]);
+        
+    #else    
+    
+    // No torque case (so we don't need to use the Euler's equations)
     // mu[0,1,2] -> L, Ip, Im
     //    double phi = y[0];
     //    double theta = y[1];
@@ -36,6 +73,7 @@ __device__ void ODE_func (double y[], double f[], double mu[])
     
     // dpsi/dt (assuming Il=1):
     f[2] = cos(y[1])*(mu[0]-f[0]);
+    #endif  // TORQUE
 }
 
 
@@ -66,9 +104,9 @@ __device__ CHI_FLOAT chi2one(struct parameters_struct params, struct obs_data *s
      *     Triaxial ellipsoid with physical axes a, b, c. a and c are extremal ,
      *     b is always intermediate. (c < b < a=1) Photometric a,b,c can be totally different.
      * 
-     *     The frame of reference is that of Samarasinha and A'Hearn 1991: b-c-a (i-s-l) stands for x-y-z
-     *     
      *     The corresponding moments of inertia are Il (a), Ii (b), Is(c); Il < Ii < Is.
+     *     
+     *     The frame of reference is that of Samarasinha and A'Hearn 1991: b-c-a (i-s-l) stands for x-y-z
      *     
      *     Input parameters with fixed constraints (5-6): 
      *      - <M>: angular momentum vector described by params.theta_M and params.phi_M
@@ -76,6 +114,11 @@ __device__ CHI_FLOAT chi2one(struct parameters_struct params, struct obs_data *s
      *      - L: angular momentum L value, radians/day; if P is perdiod in hours, L=48*pi/P
      *      - c_tumb: log10 of the physical (tumbling) value of the smallest axis c size; c < b < a=1
      *      - A (only in TREND mode): scaling parameter "A" for de-trending the brightness curve, in magnitude/radian units (to be multiplied by the phase angle alpha to get magnitude correction)
+     *     TORQUE parameters:
+     *      - theta_K: Orientation angle theta for the vector <r> for the surface point where the torque is applied (asteroid's frame of reference); range 0 ... pi
+     *      - phi_K: Orientation angle phi for the vector <r> for the surface point where the torque is applied (asteroid's frame of reference); range 0... 2*pi (periodic)
+     *      - phi_F: direction of the torque force in the plane, perpendiculat to <r> (the reference direction is that of T=[r x a], towards the vector D=[T x r]); range 0... 2*pi (periodic)
+     *      - K: amplitude of the torque force, |r|*|F_t|, where F_t is the tangential componenbt of the force; units are rad/day^2
      *      
      *     Derived values:
      *      - Ii_inv = 1/Ii; inverse principle moment of inertia Ii
@@ -133,14 +176,7 @@ __device__ CHI_FLOAT chi2one(struct parameters_struct params, struct obs_data *s
     
     // Now we have a=1>b>c, and Il=1<Ii<Is
     // Axis of rotation can be either "a" (LAM) or "c" (SAM)
-    
-    double mu[3];
-    double Ip = 0.5*(Ii_inv + Is_inv);
-    double Im = 0.5*(Ii_inv - Is_inv);
-    mu[0] = params.L;
-    mu[1] = Ip;
-    mu[2] = Im;    
-    
+        
     // Initial Euler angles values:
     double phi = params.phi_0;
     // Initial value of the Euler angle theta is determined by other parameters:
@@ -153,6 +189,59 @@ __device__ CHI_FLOAT chi2one(struct parameters_struct params, struct obs_data *s
     float V_old[2];
     int M = 0;
     #endif    
+    
+    #ifdef TORQUE
+    // Coordinates of the unit vector <r> (the point where the torque force is applied) in the asteroid's frame of reference, bca (isl):
+    double r_x = sin(params.theta_K) * sin(params.phi_K);
+    double r_y = sin(params.theta_K) * cos(params.phi_K);
+    double r_z = cos(params.theta_K);
+    
+    double r_xy = sqrt(r_x*r_x + r_y*r_y);
+    // Unit vector T=[r x a] (the z-th component = 0):
+    double T_x = r_y / r_xy;
+    double T_y = -r_x / r_xy;
+    // Unit vector D=[T x r]:
+    double D_x = -r_x*r_z/r_xy;
+    double D_y = -r_y*r_z/r_xy;
+    double D_z = r_xy;
+    
+    double cos_phi_F = cos(params.phi_F);
+    double sin_phi_F = sin(params.phi_F);
+    // The torque force is in the plane defined by two perpendicular vectors T and D, at the angle phi_F counting from T towards D
+    // Unit vector in the direction of the torque force:
+    double F_x = T_x*cos_phi_F + D_x*sin_phi_F;
+    double F_y = T_y*cos_phi_F + D_y*sin_phi_F;
+    double F_z =                 D_z*sin_phi_F;
+    
+    // The torque K=[r x F] (a unit vector), here isl is xyz:
+    double Ki = r_y*F_z - r_z*F_y;
+    double Ks = r_z*F_x - r_x*F_z;
+    double Kl = r_x*F_y - r_y*F_x;
+    
+    double mu[6];
+    // Parameters for the ODEs (don't change with time):
+    // Using the fact that Il = 1:
+    mu[0] = (Is-1.0)*Ii_inv;
+    mu[1] = (1.0-Ii)*Is_inv;
+    mu[2] = Ii - Is;
+    mu[3] = Ki * Ii_inv;
+    mu[4] = Ks * Is_inv;
+    mu[5] = Kl;
+    
+    // Initial values for the three components of the angular velocity vector in the asteroid's frame of reference
+    // Initially this vector's orientation is determined by the initial Euler angles, theta, psi, and phi
+    double Omega_i = params.L * Ii_inv * sin(theta) * sin(psi);
+    double Omega_s = params.L * Is_inv * sin(theta) * cos(psi);
+    double Omega_l = params.L * cos(theta);
+
+    #else    
+    double mu[3];
+    double Ip = 0.5*(Ii_inv + Is_inv);
+    double Im = 0.5*(Ii_inv - Is_inv);
+    mu[0] = params.L;
+    mu[1] = Ip;
+    mu[2] = Im;    
+    #endif
     
 #ifdef MIN_DV
     double Vmin = 1e20;
@@ -174,43 +263,63 @@ __device__ CHI_FLOAT chi2one(struct parameters_struct params, struct obs_data *s
             N_steps = (sData[i].MJD - sData[i-1].MJD) / TIME_STEP + 1;
             // Current equidistant time steps (h<=TIME_STEP):
             h = (sData[i].MJD - sData[i-1].MJD) / N_steps;
-            
+                        
+            // Initial values for ODEs variables = the old values, from the previous i cycle:
+#ifdef TORQUE
+            const int N_ODE = 6;
+            double y[6];
+            y[0] = Omega_i;
+            y[1] = Omega_s;
+            y[2] = Omega_l;
+            y[3] = phi;
+            y[4] = theta;
+            y[5] = psi;
+#else
+            const int N_ODE = 3;
             double y[3];
-            
-            // Initial angles values = the old values, from the previous i cycle:
             y[0] = phi;
             y[1] = theta;
             y[2] = psi;
+#endif            
             
             // RK4 method for solving ODEs with a fixed time step h
             for (int l=0; l<N_steps; l++)
             {
-                double K1[3], K2[3], K3[3], K4[3], f[3];
+                double K1[N_ODE], K2[N_ODE], K3[N_ODE], K4[N_ODE], f[N_ODE];
                 
                 ODE_func (y, K1, mu);
                 
                 int j;
-                for (j=0; j<3; j++)
+                for (j=0; j<N_ODE; j++)
                     f[j] = y[j] + 0.5*h*K1[j];
                 ODE_func (f, K2, mu);
                 
-                for (j=0; j<3; j++)
+                for (j=0; j<N_ODE; j++)
                     f[j] = y[j] + 0.5*h*K2[j];
                 ODE_func (f, K3, mu);
                 
-                for (j=0; j<3; j++)
+                for (j=0; j<N_ODE; j++)
                     f[j] = y[j] + h*K3[j];
                 ODE_func (f, K4, mu);
                 
-                for (j=0; j<3; j++)
+                for (j=0; j<N_ODE; j++)
                     y[j] = y[j] + 1/6.0 * h *(K1[j] + 2*K2[j] + 2*K3[j] + K4[j]);
             }
             
             
-            // New (current) values of the Euler angles derived from solving the ODEs:
+            // New (current) values of the ODEs variables derived from solving the ODEs:
+#ifdef TORQUE
+            Omega_i = y[0];
+            Omega_s = y[1];
+            Omega_l = y[2];
+            phi     = y[3];
+            theta   = y[4];
+            psi     = y[5];
+#else
             phi = y[0];
             theta = y[1];
             psi = y[2];                    
+#endif
         }                
         
         // At this point we know the three Euler angles for the current moment of time (data point) - phi, theta, psi.
@@ -317,16 +426,7 @@ __device__ CHI_FLOAT chi2one(struct parameters_struct params, struct obs_data *s
         // De-trending the brightness curve:
         Vmod = Vmod - params.A*alpha;
         #endif        
-        
-        
-        #ifdef DARK_SIDE
-        // cos of the angle between the normal to the disk (c) and the vector towards the observer:
-        double cE = c_x*sData[i].E_x + c_y*sData[i].E_y + c_z*sData[i].E_z;
-        // The trick: the disk side on the same side as the vector <c> is brighter than the opposite one:
-        #define KAPPA 0.02        
-        Vmod = Vmod - 2.5*log10((cE+1.0)/2.0*(1.0-KAPPA)+KAPPA);
-        #endif        
-        
+                        
         if (Nplot > 0)
         {
             d_Vmod[i] = Vmod + delta_V[0]; //???
@@ -560,7 +660,7 @@ __device__ void params2x(int *LAM, CHI_FLOAT *x, struct parameters_struct *param
     x[iparam] = (params->psi_0 - psi_min) / (psi_max - psi_min);
     
     #ifdef BC
-    iparam++; x[iparam] = (log(params->c) - sLimits[0][4+DN_TREND]) / (sLimits[1][4+DN_TREND] - sLimits[0][4+DN_TREND]); // 8+DN_TREND
+    iparam++; x[iparam] = (log(params->c) - sLimits[0][4+DN_IND]) / (sLimits[1][4+DN_IND] - sLimits[0][4+DN_IND]); // 8+DN_IND
     iparam++; x[iparam] = log(params->b)/log(params->c); // 9
     #endif    
     
@@ -579,22 +679,27 @@ __device__ int x2params(int LAM, CHI_FLOAT *x, struct parameters_struct *params,
     for (int i=0; i<N_PARAMS; i++)
     {
         // Three parameters (phi_M, phi_0, and psi_0 - for LAM=1 only, can have any value during optimization:
-        if (i==1 || i==2 || i==7+DN_TREND && LAM)
+        if (i==1 || i==2 || i==7+DN_IND && LAM)
             continue;
+        #ifdef TORQUE
+        // In torque mode, phi_K and phi_F are relaxed (periodic):
+        if (i==5+DN_TREND || i==6+DN_TREND)
+            continue;
+        #endif        
         
         #ifdef RELAXED
         #if defined(P_PHI) || defined(P_PSI) || defined(P_BOTH)
         // Relaxing only c_tumb in P_PHI / P_PSI / combined modes
-        if (i==4+DN_TREND)
+        if (i==4+DN_IND)
             continue;
         #else        
         // Relaxing L and c_tumb: (physical values are enforced below)
-        if (i==3 || i==4+DN_TREND)
+        if (i==3 || i==4+DN_IND)
             continue;
         #endif
         #ifdef BC        
         // Relaxing c:
-        if (i == 8+DN_TREND)
+        if (i == 8+DN_IND)
             continue;
         #endif        
         #endif
@@ -602,7 +707,7 @@ __device__ int x2params(int LAM, CHI_FLOAT *x, struct parameters_struct *params,
             failed = 1;
     }
     // Crossing LAM <-> SAM is not allowed during optimization:
-    if (LAM==0 && x[6+DN_TREND]>0.5 || LAM==1 && x[6+DN_TREND]<0.5)
+    if (LAM==0 && x[6+DN_IND]>0.5 || LAM==1 && x[6+DN_IND]<0.5)
         failed = 1;
     if (failed)
         return failed;
@@ -615,16 +720,23 @@ __device__ int x2params(int LAM, CHI_FLOAT *x, struct parameters_struct *params,
     iparam++;  
     #ifndef P_PHI    
     // In P_PSI mode, this computes 1/P_psi from x, which is stored in params.L:
-    params->L =           x[iparam] * (sLimits[1][iparam]-sLimits[0][iparam]) + sLimits[0][iparam]; // 3
+    params->L =                      x[iparam] * (sLimits[1][iparam]-sLimits[0][iparam]) + sLimits[0][iparam]; // 3
     #endif    
     #ifdef TREND
-    iparam++;  params->A =     x[iparam] * (sLimits[1][iparam]-sLimits[0][iparam]) + sLimits[0][iparam]; // 4
+    iparam++;  params->A =           x[iparam] * (sLimits[1][iparam]-sLimits[0][iparam]) + sLimits[0][iparam]; // 4
     #endif
-    iparam++;  log_c =               x[iparam] * (sLimits[1][iparam]-sLimits[0][iparam]) + sLimits[0][iparam]; // 4+DN_TREND
+    #ifdef TORQUE
+    iparam++;  params->theta_K =     x[iparam] * (sLimits[1][iparam]-sLimits[0][iparam]) + sLimits[0][iparam]; // 4+DN_TREND
+    iparam++;  params->phi_K =       x[iparam] * (sLimits[1][iparam]-sLimits[0][iparam]) + sLimits[0][iparam]; // 5+DN_TREND
+    iparam++;  params->phi_F =       x[iparam] * (sLimits[1][iparam]-sLimits[0][iparam]) + sLimits[0][iparam]; // 6+DN_TREND
+    iparam++;  params->K =           x[iparam] * (sLimits[1][iparam]-sLimits[0][iparam]) + sLimits[0][iparam]; // 7+DN_TREND
+    #endif
+    
+    iparam++;  log_c =               x[iparam] * (sLimits[1][iparam]-sLimits[0][iparam]) + sLimits[0][iparam]; // 4+DN_IND
     params->c_tumb = exp(log_c);
     
     // Dependent parameters:
-    iparam++;  double log_b =              x[iparam] * log_c; // 5+DN_TREND
+    iparam++;  double log_b =              x[iparam] * log_c; // 5+DN_IND
     params->b_tumb = exp(log_b);
     // New: in this units, best results distribution looks much flatter; it gurantees b=c...1:
     // It can become unstable or fail if c_tumb->0               
@@ -635,7 +747,7 @@ __device__ int x2params(int LAM, CHI_FLOAT *x, struct parameters_struct *params,
     double Ii = (1.0+params->c_tumb*params->c_tumb) / (params->b_tumb*params->b_tumb+params->c_tumb*params->c_tumb);
     
     // Dependent parameters:    
-    iparam++;  // 6+DN_TREND
+    iparam++;  // 6+DN_IND
     // Dimensionless total energy (excitation degree)
     if (LAM)
         // LAM: Es>1.0/Ii
@@ -722,7 +834,7 @@ __device__ int x2params(int LAM, CHI_FLOAT *x, struct parameters_struct *params,
     
     
     // Generating psi_0 (constrained by Es, Ii, Is)
-    iparam++;  // 7+DN_TREND
+    iparam++;  // 7+DN_IND
     double psi_min, psi_max;
     if (LAM)
     {
@@ -738,14 +850,14 @@ __device__ int x2params(int LAM, CHI_FLOAT *x, struct parameters_struct *params,
     
     #ifdef BC
     #ifdef RANDOM_BC
-    iparam++;  double log_c_dev = (x[iparam]-0.5)*BC_DEV1*2; // 8+DN_TREND
+    iparam++;  double log_c_dev = (x[iparam]-0.5)*BC_DEV1*2; // 8+DN_IND
     params->c = exp(log_c_dev + log_c);
-    iparam++;  double log_b_dev = (x[iparam]-0.5)*BC_DEV1*2; // 9+DN_TREND
+    iparam++;  double log_b_dev = (x[iparam]-0.5)*BC_DEV1*2; // 9+DN_IND
     params->b = exp(log_b_dev + log_b);
     if (fabs(log_c_dev) > BC_DEV_MAX || fabs(log_b_dev) > BC_DEV_MAX)
         return 1;
     #else    
-    iparam++;  double log_c2 = x[iparam] * (sLimits[1][4+DN_TREND]-sLimits[0][4+DN_TREND]) + sLimits[0][4+DN_TREND]; // 8+DN_TREND
+    iparam++;  double log_c2 = x[iparam] * (sLimits[1][4+DN_IND]-sLimits[0][4+DN_IND]) + sLimits[0][4+DN_IND]; // 8+DN_IND
     #ifdef RELAXED
     // Minimum enforcement on c2 in relaxed mode:
     if (log_c2 > 0.0)
@@ -753,7 +865,7 @@ __device__ int x2params(int LAM, CHI_FLOAT *x, struct parameters_struct *params,
     #endif  
     params->c = exp(log_c2);
     // Enforcing the same order (a=1>b>c) aw with tumb values (a_tumb=1>b_tumb>c_tumb):
-    iparam++;  double log_b2 =              x[iparam] * log_c2; // 9+DN_TREND
+    iparam++;  double log_b2 =              x[iparam] * log_c2; // 9+DN_IND
     params->b = exp(log_b2);
     if (fabs(log_c2-log_c) > BC_DEV_MAX || fabs(log_b2-log_b) > BC_DEV_MAX)
         return 1;
@@ -847,7 +959,7 @@ __global__ void chi2_gpu (struct obs_data *dData, int N_data, int N_filters,
         for (i=0; i<N_PARAMS; i++)
         {
             #ifdef FREEZE_BC            
-            if (i==4+DN_TREND || i==5+DN_TREND || i==8+DN_TREND || i==9+DN_TREND)
+            if (i==4+DN_IND || i==5+DN_IND || i==8+DN_IND || i==9+DN_IND)
                 continue;
             #endif
             x[0][i] = x[0][i] + DX_RAND*(curand_uniform(&localState)-0.5);
@@ -867,7 +979,7 @@ __global__ void chi2_gpu (struct obs_data *dData, int N_data, int N_filters,
             #endif        
             #endif        
             float r = curand_uniform(&localState);
-            if (i == 6+DN_TREND)
+            if (i == 6+DN_IND)
             {
                 // Using the x value for Es to determine the mode (1:LAM. 0:SAM)
                 LAM = r>=0.5;
@@ -895,7 +1007,7 @@ __global__ void chi2_gpu (struct obs_data *dData, int N_data, int N_filters,
                     // In REOPT mode, initial displacements are random, with log distrubution between DX_MIN and DX_MAX:
                     CHI_FLOAT dx_ini = exp(curand_uniform(&localState) * (DX_MAX-DX_MIN) + DX_MIN);
                     #ifdef FREEZE_BC            
-                    if (i==4+DN_TREND || i==5+DN_TREND || i==8+DN_TREND || i==9+DN_TREND)
+                    if (i==4+DN_IND || i==5+DN_IND || i==8+DN_IND || i==9+DN_IND)
                         dx_ini = 0.0;
                     #endif
                     x[j][i] = x[0][i] + dx_ini;
@@ -1011,7 +1123,7 @@ __global__ void chi2_gpu (struct obs_data *dData, int N_data, int N_filters,
         for (i=0; i<N_PARAMS; i++)
         {
             #ifdef FREEZE_BC            
-            if (i==4+DN_TREND || i==5+DN_TREND || i==8+DN_TREND || i==9+DN_TREND)
+            if (i==4+DN_IND || i==5+DN_IND || i==8+DN_IND || i==9+DN_IND)
                 continue;
             #endif
             x_r[i] = x0[i] + ALPHA_SIM*(x0[i] - x[ind[N_PARAMS]][i]);
@@ -1039,7 +1151,7 @@ __global__ void chi2_gpu (struct obs_data *dData, int N_data, int N_filters,
             for (i=0; i<N_PARAMS; i++)
             {
                 #ifdef FREEZE_BC            
-                if (i==4+DN_TREND || i==5+DN_TREND || i==8+DN_TREND || i==9+DN_TREND)
+                if (i==4+DN_IND || i==5+DN_IND || i==8+DN_IND || i==9+DN_IND)
                     continue;
                 #endif
                 x_e[i] = x0[i] + GAMMA_SIM*(x_r[i] - x0[i]);
@@ -1075,7 +1187,7 @@ __global__ void chi2_gpu (struct obs_data *dData, int N_data, int N_filters,
         for (i=0; i<N_PARAMS; i++)
         {
             #ifdef FREEZE_BC            
-            if (i==4+DN_TREND || i==5+DN_TREND || i==8+DN_TREND || i==9+DN_TREND)
+            if (i==4+DN_IND || i==5+DN_IND || i==8+DN_IND || i==9+DN_IND)
                 continue;
             #endif
             x_r[i] = x0[i] + RHO_SIM*(x[ind[N_PARAMS]][i] - x0[i]);
@@ -1316,11 +1428,11 @@ __global__ void chi2_plot (struct obs_data *dData, int N_data, int N_filters,
                 break;                    
                 #ifdef BC
             case 8:
-                params.c = params.c * exp(delta * (dLimits[1][4+DN_TREND] - dLimits[0][4+DN_TREND]));
+                params.c = params.c * exp(delta * (dLimits[1][4+DN_IND] - dLimits[0][4+DN_IND]));
                 break;
                 
             case 9:
-                params.b = params.b * exp(delta * (dLimits[1][4+DN_TREND] - dLimits[0][4+DN_TREND]));
+                params.b = params.b * exp(delta * (dLimits[1][4+DN_IND] - dLimits[0][4+DN_IND]));
                 break;
                 #endif        
         }

@@ -36,10 +36,19 @@ const int DN_TREND = 1;
 const int DN_TREND = 0;
 #endif
 
-const int N_PARAMS = 8 + DN_BC + DN_TREND;
+#ifdef TORQUE
+const int DN_TORQUE = 4;
+#else
+const int DN_TORQUE = 0;
+#endif
+
+const int N_PARAMS = 8 + DN_BC + DN_TREND + DN_TORQUE;
+
+// Additional (compared to basic model) independent parameters:
+const int DN_IND = DN_TREND + DN_TORQUE;
 
 // Number of independent parameters:
-const int N_INDEPEND = 5 + DN_TREND;
+const int N_INDEPEND = 5 + DN_IND;
 
 // Maximum number of filters:
 const int N_FILTERS = 1;
@@ -175,6 +184,12 @@ struct parameters_struct {
     double L;       // Angular momentum L value, radians/day; if P is perdiod in hours, L=48*pi/P    
     #ifdef TREND
     double A;       // scaling parameter "A" for de-trending the brightness curve, in magnitude/radian units (to be multiplied by the phase angle alpha to get magnitude correction)
+    #endif
+    #ifdef TORQUE
+    double theta_K; // Orientation angles for the vector r for the surface point where the torque is applied
+    double phi_K;   // ***
+    double phi_F;   // direction of the torque force in the plane, perpendiculat to r
+    double K;       // amplitude of the torque force
     #endif
     double c_tumb;  // physical (tumbling) value of the axis c size; always smallest
     // Dependent parameters:

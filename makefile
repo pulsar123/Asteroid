@@ -1,14 +1,12 @@
 # Macro parameters:
 
 # BC : if defined, "physical b,c" and "photometric b,c" are independent parameters; if not, they are the same thing
-# DARK_SIDE : not functional. An attempt to introducde a toy "white/black ball" model
 # DEBUG : used with interactive (debugging) runs, reduced kernels and print time intervals
 # DEBUG2 : likley not functional; used for cuda code debugging
 # DUMP_DV : dumping 5.0*log10(1.0/E * 1.0/S) in read_data.c for all obs. data points
 # DUMP_RED_BLUE : dumping the converted/corrected obs. data (MJD, V, w)
 # FREEZE_BC : keeping c/b(*_tumb) fixed during optimization (primarily for REOPT option)
 # GPU : likely obligatory; use GPU for computations
-# KAPPA : not functional. Parameter used in DARK_SIDE mode
 # LSQ : likely not functional. Computing 2D least squares distances between the data points and the model, in chi2_plot
 # MIN_DV : force certain minimum for dV (magnitudes) of the brightness curve
 # MINIMA_PRINT : dumping periodogramm (fr, H) as min_profile.dat, in misc.c
@@ -25,6 +23,7 @@
 # RELAXED : during optimization, the free parameteres has the least possible degree of constraint.
 # REOPT : if defined, use the model point provided via args, and searhc for minima around it
 # TIMING : time the main kernel (chi2_gpu)
+# TORQUE : adding a simple constant torque model, with 4 extra parameters: theta_K, phi_K, phi_F, and K. Noew we need to solve completely different ODEs - 6 of them
 # TREND : detrending the time evolution of the brightness, via the scaling parameter a (proxy for G-parameter from HG reflectivity law) - adds one free parameter
 # TUMBLE : obsolete (now tumbling is always enabled)
 
@@ -36,7 +35,7 @@ ifeq ($(CLUSTER),monk)
   ARCH=sm_20
 endif  
 
-OPT=-O2 -DGPU -DRELAXED -DREOPT -DDEBUG -DFREEZE_BC -arch=$(ARCH)
+OPT=-O2 -DGPU -DRELAXED -DP_PSI -DTORQUE -DDEBUG -arch=$(ARCH)
 INC=-I/usr/include/cuda -I.
 
 BINARY=asteroid1

@@ -40,7 +40,7 @@ int main (int argc,char **argv)
     int Nplot = 0;
     
     
-    if (argc == 13)
+    if (argc == 17 || argc == 13)
     {
         params.theta_M = atof(argv[2]);
         params.phi_M = atof(argv[3]);
@@ -57,10 +57,16 @@ int main (int argc,char **argv)
 #ifdef TREND
         params.A = atof(argv[12]);
 #endif        
+#ifdef TORQUE
+        params.theta_K = atof(argv[13]);
+        params.phi_K = atof(argv[14]);
+        params.phi_F = atof(argv[15]);
+        params.K = atof(argv[16]);
+#endif        
         Nplot = NPLOT; // Number of plot points
     }
 #ifdef REOPT
-    else if (argc == 14)
+    else if (argc == 18)
     {
         params.theta_M = atof(argv[3]);
         params.phi_M = atof(argv[4]);
@@ -76,6 +82,12 @@ int main (int argc,char **argv)
 #endif        
 #ifdef TREND
         params.A = atof(argv[13]);
+#endif        
+#ifdef TORQUE
+        params.theta_K = atof(argv[14]);
+        params.phi_K = atof(argv[15]);
+        params.phi_F = atof(argv[16]);
+        params.K = atof(argv[17]);
 #endif        
     }
     #endif
@@ -181,7 +193,7 @@ int main (int argc,char **argv)
         hLimits[0][iparam] = 0/RAD;
         hLimits[1][iparam] = 360.0/RAD;
         
-        // (3) Angular momentum L value, radians/day; if P is perdiod in hours, L=48*pi/P
+        // (3) Angular momentum L value, radians/day; if P is period in hours, L=48*pi/P
         iparam++;
         hLimits[0][iparam] = 48.0*PI / 10; // 8.5
         hLimits[1][iparam] = 48.0*PI / 0.1; // 0.4    
@@ -205,8 +217,27 @@ int main (int argc,char **argv)
         hLimits[0][iparam] = -10;
         hLimits[1][iparam] = 10;
         #endif        
+
+        #ifdef TORQUE
+        // 4+DN_TREND; First orientation angle for the vector r to the point on the surface where the torque is applied, theta_K; 0 ... 180
+        iparam++;
+        hLimits[0][iparam] = 0.001/RAD;
+        hLimits[1][iparam] = 179.999/RAD;
+        // 5+DN_TREND; Second orientation angle for the vector r to the point on the surface where the torque is applied, phi_K; 0 ... 360 initially, can have any value during optimization
+        iparam++;
+        hLimits[0][iparam] = 0/RAD;
+        hLimits[1][iparam] = 360/RAD;
+        // 6+DN_TREND; Direction of the torque force in the plane, perpendiculat to r, phi_F; 0 ... 360 initially, can have any value during optimization
+        iparam++;
+        hLimits[0][iparam] = 0/RAD;
+        hLimits[1][iparam] = 360/RAD;
+        // 7+DN_TREND; Amplitude of the torque, K; >=0; units are 1/day^2
+        iparam++;
+        hLimits[0][iparam] = 0;
+        hLimits[1][iparam] = 0.01;
+        #endif        
         
-        // (5 or 4) c_tumb (physical (tumbling) value of the axis c size; always smallest)
+        // 4+DN_IND; c_tumb (physical (tumbling) value of the axis c size; always smallest)
         iparam++;
         hLimits[0][iparam] = log(0.002);
         hLimits[1][iparam] = log(1.0);                
@@ -313,6 +344,17 @@ int main (int argc,char **argv)
                         #else
                         fprintf(fp,"%15.11f ",  0.0);
                         #endif
+#ifdef TORQUE
+                        fprintf(fp,"%15.11f ",  params.theta_K);
+                        fprintf(fp,"%15.11f ",  params.phi_K);
+                        fprintf(fp,"%15.11f ",  params.phi_F);
+                        fprintf(fp,"%15.11f ",  params.K);
+#else                        
+                        fprintf(fp,"%15.11f ",  0.0);
+                        fprintf(fp,"%15.11f ",  0.0);
+                        fprintf(fp,"%15.11f ",  0.0);
+                        fprintf(fp,"%15.11f ",  0.0);
+#endif
                         fprintf(fp,"\n");
                     }
                     fclose(fp);
@@ -356,6 +398,17 @@ int main (int argc,char **argv)
                     #else
                     printf("%15.11f ",  0.0);
                     #endif
+#ifdef TORQUE
+                    printf("%15.11f ",  params.theta_K);
+                    printf("%15.11f ",  params.phi_K);
+                    printf("%15.11f ",  params.phi_F);
+                    printf("%15.11f ",  params.K);
+#else                        
+                    printf("%15.11f ",  0.0);
+                    printf("%15.11f ",  0.0);
+                    printf("%15.11f ",  0.0);
+                    printf("%15.11f ",  0.0);
+#endif
                     printf("\n");
                     fflush(stdout);
                 }
