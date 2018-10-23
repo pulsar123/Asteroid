@@ -16,6 +16,15 @@
 
 // Precision for CUDA chi^2 calculations (float or double):
 #define CHI_FLOAT float
+// Precision for observational data (structure obs_data):
+#define OBS_TYPE double
+
+#ifndef sData
+ #ifdef NO_SDATA
+  #define sData dData
+ #endif
+#endif
+
 
 // If defined, writes a file with delta V (geometry corrections for the observational data)
 //#define DUMP_DV
@@ -74,9 +83,9 @@ const double TIME_STEP = 1e-2;  // 1e-2
 
 // Simplex parameters:
 #if defined(TIMING) || defined(DEBUG)
-const unsigned int N_STEPS = 1000; 
+const unsigned int N_STEPS = 100; 
 #else
-const unsigned int N_STEPS = 7500; // Number of simplex steps per CUDA block (per simplex run) 27,000 per hour (N=7; BS=256; NB=56*4)
+const unsigned int N_STEPS = 1000; // Number of simplex steps per CUDA block (per simplex run) 27,000 per hour (N=7; BS=256; NB=56*4)
 #endif
 #ifdef DEBUG
 const unsigned int DT_DUMP = 30;
@@ -102,7 +111,7 @@ const int MAX_LINE_LENGTH = 128;
 // Maximum number of filters:
 //const int MAX_FILTERS = 100;
 // Maximum number of data points:
-const int MAX_DATA = 400;
+const int MAX_DATA = 390;
 
 // Number of time points for plotting
 const int NPLOT = 6000; // 6000 !!!
@@ -202,17 +211,18 @@ struct parameters_struct {
     #endif
 };
 
+
 // Observational data arrays:
 struct obs_data {
     float V;  // visual magnitude array, mag
     float w;  // 1-sgm error bar squared for V array, mag
-    double E_x;  // asteroid->Earth vector in barycentric FoR array, au
-    double E_y;  // asteroid->Earth vector in barycentric FoR array, au
-    double E_z;  // asteroid->Earth vector in barycentric FoR array, au
-    double S_x;  // asteroid->Sun vector in barycentric FoR array, au
-    double S_y;  // asteroid->Sun vector in barycentric FoR array, au
-    double S_z;  // asteroid->Sun vector in barycentric FoR array, au
-    double MJD;  // asteroid time (without time delay)
+    OBS_TYPE E_x;  // asteroid->Earth vector in barycentric FoR array, au
+    OBS_TYPE E_y;  // asteroid->Earth vector in barycentric FoR array, au
+    OBS_TYPE E_z;  // asteroid->Earth vector in barycentric FoR array, au
+    OBS_TYPE S_x;  // asteroid->Sun vector in barycentric FoR array, au
+    OBS_TYPE S_y;  // asteroid->Sun vector in barycentric FoR array, au
+    OBS_TYPE S_z;  // asteroid->Sun vector in barycentric FoR array, au
+    OBS_TYPE MJD;  // asteroid time (without time delay)
     int Filter;  // Filter code array
 };
 
@@ -220,7 +230,7 @@ struct obs_data {
 // Function declarations
 int read_data(char *, int *, int *, int);
 int chi2 (int, int, struct parameters_struct, double *);
-int quadratic_interpolation(double, double *,double *,double *, double *,double *,double *);
+int quadratic_interpolation(double, OBS_TYPE *,OBS_TYPE *,OBS_TYPE *, OBS_TYPE *,OBS_TYPE *,OBS_TYPE *);
 int timeval_subtract (double *, struct timeval *, struct timeval *);
 __device__ __host__ void iglob_to_params(int *, struct parameters_struct *);
 __device__ __host__ void iloc_to_params(long int *, struct parameters_struct *);

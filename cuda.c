@@ -213,10 +213,10 @@ __device__ CHI_FLOAT chi2one(struct parameters_struct params, struct obs_data *s
     double F_y = T_y*cos_phi_F + D_y*sin_phi_F;
     double F_z =                 D_z*sin_phi_F;
     
-    // The torque K=[r x F] (a unit vector), here isl is xyz:
-    double Ki = r_y*F_z - r_z*F_y;
-    double Ks = r_z*F_x - r_x*F_z;
-    double Kl = r_x*F_y - r_y*F_x;
+    // The torque K=[r x F] , here isl is xyz:
+    double Ki = params.K * (r_y*F_z - r_z*F_y);
+    double Ks = params.K * (r_z*F_x - r_x*F_z);
+    double Kl = params.K * (r_x*F_y - r_y*F_x);
     
     double mu[6];
     // Parameters for the ODEs (don't change with time):
@@ -888,7 +888,9 @@ __global__ void chi2_gpu (struct obs_data *dData, int N_data, int N_filters,
                           curandState* globalState, CHI_FLOAT *d_f, struct parameters_struct *d_params, struct x2_struct x2_params)
 // CUDA kernel computing chi^2 on GPU
 {        
+#ifndef NO_SDATA
     __shared__ struct obs_data sData[MAX_DATA];
+#endif
     __shared__ CHI_FLOAT sLimits[2][N_INDEPEND];
     __shared__ volatile CHI_FLOAT s_f[BSIZE];
     __shared__ volatile int s_thread_id[BSIZE];
@@ -903,8 +905,10 @@ __global__ void chi2_gpu (struct obs_data *dData, int N_data, int N_filters,
     // Not efficient, for now:
     if (threadIdx.x == 0)
     {
+#ifndef NO_SDATA
         for (i=0; i<N_data; i++)
             sData[i] = dData[i];
+#endif        
         for (i=0; i<N_INDEPEND; i++)
         {
             sLimits[0][i] = dLimits[0][i];
@@ -1062,18 +1066,23 @@ __global__ void chi2_gpu (struct obs_data *dData, int N_data, int N_filters,
         {
             ind2[j] = 0;  // Uninitialized flag
         }
-        CHI_FLOAT fmin;
-        int jmin, j2;
         for (j=0; j<N_PARAMS+1; j++)
         {
-            fmin = 1e30;
-            for (j2=0; j2<N_PARAMS+1; j2++)
+            CHI_FLOAT fmin = 1e30;
+            int jmin = -1;
+            for (int j2=0; j2<N_PARAMS+1; j2++)
             {
                 if (ind2[j2]==0 && f[j2] <= fmin)
                 {
                     fmin = f[j2];
                     jmin = j2;
                 }            
+            }
+            if (jmin < 0)
+                // All f[] values are NaN, so exiting the thread
+            {
+                f[ind[0]] = 1e30;
+                break;
             }
             ind[j] = jmin;
             ind2[jmin] = 1;

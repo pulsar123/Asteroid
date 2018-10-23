@@ -234,7 +234,7 @@ int main (int argc,char **argv)
         // 7+DN_TREND; Amplitude of the torque, K; >=0; units are 1/day^2
         iparam++;
         hLimits[0][iparam] = 0;
-        hLimits[1][iparam] = 0.01;
+        hLimits[1][iparam] = 300;
         #endif        
         
         // 4+DN_IND; c_tumb (physical (tumbling) value of the axis c size; always smallest)
@@ -271,7 +271,11 @@ int main (int argc,char **argv)
             curandState* d_states;
             ERR(cudaMalloc ( &d_states, N_BLOCKS*BSIZE*sizeof( curandState ) ));
             // setup seeds, initialize d_f
+            #ifdef TIMING        
+            setup_kernel <<< N_BLOCKS, BSIZE >>> ( d_states, (unsigned long)0, d_f);
+            #else
             setup_kernel <<< N_BLOCKS, BSIZE >>> ( d_states, (unsigned long)(time(NULL)), d_f);
+            #endif
             
             #ifdef REOPT
             ERR(cudaMemcpyToSymbol(d_params0, &params, sizeof(struct parameters_struct), 0, cudaMemcpyHostToDevice));

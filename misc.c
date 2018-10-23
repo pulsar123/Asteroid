@@ -17,7 +17,7 @@ int cmpdouble (const void * a, const void * b) {
 //}
 
 
-int quadratic_interpolation(double MJD, double *E_x1,double *E_y1,double *E_z1, double *S_x1,double *S_y1,double *S_z1)
+int quadratic_interpolation(double MJD, OBS_TYPE *E_x1, OBS_TYPE *E_y1, OBS_TYPE *E_z1, OBS_TYPE *S_x1, OBS_TYPE *S_y1, OBS_TYPE *S_z1)
 {
     double rr[3];
     

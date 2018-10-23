@@ -11,6 +11,7 @@
 # MIN_DV : force certain minimum for dV (magnitudes) of the brightness curve
 # MINIMA_PRINT : dumping periodogramm (fr, H) as min_profile.dat, in misc.c
 # MINIMA_SPLINE : if defined, use spline-smoothed method to compute the periodogramm (only used with MINIMA_PRINT)
+# NO_SDATA : don't created shared memory sData array, use directly the device memory version
 # NOPRINT : if defined, do not create files model.dat, data.dat, lines.dat
 # NUDGE : nudging the model minima towards the observed minima (in 2D - t,V coordinates) during optimization
 # PARABOLIC_MAX : use more accurate (parabola) method to find brightness minima when doing periodogramm (only with MINIMA_PRINT)
@@ -35,10 +36,10 @@ ifeq ($(CLUSTER),monk)
   ARCH=sm_20
 endif  
 
-OPT=-O2 -DGPU -DRELAXED -DP_PSI -DTORQUE -DDEBUG -arch=$(ARCH)
+OPT=-O3 --ptxas-options=-v -arch=$(ARCH) -DGPU -DRELAXED -DP_PSI -DTORQUE -DDEBUG
 INC=-I/usr/include/cuda -I.
 
-BINARY=asteroid1
+BINARY=asteroid2
 
 objects = asteroid.o read_data.o misc.o cuda.o gpu_prepare.o
 
