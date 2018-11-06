@@ -618,262 +618,312 @@ __device__ CHI_FLOAT chi2one(struct parameters_struct params, struct obs_data *s
 
 //+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 
-__device__ void params2x(int *LAM, CHI_FLOAT *x, struct parameters_struct *params, CHI_FLOAT sLimits[][N_INDEPEND])
+__device__ void params2x(CHI_FLOAT *x, double *params, CHI_FLOAT sLimits[][N_TYPES], int sProperty[][N_COLUMNS], int *sTypes)
 // Converting from dimensional params structure to dimensionless array x. Used for plotting. 
-// P_PHI, P_PSI, P_BOTH, TREND and RANDOM_BC are not supported!
+// P_PHI, P_PSI, P_BOTH, and RANDOM_BC are not supported ???
+// It is assumed that in the params vector there is the following order: ..., c_tumb, ..., b_tumb, ..., Es, ..., psi_0, ...
+// Also, c,b should follow c_tumb.
 {    
-    int iparam = -1;
+    int i_Es;
     
-    iparam++; x[iparam] = (params->theta_M - sLimits[0][iparam]) / (sLimits[1][iparam] - sLimits[0][iparam]); // 0
-    iparam++; x[iparam] = (params->phi_M - sLimits[0][iparam]) / (sLimits[1][iparam] - sLimits[0][iparam]); // 1
-    iparam++; x[iparam] = (params->phi_0 - sLimits[0][iparam]) / (sLimits[1][iparam] - sLimits[0][iparam]); // 2
-    iparam++; x[iparam] = (params->L - sLimits[0][iparam]) / (sLimits[1][iparam] - sLimits[0][iparam]); // 3
-    iparam++; x[iparam] = (log(params->c_tumb) - sLimits[0][iparam]) / (sLimits[1][iparam] - sLimits[0][iparam]); // 4
+    // Explicitly assuming here that c_tumb and b_tumb are multi-segment (do not change between segments)
+    double b_tumb = params[sTypes[T_b_tumb]];
+    double c_tumb = params[sTypes[T_c_tumb]];
+    double Is = (1.0+b_tumb*b_tumb) / (b_tumb*b_tumb + c_tumb*c_tumb);
+    double Ii = (1.0+c_tumb*c_tumb) / (b_tumb*b_tumb + c_tumb*c_tumb);
     
-    iparam++; x[iparam] = log(params->b_tumb)/log(params->c_tumb); // 5
-    
-    double Is = (1.0+params->b_tumb*params->b_tumb) / (params->b_tumb*params->b_tumb+params->c_tumb*params->c_tumb);
-    double Ii = (1.0+params->c_tumb*params->c_tumb) / (params->b_tumb*params->b_tumb+params->c_tumb*params->c_tumb);
-    
-    *LAM = params->Es > 1.0/Ii;
-    iparam++; // 6
-    if (*LAM)
-        // LAM: Es>1.0/Ii
-        x[iparam] = 0.5*((params->Es-1.0/Ii) / (1.0-1.0/Ii) + 1.0);
-    else
-        // SAM: Es<1.0/Ii
-        x[iparam] = 0.5*(params->Es-1.0/Is) / (1.0/Ii - 1.0/Is);
-    
-    // Generating psi_0 (constrained by Es, Ii, Is)
-    iparam++;  // 7
-    double psi_min, psi_max;
-    if (LAM)
+    for (int i=0; i<N_PARAMS; i++)
     {
-        psi_min = 0.0;
-        psi_max = 2.0*PI;
+        int param_type = sProperty[i][P_type];
+        int i_seg = sProperty[i][P_iseg];
+        if (sProperty[i][P_independent] == 1)
+        {
+            double par = params[i];
+            if (sProperty[i][P_periodic] == 1)
+            {
+                x[i] = par / (2*PI);
+            }
+            else
+            {
+                if (param_type == T_c_tumb)
+                    par = log(par);
+                x[i] = (par - sLimits[0][param_type]) / (sLimits[1][param_type] - sLimits[0][param_type]);        
+            }
+        }
+        else
+        {
+            
+            if (param_type == T_b_tumb)
+            {
+                x[i] = log(b_tumb)/log(c_tumb);
+            } 
+            
+            else if (param_type == T_Es)
+            {
+                i_Es = i;
+                int LAM = params[i] > 1.0/Ii;
+                if (LAM)
+                    // LAM: Es>1.0/Ii; x=[0.5,1]
+                    x[i] = 0.5*((params[i]-1.0/Ii) / (1.0-1.0/Ii) + 1.0);
+                else
+                    // SAM: Es<1.0/Ii; x=[0,0.5]
+                    x[i] = 0.5*(params[i]-1.0/Is) / (1.0/Ii - 1.0/Is);
+            }
+            
+            else if (param_type == T_psi_0)
+            {
+                double psi_min, psi_max;
+                if (*LAM)
+                {
+                    psi_min = 0.0;
+                    psi_max = 2.0*PI;
+                }
+                else
+                {
+                    psi_max = atan(sqrt(Ii*(Is-1.0/params[i_Es])/Is/(1.0/params[i_Es]-Ii)));
+                    psi_min = -psi_max;
+                }
+                x[i] = (params[i] - psi_min) / (psi_max - psi_min);                
+            }
+
+            #ifdef BC
+            else if (param_type == T_c)
+            {
+                // Parameter "c" has the same limits as "c_tumb", and log distribution:
+                x[i] = (log(params[i]) - sLimits[0][T_c_tumb]) / (sLimits[1][T_c_tumb] - sLimits[0][T_c_tumb]);        
+            }
+            
+            else if (param_type == T_b)
+            {
+                x[i] = log(params[i])/log(params[Types[T_c]]);
+            }
+            #endif            
+        }
     }
-    else
-    {
-        psi_max = atan(sqrt(Ii*(Is-1.0/params->Es)/Is/(1.0/params->Es-Ii)));
-        psi_min = -psi_max;
-    }
-    x[iparam] = (params->psi_0 - psi_min) / (psi_max - psi_min);
-    
-    #ifdef BC
-    iparam++; x[iparam] = (log(params->c) - sLimits[0][4+DN_IND]) / (sLimits[1][4+DN_IND] - sLimits[0][4+DN_IND]); // 8+DN_IND
-    iparam++; x[iparam] = log(params->b)/log(params->c); // 9
-    #endif    
-    
+        
     return;
 }    
 
 
 //+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 
-__device__ int x2params(int LAM, CHI_FLOAT *x, struct parameters_struct *params, CHI_FLOAT sLimits[][N_INDEPEND], struct x2_struct *s_x2_params)
+__device__ int x2params(CHI_FLOAT *x, struct parameters_struct *params, CHI_FLOAT sLimits[][N_INDEPEND], struct x2_struct *s_x2_params, int sProperty[][N_COLUMNS], int *sTypes)
+// Conversion from dimensionless x[] parameters to the physical ones params[]
+// RANDOM_BC is not supported yet
 {
     double log_c; 
+    
+    // LAM (=1) or SAM (=0):
+    int LAM;
     
     // Checking if we went beyond the limits:
     int failed = 0;
     for (int i=0; i<N_PARAMS; i++)
     {
-        // Three parameters (phi_M, phi_0, and psi_0 - for LAM=1 only, can have any value during optimization:
-        if (i==1 || i==2 || i==7+DN_IND && LAM)
+        int param_type = sProperty[i][P_type];
+
+        if (param_type == T_Es)
+            LAM = x[i]>=0.5;
+        
+        // Periodic parameters (all phi parameters and psi_0 - for LAM=1 only) can have any value during optimization:
+        if (sProperty[i][P_continuous]==1 || param_type==T_psi_0 && LAM)
             continue;
-        #ifdef TORQUE
-        // In torque mode, phi_K and phi_F are relaxed (periodic):
-        if (i==5+DN_TREND || i==6+DN_TREND)
-            continue;
-        #endif        
         
         #ifdef RELAXED
         #if defined(P_PHI) || defined(P_PSI) || defined(P_BOTH)
         // Relaxing only c_tumb in P_PHI / P_PSI / combined modes
-        if (i==4+DN_IND)
+        if (param_type == T_c_tumb)
             continue;
         #else        
         // Relaxing L and c_tumb: (physical values are enforced below)
-        if (i==3 || i==4+DN_IND)
+        if (param_type == T_L || param_type == T_c_tumb)
             continue;
         #endif
         #ifdef BC        
         // Relaxing c:
-        if (i == 8+DN_IND)
+        if (param_type == T_c)
             continue;
         #endif        
         #endif
+        
         if (x[i]<0.0 || x[i]>=1.0)
             failed = 1;
     }
-    // Crossing LAM <-> SAM is not allowed during optimization:
-    if (LAM==0 && x[6+DN_IND]>0.5 || LAM==1 && x[6+DN_IND]<0.5)
-        failed = 1;
+
     if (failed)
         return failed;
-    
-    int iparam = -1;
-    // Independent parameters:
-    iparam++;  params->theta_M =     x[iparam] * (sLimits[1][iparam]-sLimits[0][iparam]) + sLimits[0][iparam]; // 0
-    iparam++;  params->phi_M =       x[iparam] * (sLimits[1][iparam]-sLimits[0][iparam]) + sLimits[0][iparam]; // 1
-    iparam++;  params->phi_0 =       x[iparam] * (sLimits[1][iparam]-sLimits[0][iparam]) + sLimits[0][iparam]; // 2
-    iparam++;  
-    #ifndef P_PHI    
-    // In P_PSI mode, this computes 1/P_psi from x, which is stored in params.L:
-    params->L =                      x[iparam] * (sLimits[1][iparam]-sLimits[0][iparam]) + sLimits[0][iparam]; // 3
-    #endif    
-    #ifdef TREND
-    iparam++;  params->A =           x[iparam] * (sLimits[1][iparam]-sLimits[0][iparam]) + sLimits[0][iparam]; // 4
-    #endif
-    #ifdef TORQUE
-    iparam++;  params->theta_K =     x[iparam] * (sLimits[1][iparam]-sLimits[0][iparam]) + sLimits[0][iparam]; // 4+DN_TREND
-    iparam++;  params->phi_K =       x[iparam] * (sLimits[1][iparam]-sLimits[0][iparam]) + sLimits[0][iparam]; // 5+DN_TREND
-    iparam++;  params->phi_F =       x[iparam] * (sLimits[1][iparam]-sLimits[0][iparam]) + sLimits[0][iparam]; // 6+DN_TREND
-    iparam++;  params->K =           x[iparam] * (sLimits[1][iparam]-sLimits[0][iparam]) + sLimits[0][iparam]; // 7+DN_TREND
-    #endif
-    
-    iparam++;  log_c =               x[iparam] * (sLimits[1][iparam]-sLimits[0][iparam]) + sLimits[0][iparam]; // 4+DN_IND
-    params->c_tumb = exp(log_c);
-    
-    // Dependent parameters:
-    iparam++;  double log_b =              x[iparam] * log_c; // 5+DN_IND
-    params->b_tumb = exp(log_b);
-    // New: in this units, best results distribution looks much flatter; it gurantees b=c...1:
-    // It can become unstable or fail if c_tumb->0               
-    //    iparam++;  params->b_tumb = 1.0/(x[iparam]*(1.0/params->c_tumb-1.0)+1.0);
-    
-    // Derived values:
-    double Is = (1.0+params->b_tumb*params->b_tumb) / (params->b_tumb*params->b_tumb+params->c_tumb*params->c_tumb);
-    double Ii = (1.0+params->c_tumb*params->c_tumb) / (params->b_tumb*params->b_tumb+params->c_tumb*params->c_tumb);
-    
-    // Dependent parameters:    
-    iparam++;  // 6+DN_IND
-    // Dimensionless total energy (excitation degree)
-    if (LAM)
-        // LAM: Es>1.0/Ii
-        params->Es=2.0*(x[iparam]-0.5)*(1.0-1.0/Ii)+1.0/Ii;
-    else
-        // SAM: Es<1.0/Ii
-        params->Es=2.0*x[iparam]*(1.0/Ii-1.0/Is)+1.0/Is;
-    
-    #ifdef P_PHI
-    /* Using the empirical fact that for a wide range of c, b, Es, L parameters, Pphi = S0*2*pi/Es/L (SAM)
-     * and S1*2*pi*Ii/L (LAM) with ~20% accuracy; S0=[1,S_LAM0], S1=[1,S_LAM1]. 
-     * This allows an easy constraint on L if the range of Pphi is given. 
-     * When generating L, we use both the S0/1 ranges, and the given Phi1...Pphi2 range.
-     */
-    if (LAM)
-        params->L = (x[3] * (S_LAM0*sLimits[1][3]-sLimits[0][3]) + sLimits[0][3]) / params->Es;
-    //        params->L = (x[3] * (sLimits[1][3]-sLimits[0][3]*0.828706) + sLimits[0][3]*0.828706) / params->Es;
-    else
-        params->L = (x[3] * (S_LAM1*sLimits[1][3]-sLimits[0][3]) + sLimits[0][3]) * Ii;
-    //        params->L = (x[3] * (sLimits[1][3]-sLimits[0][3]*0.852297) + sLimits[0][3]*0.852297) * Ii;
-    
-    #endif
-    #if defined(P_PSI) || defined(P_BOTH)
-    // In P_PSI/combined modes the actual optimiziation parameter is Ppsi which is stored in params.L, and L is derived from Ppsi and Is, Ii, Es
-    double Einv = 1.0/params->Es;
-    double k2;
-    if (LAM)
-        k2=(Is-Ii)*(Einv-1.0)/((Ii-1.0)*(Is-Einv));
-    else
-        k2=(Ii-1.0)*(Is-Einv)/((Is-Ii)*(Einv-1.0));
-    // Computing the complete eliptic integral K(k2) using the efficient AGM (arithemtic-geometric mean) method
-    // With double precision, converges to better than 1e-10 after 5 loops, for k2=0...9.999998e-01
-    double a = 1.0;   double g = sqrt(1.0-k2);
-    double a1, g1;
-    for (int i=0; i<5; i++)
-    {
-        a1 = 0.5 * (a+g);
-        g1 = sqrt(a*g);
-        a = a1;  g = g1;
-    }
-    // Now that we know K(k2)=PI/(a+g), we can derive L from Ppsi:
-    // Here the meaning of params.L changes: from 1/Ppsi to L
-    if (LAM)
-        params->L = 4.0*params->L* PI/(a+g) *sqrt(Ii*Is/(params->Es*(Ii-1.0)*(Is-Einv)));
-    else
-        params->L = 4.0*params->L* PI/(a+g) *sqrt(Ii*Is/(params->Es*(Is-Ii)*(Einv-1.0)));
-    #ifdef P_BOTH    
-    double S;
-    #ifdef PHI2
-    double S2;
-    #endif
-    // Here dPphi = P_phi / (2*PI)
-    if (LAM == 0)
-    {
-        // !!! Very inefficient (reading dPphi / dPphi2) from device memory
-        S = params->L * s_x2_params->Pphi * params->Es;
-        #ifdef PHI2
-        S2 = params->L * s_x2_params->Pphi2 * params->Es;
-        #endif
-        #ifdef PHI2
-        if (S2<1.0 || S > S_LAM0)
-        #else
-        if (S<1.0 || S > S_LAM0)
-        #endif
-            // Out of the emprirical boundaries for P_phi constraining:
-            return 2;
-    }
-    else
-    {
-        S = params->L * s_x2_params->Pphi  / Ii;
-        #ifdef PHI2
-        S2 = params->L * s_x2_params->Pphi2  / Ii;
-        #endif
-        #ifdef PHI2
-        if (S2<1.0 || S > S_LAM1)
-        #else
-        if (S<1.0 || S > S_LAM1)
-        #endif
-            // Out of the emprirical boundaries for P_phi constraining:
-            return 2;
-    }
-    #endif
-    #endif    
-    
-    
-    // Generating psi_0 (constrained by Es, Ii, Is)
-    iparam++;  // 7+DN_IND
-    double psi_min, psi_max;
-    if (LAM)
-    {
-        psi_min = 0.0;
-        psi_max = 2.0*PI;
-    }
-    else
-    {
-        psi_max = atan(sqrt(Ii*(Is-1.0/params->Es)/Is/(1.0/params->Es-Ii)));
-        psi_min = -psi_max;
-    }
-    params->psi_0 = x[iparam]*(psi_max-psi_min) + psi_min;
-    
+
+    double log_c_tumb, log_b_tumb, Is, Ii, psi_min, psi_max;
     #ifdef BC
-    #ifdef RANDOM_BC
-    iparam++;  double log_c_dev = (x[iparam]-0.5)*BC_DEV1*2; // 8+DN_IND
-    params->c = exp(log_c_dev + log_c);
-    iparam++;  double log_b_dev = (x[iparam]-0.5)*BC_DEV1*2; // 9+DN_IND
-    params->b = exp(log_b_dev + log_b);
-    if (fabs(log_c_dev) > BC_DEV_MAX || fabs(log_b_dev) > BC_DEV_MAX)
-        return 1;
-    #else    
-    iparam++;  double log_c2 = x[iparam] * (sLimits[1][4+DN_IND]-sLimits[0][4+DN_IND]) + sLimits[0][4+DN_IND]; // 8+DN_IND
+    double log_c;
+    #endif
+    
+    // The x -> params conversion
+    for (int i=0; i<N_PARAMS; i++)
+    {
+        int param_type = sProperty[i][P_type];
+        
+        // First we start with special cases parameters:
+        
+        if (param_type == T_b_tumb)
+        {
+            log_b_tumb = x[i] * log_c_tumb;
+            params[i] = exp(log_b_tumb);
+            double b_tumb = params[i];
+            double c_tumb = params[sTypes[T_c_tumb]];
+            Is = (1.0+b_tumb*b_tumb) / (b_tumb*b_tumb + c_tumb*c_tumb);
+            Ii = (1.0+c_tumb*c_tumb) / (b_tumb*b_tumb + c_tumb*c_tumb);
+        }
+        
+        else if (param_type == T_Es)
+        {
+            LAM = x[i]>=0.5;
+            if (LAM)
+                // LAM: Es>1.0/Ii
+            {
+                params[i] = 2.0*(x[i]-0.5)*(1.0-1.0/Ii)+1.0/Ii;
+                psi_min = 0.0;
+                psi_max = 2.0*PI;
+            }
+            else                
+                // SAM: Es<1.0/Ii
+            {
+                params[i] = 2.0*x[i]*(1.0/Ii-1.0/Is)+1.0/Is;
+                psi_max = atan(sqrt(Ii*(Is-1.0/params[i])/Is/(1.0/params[i]-Ii)));
+                psi_min = -psi_max;
+            }
+        }
+        
+        else if (param_type == T_psi_0)
+        {
+            params[i] = x[i]*(psi_max-psi_min) + psi_min;
+        }
+        
+        #ifdef BC
+        else if (param_type == T_b)
+        {
+            double log_b = x[i] * log_c;
+            if (fabs(log_b-log_b_tumb) > BC_DEV_MAX)
+                return 1;
+            params[i] = exp(log_b);
+        }
+        #endif
+        
+        // Then we continue with general classes of parameters
+        
+        // All periodic parameters (excluding the special case of T_psi_0 && LAM - this is handled separately, above, via psi_min and psi_max)
+        else if (sProperty[i][P_periodic] == 1)
+        {
+            params[i] = x[i] * 2.0*PI;
+        }
+        
+        // Independent non-periodic parameters; all dependent non-periodic parameters have to be handled separately, as special cases
+        else if (sProperty[i][P_periodic] == 0 && sProperty[i][P_independent] == 1)
+        {
+            #ifdef P_PHI
+            // Only in P_PHI mode, L parameter is not computed here, but a few lines below
+            if (param_type != T_L)
+            #endif
+                // The default way to compute params[i] from x[i]:
+                params[i] = x[i] * (sLimits[1][i]-sLimits[0][i]) + sLimits[0][i];
+                
+            if (param_type == T_c_tumb)
+            {
+                log_c_tumb = params[i];
+                #ifdef RELAXED
+                // Enforcing minimum limits on physical values of L and c:
+                if (log_c_tumb>0.0)
+                    return 1;
+                #endif
+                params[i] = exp(log_c_tumb);
+            }
+            #ifdef BC
+            else if (param_type == T_c)
+            {
+                log_c = params[i];
+                #ifdef RELAXED
+                // Minimum enforcement on c2 in relaxed mode:
+                if (log_c > 0.0)
+                    return 1;
+                #endif  
+                if (fabs(log_c-log_c_tumb) > BC_DEV_MAX)
+                    return 1;
+                params[i] = exp(log_c);
+            }
+            #endif            
+            #if defined(P_PSI) || defined(P_PHI) || defined(P_BOTH)            
+            // In P_* modes, T_L parameter has a different meaning
+            else if (param_type == T_L)
+            {
+                #ifdef P_PHI
+                /* Using the empirical fact that for a wide range of c_tumb, b_tumb, Es, L parameters, Pphi = S0*2*pi/Es/L (SAM)
+                 * and S1*2*pi*Ii/L (LAM) with ~20% accuracy; S0=[1,S_LAM0], S1=[1,S_LAM1]. 
+                 * This allows an easy constraint on L if the range of Pphi is given. 
+                 * When generating L, we use both the S0/1 ranges, and the given Phi1...Pphi2 range.
+                 */
+                if (LAM)
+                    params[i] = (x[i] * (S_LAM0*sLimits[1][i]-sLimits[0][i]) + sLimits[0][i]) / params[sTypes[T_Es]];
+                else
+                    params[i] = (x[i] * (S_LAM1*sLimits[1][i]-sLimits[0][i]) + sLimits[0][i]) * Ii;
+                
+                #endif
+                #if defined(P_PSI) || defined(P_BOTH)
+                // In P_PSI/combined modes the actual optimization parameter is Ppsi which is stored in params.L, and L is derived from Ppsi and Is, Ii, Es
+                double Einv = 1.0/params[sTypes[T_Es]];
+                double k2;
+                if (LAM)
+                    k2=(Is-Ii)*(Einv-1.0)/((Ii-1.0)*(Is-Einv));
+                else
+                    k2=(Ii-1.0)*(Is-Einv)/((Is-Ii)*(Einv-1.0));
+                // Computing the complete eliptic integral K(k2) using the efficient AGM (arithemtic-geometric mean) method
+                // With double precision, converges to better than 1e-10 after 5 loops, for k2=0...9.999998e-01
+                double a = 1.0;   double g = sqrt(1.0-k2);
+                double a1, g1;
+                for (int i=0; i<5; i++)
+                {
+                    a1 = 0.5 * (a+g);
+                    g1 = sqrt(a*g);
+                    a = a1;  g = g1;
+                }
+                // Now that we know K(k2)=PI/(a+g), we can derive L from Ppsi:
+                // Here the meaning of params.L changes: from 1/Ppsi to L
+                if (LAM)
+                    params[i] = 4.0*params[i]* PI/(a+g) *sqrt(Ii*Is/(params[sTypes[T_Es]]*(Ii-1.0)*(Is-Einv)));
+                else
+                    params[i] = 4.0*params[i]* PI/(a+g) *sqrt(Ii*Is/(params[sTypes[T_Es]]*(Is-Ii)*(Einv-1.0)));
+                #ifdef P_BOTH    
+                // In the P_BOTH mode we have to use a rejection method to prune out modesl with the wrong combination of Ppsi and Pphi
+                double S, S2;
+                // Here dPphi = P_phi / (2*PI)
+                if (LAM == 0)
+                {
+                    S  = params[i] * s_x2_params->Pphi  * params[sTypes[T_Es]];
+                    S2 = params[i] * s_x2_params->Pphi2 * params[sTypes[T_Es]];
+                    if (S2 < 1.0 || S > S_LAM0)
+                        // Out of the emprirical boundaries for P_phi constraining:
+                        return 2;
+                }
+                else
+                {
+                    S  = params[i] * s_x2_params->Pphi   / Ii;
+                    S2 = params[i] * s_x2_params->Pphi2  / Ii;
+                    if (S2 < 1.0 || S > S_LAM1)
+                        // Out of the emprirical boundaries for P_phi constraining:
+                        return 2;
+                }
+                #endif  // P_PSI || P_BOTH
+                #endif  // P_BOTH      
+            } // if (param_type == T_L)
+            #endif  // if any P_* mode
+            
+        }  // if param_type
+        
+    }  // for (i)
+    
+
     #ifdef RELAXED
-    // Minimum enforcement on c2 in relaxed mode:
-    if (log_c2 > 0.0)
-        return 1;
-    #endif  
-    params->c = exp(log_c2);
-    // Enforcing the same order (a=1>b>c) aw with tumb values (a_tumb=1>b_tumb>c_tumb):
-    iparam++;  double log_b2 =              x[iparam] * log_c2; // 9+DN_IND
-    params->b = exp(log_b2);
-    if (fabs(log_c2-log_c) > BC_DEV_MAX || fabs(log_b2-log_b) > BC_DEV_MAX)
-        return 1;
-    #endif               
-    #endif    
-    #ifdef RELAXED
-    // Enforcing minimum limits on physical values of L and c:
-    if (params->L<0.0 || log_c>0.0)
+    // Enforcing minimum limits on physical values of L:
+    if (params[sTypes[T_L]] < 0.0)
         return 1;
     #endif
 
@@ -885,21 +935,23 @@ __device__ int x2params(int LAM, CHI_FLOAT *x, struct parameters_struct *params,
 //++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 
 __global__ void chi2_gpu (struct obs_data *dData, int N_data, int N_filters,
-                          curandState* globalState, CHI_FLOAT *d_f, struct parameters_struct *d_params, struct x2_struct x2_params)
+                          curandState* globalState, CHI_FLOAT *d_f, double **d_params, struct x2_struct x2_params)
 // CUDA kernel computing chi^2 on GPU
 {        
 #ifndef NO_SDATA
     __shared__ struct obs_data sData[MAX_DATA];
 #endif
-    __shared__ CHI_FLOAT sLimits[2][N_INDEPEND];
+    __shared__ CHI_FLOAT sLimits[2][N_TYPES];
     __shared__ volatile CHI_FLOAT s_f[BSIZE];
     __shared__ volatile int s_thread_id[BSIZE];
+    __shared__ int sProperty[N_PARAMS][5];
+    __shared__ int sTypes[N_TYPES];
     //    __shared__ CHI_FLOAT s_f[BSIZE];
     //    __shared__ int s_thread_id[BSIZE];
     __shared__ struct chi2_struct s_chi2_params;
     __shared__ struct x2_struct s_x2_params;
     int i, j;
-    struct parameters_struct params;
+    double params[N_PARAMS];
     CHI_FLOAT delta_V[N_FILTERS];
     
     // Not efficient, for now:
@@ -909,11 +961,15 @@ __global__ void chi2_gpu (struct obs_data *dData, int N_data, int N_filters,
         for (i=0; i<N_data; i++)
             sData[i] = dData[i];
 #endif        
-        for (i=0; i<N_INDEPEND; i++)
+        for (i=0; i<N_TYPES; i++)
         {
             sLimits[0][i] = dLimits[0][i];
             sLimits[1][i] = dLimits[1][i];
+            sTypes[i] = dTypes[i];
         }
+        for (i=0; i<N_PARAMS; i++)
+            for (j=0; j<5; j++)
+                sProperty[i][j] = dProperty[i][j];
         #ifdef NUDGE
         // Copying the data on the observed minima from device to shared memory:
         s_chi2_params = d_chi2_params;
@@ -924,8 +980,14 @@ __global__ void chi2_gpu (struct obs_data *dData, int N_data, int N_filters,
     }
     #ifdef REOPT
     // Reading the initial point from device memory
-    params = d_params0;
+    for (i=0; i<N_PARAMS; i++)
+        params[i] = d_params0[i];
     #endif        
+    #ifdef SEGMENT
+    // Copying the starting indexes for data segments to shared memory:
+    for (i=0; i<N_SEG; i++)
+        s_chi2_params.start_seg[i] = d_start_seg[i];
+    #endif    
     
     // Downhill simplex optimization approach
     
@@ -934,21 +996,16 @@ __global__ void chi2_gpu (struct obs_data *dData, int N_data, int N_filters,
     // Global thread index:
     int id = threadIdx.x + blockDim.x*blockIdx.x;
     
-    // Generating initial state:
-    //    curandState localState;
-    //    curand_init ( (unsigned long long)seed, id, 0, &localState );
-    
     // Reading the global states from device memory:
     curandState localState = globalState[id];
     
+    Simplex steps counter:
     int l = 0;
     
     CHI_FLOAT x[N_PARAMS+1][N_PARAMS];  // simplex points (point index, coordinate)
     CHI_FLOAT f[N_PARAMS+1]; // chi2 values for the simplex edges (point index)
     int ind[N_PARAMS+1]; // Indexes to the sorted array (point index)
-    
-    int LAM;
-    
+        
     #ifdef P_BOTH
     bool failed;
     //    for (int itry=0; itry<100; itry++)
@@ -958,15 +1015,21 @@ __global__ void chi2_gpu (struct obs_data *dData, int N_data, int N_filters,
         
         
         #ifdef REOPT
-        params2x(&LAM, x[0], &params, sLimits);    
+        // Converting from physical to dimensionless (0...1 scale) parameters:
+        params2x(x[0], params, sLimits, sProperty, sTypes);
+        
         // Random displacement of the initial point, uniformly distributed within +-0.5*DX_RAND:
         for (i=0; i<N_PARAMS; i++)
         {
-            #ifdef FREEZE_BC            
-            if (i==4+DN_IND || i==5+DN_IND || i==8+DN_IND || i==9+DN_IND)
-                continue;
-            #endif
-            x[0][i] = x[0][i] + DX_RAND*(curand_uniform(&localState)-0.5);
+            // Sticking to the 0...1 interval for x:
+            // (Allowed to switch LAM/SAM here)
+            double x_min = 0;
+            if (x[0][i] - 0.5*DX_RAND > 0.0)
+                x_min = x[0][i] - 0.5*DX_RAND;
+            double x_max = 1;
+            if (x[0][i] + 0.5*DX_RAND < 1.0)
+                x_max = x[0][i] + 0.5*DX_RAND;
+            x[0][i] = x[0][i] + DX_RAND*curand_uniform(&localState) + x_min;            
         }
         #else  // REOPT  
         // Initial random point
@@ -975,34 +1038,43 @@ __global__ void chi2_gpu (struct obs_data *dData, int N_data, int N_filters,
             #ifdef BC
             #ifndef RANDOM_BC
             // Initial vales of c/b are equal to initial values of c_tumb/b_tumb:
-            if (i >= N_PARAMS-2)
+            if (sProperty[i][P_type] == T_c)
             {
-                x[0][i] = x[0][i-4];
+                x[0][i] = x[0][Types[T_c_tumb]];
                 continue;
-            }
-            #endif        
-            #endif        
+            }            
+            else if (sProperty[i][P_type] == T_b)
+            {
+                x[0][i] = x[0][Types[T_b_tumb]];
+                continue;
+            }            
+            #endif  // RANDOM_BC 
+            #endif  // BC      
+            // Random number [0,1[
             float r = curand_uniform(&localState);
-            if (i == 6+DN_IND)
+            if (sProperty[i][P_type] == T_Es)
             {
                 // Using the x value for Es to determine the mode (1:LAM. 0:SAM)
-                LAM = r>=0.5;
-                if (LAM==0)
+                int LAM = r>=0.5;
+                if (LAM == 0)
                     // Interval 1e-6 ... 0.5-DX_INI-1e-6:
-                    x[0][i] = 1e-6 + (1-2*DX_INI-4e-6) * r;
+                    x[0][i] = 1e-6 + (1 - 2*DX_INI - 4e-6) * r;
                 else
                     // Interval 0.5+1e-6 ... 1-DX_INI-1e-6:
-                    x[0][i] = 0.5 + 1e-6 + (1-2*DX_INI-4e-6) * (r-0.5);
+                    x[0][i] = 0.5 + 1e-6 + (1 - 2*DX_INI - 4e-6) * (r-0.5);
             }
             else
-                // The DX_INI business is to prevent the initial simplex going beyong the limits (???)
-                x[0][i] = 1e-6 + (1.0-DX_INI-2e-6) * r;
+                // The DX_INI business is to prevent the initial simplex going beyong the limits
+                // The allowed interval is 1e-6 ... 1-DX_INI-1e-6
+                x[0][i] = 1e-6 + (1.0 - DX_INI - 2e-6) * r;
         }
         #endif // REOPT    
         
         // Simplex initialization
+        // Vertex loop:
         for (j=1; j<N_PARAMS+1; j++)
         {
+            // Coordinates (parameters) loop:
             for (i=0; i<N_PARAMS; i++)
             {
                 if (i == j-1)
@@ -1010,10 +1082,7 @@ __global__ void chi2_gpu (struct obs_data *dData, int N_data, int N_filters,
                     #ifdef REOPT
                     // In REOPT mode, initial displacements are random, with log distrubution between DX_MIN and DX_MAX:
                     CHI_FLOAT dx_ini = exp(curand_uniform(&localState) * (DX_MAX-DX_MIN) + DX_MIN);
-                    #ifdef FREEZE_BC            
-                    if (i==4+DN_IND || i==5+DN_IND || i==8+DN_IND || i==9+DN_IND)
-                        dx_ini = 0.0;
-                    #endif
+                    // !!! Will fail for some displacements:
                     x[j][i] = x[0][i] + dx_ini;
                     #else                
                     x[j][i] = x[0][i] + DX_INI;
@@ -1033,13 +1102,13 @@ __global__ void chi2_gpu (struct obs_data *dData, int N_data, int N_filters,
         for (j=0; j<N_PARAMS+1; j++)
         {
             #ifdef P_BOTH
-            if (x2params(LAM, x[j], &params, sLimits, &s_x2_params))
+            if (x2params(x[j], &params, sLimits, &s_x2_params, sProperty, sTypes))
             {
                 failed = 1;
                 break;
             }
             #else        
-            x2params(LAM, x[j], &params, sLimits, &s_x2_params);
+            x2params(x[j], &params, sLimits, &s_x2_params, sProperty, sTypes);
             #endif        
             f[j] = chi2one(params, sData, N_data, N_filters, delta_V, 0, &s_chi2_params);    
         }
@@ -1131,10 +1200,6 @@ __global__ void chi2_gpu (struct obs_data *dData, int N_data, int N_filters,
         CHI_FLOAT x_r[N_PARAMS];
         for (i=0; i<N_PARAMS; i++)
         {
-            #ifdef FREEZE_BC            
-            if (i==4+DN_IND || i==5+DN_IND || i==8+DN_IND || i==9+DN_IND)
-                continue;
-            #endif
             x_r[i] = x0[i] + ALPHA_SIM*(x0[i] - x[ind[N_PARAMS]][i]);
         }
         CHI_FLOAT f_r;
@@ -1159,10 +1224,6 @@ __global__ void chi2_gpu (struct obs_data *dData, int N_data, int N_filters,
             CHI_FLOAT x_e[N_PARAMS];
             for (i=0; i<N_PARAMS; i++)
             {
-                #ifdef FREEZE_BC            
-                if (i==4+DN_IND || i==5+DN_IND || i==8+DN_IND || i==9+DN_IND)
-                    continue;
-                #endif
                 x_e[i] = x0[i] + GAMMA_SIM*(x_r[i] - x0[i]);
             }
             CHI_FLOAT f_e;
@@ -1195,10 +1256,6 @@ __global__ void chi2_gpu (struct obs_data *dData, int N_data, int N_filters,
         // (Here we repurpose x_r and f_r for the contraction stuff)
         for (i=0; i<N_PARAMS; i++)
         {
-            #ifdef FREEZE_BC            
-            if (i==4+DN_IND || i==5+DN_IND || i==8+DN_IND || i==9+DN_IND)
-                continue;
-            #endif
             x_r[i] = x0[i] + RHO_SIM*(x[ind[N_PARAMS]][i] - x0[i]);
         }
         if (x2params(LAM, x_r,&params,sLimits, &s_x2_params))
@@ -1324,7 +1381,8 @@ __global__ void chi2_plot (struct obs_data *dData, int N_data, int N_filters,
 {     
     __shared__ double sd2_min[BSIZE];
     CHI_FLOAT delta_V[N_FILTERS];
-    
+    __shared__ struct chi2_struct s_chi2_params;
+
     // Global thread index for points:
     int id = threadIdx.x + blockDim.x*blockIdx.x;
     
@@ -1332,13 +1390,17 @@ __global__ void chi2_plot (struct obs_data *dData, int N_data, int N_filters,
     // Doing once per kernel
     if (threadIdx.x == 0)
     {
+        #ifdef NUDGE
+        // Copying the data on the observed minima from device to shared memory:
+        s_chi2_params = d_chi2_params;
+        #endif
         // !!! Will not work in NUDGE mode - NULL
         // Step one: computing constants for each filter using chi^2 method, and the chi2 value
-        d_chi2_plot = chi2one(params, dData, N_data, N_filters, delta_V, 0, NULL);
+        d_chi2_plot = chi2one(params, dData, N_data, N_filters, delta_V, 0,  &s_chi2_params);
         d_delta_V0 = delta_V[0];
         
         // Step two: computing the Nplots data points using the delta_V values from above:
-        chi2one(params, dPlot, Nplot, N_filters, delta_V, Nplot, NULL);
+        chi2one(params, dPlot, Nplot, N_filters, delta_V, Nplot,  &s_chi2_params);
         
     }
     
@@ -1448,7 +1510,7 @@ __global__ void chi2_plot (struct obs_data *dData, int N_data, int N_filters,
         
         // Computing the chi2 for the shifted parameter:
         // !!! Will not work in NUDGE mode - NULL
-        d_chi2_lines[iparam][id] = chi2one(params, dData, N_data, N_filters, delta_V, 0, NULL);
+        d_chi2_lines[iparam][id] = chi2one(params, dData, N_data, N_filters, delta_V, 0, &s_chi2_params);
     }
     #endif    
     

@@ -5,8 +5,6 @@
 # DEBUG2 : likley not functional; used for cuda code debugging
 # DUMP_DV : dumping 5.0*log10(1.0/E * 1.0/S) in read_data.c for all obs. data points
 # DUMP_RED_BLUE : dumping the converted/corrected obs. data (MJD, V, w)
-# FREEZE_BC : keeping c/b(*_tumb) fixed during optimization (primarily for REOPT option)
-# GPU : likely obligatory; use GPU for computations
 # LSQ : likely not functional. Computing 2D least squares distances between the data points and the model, in chi2_plot
 # MIN_DV : force certain minimum for dV (magnitudes) of the brightness curve
 # MINIMA_PRINT : dumping periodogramm (fr, H) as min_profile.dat, in misc.c
@@ -18,11 +16,11 @@
 # P_BOTH : combined P_psi and P_phi constraints (input args: P_psi1 P_psi2 P_phi). P_Psi is a free parameter, P_phi is a constant. A rejection method is used during optimization.
 # P_PHI : if defined, Pphi1 Pphi2 args need to be provided; L is no longer an input parameter, and is computed from P_phi using an approximate empirical relation
 # P_PSI : if defined, Ppsi1 Ppsi2 args need to be provided; L is no longer an input parameter, and is computed precisely from P_psi
-# PHI2 : additional option for P_BOTH. If defined, input args are P_psi1 P_psi2 P_phi1 P_phi2 (so both psi and phi have an explicit range)
 # PROFILES : if defined, write cross-sections along all parameter dimensions to lines.dat
-# RANDOM_BC : for BC mode. If defined, initial guess for brightness b,c parameters are random (not coinciding with the kinematic b,c parameters).
+# RANDOM_BC : (not working) for BC mode. If defined, initial guess for brightness b,c parameters are random (not coinciding with the kinematic b,c parameters).
 # RELAXED : during optimization, the free parameteres has the least possible degree of constraint.
 # REOPT : if defined, use the model point provided via args, and searhc for minima around it
+# SEGMENT : multiple data segments (specified by T_START[] vector)
 # TIMING : time the main kernel (chi2_gpu)
 # TORQUE : adding a simple constant torque model, with 4 extra parameters: theta_K, phi_K, phi_F, and K. Noew we need to solve completely different ODEs - 6 of them
 # TREND : detrending the time evolution of the brightness, via the scaling parameter a (proxy for G-parameter from HG reflectivity law) - adds one free parameter
@@ -36,7 +34,7 @@ ifeq ($(CLUSTER),monk)
   ARCH=sm_20
 endif  
 
-OPT=-O3 --ptxas-options=-v -arch=$(ARCH) -DGPU -DRELAXED -DP_PSI -DTORQUE -DDEBUG
+OPT=-O2 --ptxas-options=-v -arch=$(ARCH) -DGPU -DRELAXED -DP_PSI -DTORQUE -DBC -DTREND
 INC=-I/usr/include/cuda -I.
 
 BINARY=asteroid2

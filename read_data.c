@@ -214,8 +214,20 @@ fclose(fpS);
 
 // Converting the observed data
 double E, S;
-for (i=0; i<*N_data; i++)
+#ifdef SEGMENT
+int iseg = 0;
+#endif
+for (i=0; i<*N_data; i++)    
 {
+#ifdef SEGMENT
+    if (MJD_obs[i] > T_START[iseg])
+    // We found the start of the next data segment
+    {        
+        h_start_seg[iseg] = i;
+        iseg ++;
+    }
+#endif
+
     E = sqrt(hData[i].E_x*hData[i].E_x + hData[i].E_y*hData[i].E_y+ hData[i].E_z*hData[i].E_z);
     S = sqrt(hData[i].S_x*hData[i].S_x + hData[i].S_y*hData[i].S_y+ hData[i].S_z*hData[i].S_z);
 
@@ -244,7 +256,10 @@ for (i=0; i<*N_data; i++)
     hData[i].S_x = hData[i].S_x / S;
     hData[i].S_y = hData[i].S_y / S;
     hData[i].S_z = hData[i].S_z / S;
+    
 }
+
+
 
 #ifdef DUMP_DV
     fclose(fpdump);

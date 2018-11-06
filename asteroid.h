@@ -19,12 +19,18 @@
 // Precision for observational data (structure obs_data):
 #define OBS_TYPE double
 
-#ifndef sData
- #ifdef NO_SDATA
-  #define sData dData
- #endif
+#ifdef SEGMENT
+// Number of independent data segments:
+const int N_SEG=3;
+// Absolute times - starting points of the data segments:
+const double T_START[N_SEG]={58051.0, 58053.0, 58055.0};
 #endif
 
+#ifndef sData
+#ifdef NO_SDATA
+#define sData dData
+#endif
+#endif
 
 // If defined, writes a file with delta V (geometry corrections for the observational data)
 //#define DUMP_DV
@@ -51,13 +57,55 @@ const int DN_TORQUE = 4;
 const int DN_TORQUE = 0;
 #endif
 
+#ifdef SEGMENT
+// In multi-segmented mode, two obligatory parameters (c_tumb, b_tumb) and three optional parameters (c, b, A) are fixed across all segments:
+// TORQUE cannot be used here
+const int N_PARAMS = (6+DN_TORQUE)*N_SEG + 2 + DN_BC + DN_TREND;
+// Number of parameters in a single (0-th) segment:
+const int N_PARAMS0 = 8 + DN_BC + DN_TREND + DN_TORQUE;
+#else
 const int N_PARAMS = 8 + DN_BC + DN_TREND + DN_TORQUE;
+#endif
 
-// Additional (compared to basic model) independent parameters:
-const int DN_IND = DN_TREND + DN_TORQUE;
+//-------------------------- Property array -------------------------
+// Names for the columns of the Property table:
+const int P_type           = 0;  // The type of the parameter (starts with T_; e.g. T_phi_M; see below)
+const int P_independent    = 1;  // if 1, "independent" parameter (limits are fixed, and described in hLimits array in asteroid.c); if 0, limits are not fixed, and depend on other parameters
+const int P_frozen         = 2;  // if 1, the parameter is frozen (does not change during optimization), if 0, it is optimizable
+const int P_iseg           = 3;  // in SEGMENT mode, containes the segment index iseg (in non-SEGMENT mode, always 0)
+const int P_multi_segment  = 4;  // in SEGMENT mode, if 1 fixes the value of the parameter across all the segments; if 0, each segment gets its own optimizable parameter of this type
+const int P_periodic       = 5;  // phi-like parameter (periodic, changes between 0 an 2*pi)
 
-// Number of independent parameters:
-const int N_INDEPEND = 5 + DN_IND;
+// Number of the columns of the Property table:
+const int N_COLUMNS = 6;
+
+// Parameter type constants:
+const int T_theta_M = 0;
+const int T_phi_M =   1;
+const int T_phi_0 =   2;
+const int T_L =       3;
+#ifdef TREND
+const int T_A =       4;
+#endif
+#ifdef TORQUE
+const int T_theta_K = 5;
+const int T_phi_K =   6;
+const int T_phi_F =   7;
+const int T_K =       8;
+#endif
+const int T_c_tumb =  9;
+const int T_b_tumb = 10;
+const int T_Es =     11;
+const int T_psi_0 =  12;
+#ifdef BC
+const int T_c =      13;
+const int T_b =      14;
+#endif
+
+// Total number of parameter types (determines the length of the Limits and Types arrays):
+const int N_TYPES =  15;
+//-----------------------------------------------------------------------
+
 
 // Maximum number of filters:
 const int N_FILTERS = 1;
@@ -73,7 +121,7 @@ const int BSIZE = 256;   // Threads in a block (64 ... 1024, step of 64); 384; 2
 #ifdef DEBUG
 const int N_BLOCKS = 56*1;
 #else
-const int N_BLOCKS = 56*10; // Should be proportional to the number of SMs (56 for P100); code runtime and memory consumed on GPU is proportional to this number; x1000 for 1 day
+const int N_BLOCKS = 56*5; // Should be proportional to the number of SMs (56 for P100); for some reason 10 results in a crash; use 5 for now
 #endif
 //const int N_SERIAL = 1; // number of serial iglob loops inside the kernel (>=1)
 //const int N_WARPS = BSIZE / 32;
@@ -85,7 +133,7 @@ const double TIME_STEP = 1e-2;  // 1e-2
 #if defined(TIMING) || defined(DEBUG)
 const unsigned int N_STEPS = 100; 
 #else
-const unsigned int N_STEPS = 1000; // Number of simplex steps per CUDA block (per simplex run) 27,000 per hour (N=7; BS=256; NB=56*4)
+const unsigned int N_STEPS = 7500; // Number of simplex steps per CUDA block (per simplex run) 27,000 per hour (N=7; BS=256; NB=56*4)
 #endif
 #ifdef DEBUG
 const unsigned int DT_DUMP = 30;
@@ -146,13 +194,13 @@ const int M_MAX = 30;  // Maximum number of model local minima
 const float M_MAX2 = 20;  // Soft limit on the number of local model minima (should be between NOBS_MAX and M_MAX); if M>N_MAX2, we start to punsih chi2
 const int NOBS_MAX = 10;  // Maximum number of observed minima
 const float DT_MAX = 0.12;  // Maximum 1D distance between observed and model minima in days; 0.12
-const float DV_MAX = 1.2;  // Maximum 1D distance between observed and model minima in brightness magnitudes; 2.4
+const float DV_MAX = 2.4;  // Maximum 1D distance between observed and model minima in brightness magnitudes; 2.4
 const float D2_MAX = sqrt(2)*DT_MAX;  // Maximum 2D distance between observed and model minima in equivalent days
 const float DT_MAX2 = 1.5 * DT_MAX; // Additional multipler for DT_MAX defining the time window size (relative to observed minima) where model minima are memorized
-const float P_MIN = 0.1;  // Reward strength for closeness of model minima to observed ones; 0...1; ->0 is the strongest reward
+const float P_MIN = 0.01;  // Reward strength for closeness of model minima to observed ones; 0...1; ->0 is the strongest reward
 const float CHI2_0 = 5; // Below this value of chi2a, P_tot reward is fully applied
 const float CHI2_1 = 30; // Above this value of chi2a, P_tot reward is not applied. The CHI2_0 ... CHI2_1 is the transition zone
-const float L_RC = 0.3; // Lorentzian core radius for the nudge function, range 0...1
+const float L_RC = 0.1; // Lorentzian core radius for the nudge function, range 0...1
 const float L_RC2 = L_RC * L_RC; // Derived parameter
 const float L_A = 1.0/(1.0-L_RC2/(1.0+L_RC2));  // Lorentzian scale parameter
 const float P_MIN2 = 1/P_MIN - 1;  // derived parameter
@@ -171,16 +219,17 @@ struct chi2_struct {
     float t_obs[NOBS_MAX];
     float V_obs[NOBS_MAX];
     int N_obs;
-    #endif    
+    #endif   
+    #ifdef SEGMENT
+    int start_seg[N_SEG];
+    #endif
 };
 
 // Structure used to pass parameters to x2params (from chi2gpu)
 struct x2_struct {
     #ifdef P_BOTH
     float Pphi;
-    #ifdef PHI2
     float Pphi2;
-    #endif
     #endif    
 };
 
@@ -229,26 +278,19 @@ struct obs_data {
 
 // Function declarations
 int read_data(char *, int *, int *, int);
-int chi2 (int, int, struct parameters_struct, double *);
 int quadratic_interpolation(double, OBS_TYPE *,OBS_TYPE *,OBS_TYPE *, OBS_TYPE *,OBS_TYPE *,OBS_TYPE *);
 int timeval_subtract (double *, struct timeval *, struct timeval *);
-__device__ __host__ void iglob_to_params(int *, struct parameters_struct *);
-__device__ __host__ void iloc_to_params(long int *, struct parameters_struct *);
 int cmpdouble (const void * a, const void * b);
 int minima(struct obs_data * dPlot, double * Vm, int Nplot);
 int prepare_chi2_params(int *);
-
-#ifdef GPU
-
 int gpu_prepare(int, int, int, int);
 
 __global__ void setup_kernel ( curandState *, unsigned long, CHI_FLOAT *);
-__global__ void chi2_gpu(struct obs_data *, int, int, curandState*, CHI_FLOAT*, struct parameters_struct*, struct x2_struct);
+__global__ void chi2_gpu(struct obs_data *, int, int, curandState*, CHI_FLOAT*, double**, struct x2_struct);
 __global__ void chi2_plot(struct obs_data *, int, int,
-                          struct parameters_struct *, struct obs_data *, int, struct parameters_struct, double *);
+                          double**, struct obs_data *, int, double*, double *);
 #ifdef DEBUG2
 __global__ void debug_kernel(struct parameters_struct, struct obs_data *, int, int);
-#endif
 #endif
 
 
@@ -293,8 +335,12 @@ EXTERN double h_Vmod[NPLOT];
 EXTERN __device__ CHI_FLOAT d_chi2_lines[N_PARAMS][BSIZE*C_POINTS];
 EXTERN CHI_FLOAT h_chi2_lines[N_PARAMS][BSIZE*C_POINTS];
 EXTERN CHI_FLOAT *d_f;
-EXTERN struct parameters_struct *d_params;
-EXTERN __device__ struct parameters_struct d_params0;
+
+//EXTERN struct parameters_struct *d_params;
+//EXTERN __device__ struct parameters_struct d_params0;
+EXTERN double **d_params;
+EXTERN __device__ double *d_params0;
+
 EXTERN __device__ unsigned long long int d_sum;
 EXTERN __device__ unsigned long long int d_sum2;
 EXTERN __device__ int d_min;
@@ -303,7 +349,7 @@ EXTERN __device__ unsigned int d_block_counter;
 EXTERN __device__ CHI_FLOAT d_delta_V0;
 EXTERN CHI_FLOAT h_delta_V0;
 EXTERN CHI_FLOAT *h_f;
-EXTERN struct parameters_struct *h_params;
+EXTERN double **h_params;
 EXTERN unsigned long long int h_sum;
 EXTERN unsigned long long int h_sum2;
 EXTERN int h_min;
@@ -312,14 +358,16 @@ EXTERN unsigned int h_block_counter;
 
 EXTERN double cl_fr[NCL_MAX];
 EXTERN double cl_H[NCL_MAX];
-
-//EXTERN __device__ float dPphi;
-#ifdef PHI2
-//EXTERN __device__ float dPphi2;
-#endif
+EXTERN int dProperty[N_PARAMS][N_COLUMNS];
+EXTERN int dTypes[N_TYPES];
 
 #ifdef NUDGE
 EXTERN __device__ struct chi2_struct d_chi2_params;
+#endif
+
+#ifdef SEGMENT
+EXTERN int h_start_seg[N_SEG];
+EXTERN __device__ int d_start_seg[N_SEG];
 #endif
 
 #endif
