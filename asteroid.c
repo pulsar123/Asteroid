@@ -95,7 +95,7 @@ int main (int argc,char **argv)
     
     // Initializing the Types vector (contains iparams for each type,iseg combo):    
     int Types[N_TYPES][N_SEG];
-    for (j=0; j<N_TYPES; j++)
+    for (int j=0; j<N_TYPES; j++)
         for (int iseg=0; iseg<N_SEG; iseg++)
             Types[j][iseg] = -1;
     for (i=0; i<N_PARAMS; i++)
@@ -299,8 +299,8 @@ int main (int argc,char **argv)
     // Updating hLimits and Property for all frozen parameters:
     for (int i_frozen=0; i<N_frozen; i_frozen++)
     {
-        int itype = Ni[i_frozen];
-        double value = Nv[i_frozen];
+        int itype = Fi[i_frozen];
+        double value = Fv[i_frozen];
         // Loop over params from all segments:
         for (i=0; i<N_PARAMS; i++)
             if(Property[i][P_type] == itype)
@@ -349,7 +349,7 @@ int main (int argc,char **argv)
         #endif
         
         #ifdef REOPT
-        ERR(cudaMemcpyToSymbol(d_params0, &params, N_PARAMS*sizeof(double), 0, cudaMemcpyHostToDevice));
+        ERR(cudaMemcpyToSymbol(d_params0, params, N_PARAMS*sizeof(double), 0, cudaMemcpyHostToDevice));
         #endif        
         
         ERR(cudaDeviceSynchronize());    
@@ -394,9 +394,9 @@ int main (int argc,char **argv)
                     fprintf(fp,"%13.6e ",  h_f[i]);
                     for (j=0; j<N_PARAMS; j++)
                         if (j == T_L)
-                            fprintf(fp,"%15.11f ",  48*PI/params[i][j]);
+                            fprintf(fp,"%15.11f ",  48*PI/h_params[i][j]);
                             else
-                            fprintf(fp,"%15.11f ",  params[i][j]);
+                            fprintf(fp,"%15.11f ",  h_params[i][j]);
                     fprintf(fp,"\n");
                 }
                 fclose(fp);
@@ -420,9 +420,9 @@ int main (int argc,char **argv)
                 printf("%13.6e ",  h_f[i_best]);
                 for (j=0; j<N_PARAMS; j++)
                     if (j == T_L)
-                        printf("%15.11f ",  48*PI/params[i_best][j]);
+                        printf("%15.11f ",  48*PI/h_params[i_best][j]);
                     else
-                        printf("%15.11f ",  params[i_best][j]);
+                        printf("%15.11f ",  h_params[i_best][j]);
                     printf("\n");
                 fflush(stdout);
             }
@@ -455,9 +455,11 @@ int main (int argc,char **argv)
         //??? Not the proper way
         dim3 NB (1, 1);
         #endif        
+
+        ERR(cudaMemcpyToSymbol(d_params0, params, N_PARAMS*sizeof(double), 0, cudaMemcpyHostToDevice));
         
         // Running the CUDA kernel to produce the plot data from params:
-        chi2_plot<<<NB, BSIZE>>>(dData, N_data, N_filters, d_params, dPlot, Nplot, params, d_dlsq2);
+        chi2_plot<<<NB, BSIZE>>>(dData, N_data, N_filters, d_params, dPlot, Nplot, d_dlsq2);
         ERR(cudaDeviceSynchronize());
         
         ERR(cudaMemcpyFromSymbol(&h_Vmod, d_Vmod, Nplot*sizeof(double), 0, cudaMemcpyDeviceToHost));

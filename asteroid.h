@@ -290,7 +290,7 @@ int gpu_prepare(int, int, int, int);
 __global__ void setup_kernel ( curandState *, unsigned long, CHI_FLOAT *);
 __global__ void chi2_gpu(struct obs_data *, int, int, curandState*, CHI_FLOAT*, double**, struct x2_struct);
 __global__ void chi2_plot(struct obs_data *, int, int,
-                          double**, struct obs_data *, int, double*, double *);
+                          double**, struct obs_data *, int, double *);
 #ifdef DEBUG2
 __global__ void debug_kernel(struct parameters_struct, struct obs_data *, int, int);
 #endif
@@ -331,7 +331,7 @@ EXTERN long int * h_iloc_min;
 
 EXTERN __device__ CHI_FLOAT d_chi2_plot;
 EXTERN CHI_FLOAT h_chi2_plot;
-EXTERN __device__ CHI_FLOAT dLimits[2][N_INDEPEND];
+EXTERN __device__ CHI_FLOAT dLimits[2][N_TYPES];
 EXTERN __device__ double d_Vmod[NPLOT];
 EXTERN double h_Vmod[NPLOT];
 EXTERN __device__ CHI_FLOAT d_chi2_lines[N_PARAMS][BSIZE*C_POINTS];
@@ -340,7 +340,7 @@ EXTERN CHI_FLOAT *d_f;
 
 //EXTERN struct parameters_struct *d_params;
 //EXTERN __device__ struct parameters_struct d_params0;
-EXTERN double **d_params;
+EXTERN __device__ double **d_params;
 EXTERN __device__ double *d_params0;
 
 EXTERN __device__ unsigned long long int d_sum;
@@ -360,8 +360,8 @@ EXTERN unsigned int h_block_counter;
 
 EXTERN double cl_fr[NCL_MAX];
 EXTERN double cl_H[NCL_MAX];
-EXTERN int dProperty[N_PARAMS][N_COLUMNS];
-EXTERN int dTypes[N_TYPES][N_SEG];
+EXTERN __device__ int dProperty[N_PARAMS][N_COLUMNS];
+EXTERN __device__ int dTypes[N_TYPES][N_SEG];
 
 #ifdef NUDGE
 EXTERN __device__ struct chi2_struct d_chi2_params;

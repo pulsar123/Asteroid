@@ -77,7 +77,7 @@ __device__ void ODE_func (double y[], double f[], double mu[])
 }
 
 
-__device__ CHI_FLOAT chi2one(struct parameters_struct params, struct obs_data *sData, int N_data, int N_filters, CHI_FLOAT *delta_V, int Nplot, struct chi2_struct *s_chi2_params, int sTypes[][N_SEG])
+__device__ CHI_FLOAT chi2one(double *params, struct obs_data *sData, int N_data, int N_filters, CHI_FLOAT *delta_V, int Nplot, struct chi2_struct *s_chi2_params, int sTypes[][N_SEG])
 // Computung chi^2 for a single model parameters combination, on GPU, by a single thread
 // NUDGE is not supported in SEGMENT mode!
 {
@@ -150,21 +150,21 @@ __device__ CHI_FLOAT chi2one(struct parameters_struct params, struct obs_data *s
     for (int iseg=0; iseg<N_SEG; iseg++)
     {
         // Defining these for better readability:
-        #define P_theta_M  params[Types[T_theta_M][iseg]]
-        #define P_phi_M    params[Types[T_phi_M][iseg]]
-        #define P_phi_0    params[Types[T_phi_0][iseg]]
-        #define P_L        params[Types[T_L][iseg]]
-        #define P_A        params[Types[T_A][iseg]]
-        #define P_theta_K  params[Types[T_theta_K][iseg]]
-        #define P_phi_K    params[Types[T_phi_K][iseg]]
-        #define P_phi_F    params[Types[T_phi_F][iseg]]
-        #define P_K        params[Types[T_K][iseg]]
-        #define P_c_tumb   params[Types[T_c_tumb][iseg]]
-        #define P_b_tumb   params[Types[T_b_tumb][iseg]]
-        #define P_Es       params[Types[T_Es][iseg]]
-        #define P_psi_0    params[Types[T_psi_0][iseg]]
-        #define P_c        params[Types[T_c][iseg]]
-        #define P_b        params[Types[T_b][iseg]]
+        #define P_theta_M  params[sTypes[T_theta_M][iseg]]
+        #define P_phi_M    params[sTypes[T_phi_M][iseg]]
+        #define P_phi_0    params[sTypes[T_phi_0][iseg]]
+        #define P_L        params[sTypes[T_L][iseg]]
+        #define P_A        params[sTypes[T_A][iseg]]
+        #define P_theta_K  params[sTypes[T_theta_K][iseg]]
+        #define P_phi_K    params[sTypes[T_phi_K][iseg]]
+        #define P_phi_F    params[sTypes[T_phi_F][iseg]]
+        #define P_K        params[sTypes[T_K][iseg]]
+        #define P_c_tumb   params[sTypes[T_c_tumb][iseg]]
+        #define P_b_tumb   params[sTypes[T_b_tumb][iseg]]
+        #define P_Es       params[sTypes[T_Es][iseg]]
+        #define P_psi_0    params[sTypes[T_psi_0][iseg]]
+        #define P_c        params[sTypes[T_c][iseg]]
+        #define P_b        params[sTypes[T_b][iseg]]
         
         
         // Calculations which are time independent:            
@@ -657,7 +657,7 @@ __device__ void params2x(CHI_FLOAT *x, double *params, CHI_FLOAT sLimits[][N_TYP
 // It is assumed that in the params vector there is the following order: ..., c_tumb, ..., b_tumb, ..., Es, ..., psi_0, ...
 // Also, c,b should follow c_tumb.
 {    
-    int i_Es;
+    int LAM, i_Es;
     
     // Explicitly assuming here that c_tumb and b_tumb are multi-segment (do not change between segments)
     double b_tumb = params[sTypes[T_b_tumb][0]];
@@ -668,7 +668,6 @@ __device__ void params2x(CHI_FLOAT *x, double *params, CHI_FLOAT sLimits[][N_TYP
     for (int i=0; i<N_PARAMS; i++)
     {
         int param_type = sProperty[i][P_type];
-        int i_seg = sProperty[i][P_iseg];
         if (sProperty[i][P_frozen] == 1)
         {
             // For frozen parameters, arbitrarily setting x to zero:
@@ -702,7 +701,7 @@ __device__ void params2x(CHI_FLOAT *x, double *params, CHI_FLOAT sLimits[][N_TYP
             else if (param_type == T_Es)
             {
                 i_Es = i;
-                int LAM = params[i] > 1.0/Ii;
+                LAM = params[i] > 1.0/Ii;
                 if (LAM)
                     // LAM: Es>1.0/Ii; x=[0.5,1]
                     x[i] = 0.5*((params[i]-1.0/Ii) / (1.0-1.0/Ii) + 1.0);
@@ -714,7 +713,7 @@ __device__ void params2x(CHI_FLOAT *x, double *params, CHI_FLOAT sLimits[][N_TYP
             else if (param_type == T_psi_0)
             {
                 double psi_min, psi_max;
-                if (*LAM)
+                if (LAM)
                 {
                     psi_min = 0.0;
                     psi_max = 2.0*PI;
@@ -749,12 +748,10 @@ __device__ void params2x(CHI_FLOAT *x, double *params, CHI_FLOAT sLimits[][N_TYP
 
 //+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 
-__device__ int x2params(CHI_FLOAT *x, struct parameters_struct *params, CHI_FLOAT sLimits[][N_INDEPEND], struct x2_struct *s_x2_params, int sProperty[][N_COLUMNS], int sTypes[][N_SEG])
+__device__ int x2params(CHI_FLOAT *x, double *params, CHI_FLOAT sLimits[][N_TYPES], struct x2_struct *s_x2_params, int sProperty[][N_COLUMNS], int sTypes[][N_SEG])
 // Conversion from dimensionless x[] parameters to the physical ones params[]
 // RANDOM_BC is not supported yet
-{
-    double log_c; 
-    
+{    
     // LAM (=1) or SAM (=0):
     int LAM;
     
@@ -768,7 +765,7 @@ __device__ int x2params(CHI_FLOAT *x, struct parameters_struct *params, CHI_FLOA
             LAM = x[i]>=0.5;
         
         // Periodic parameters (all phi parameters and psi_0 - for LAM=1 only) can have any value during optimization:
-        if (sProperty[i][P_continuous]==1 || param_type==T_psi_0 && LAM)
+        if (sProperty[i][P_periodic]==1 || param_type==T_psi_0 && LAM)
             continue;
         
         #ifdef RELAXED
@@ -810,7 +807,7 @@ __device__ int x2params(CHI_FLOAT *x, struct parameters_struct *params, CHI_FLOA
         
         if (param_type == T_b_tumb)
         {
-            log_b_tumb = log_c_tumb * (x[i]*(sLimits[1][i]-sLimits[0][i]) + sLimits[0][i]));
+            log_b_tumb = log_c_tumb * (x[i]*(sLimits[1][param_type]-sLimits[0][param_type]) + sLimits[0][param_type]);
             params[i] = exp(log_b_tumb);
             double b_tumb = params[i];
             double c_tumb = params[sTypes[T_c_tumb][0]];
@@ -845,7 +842,7 @@ __device__ int x2params(CHI_FLOAT *x, struct parameters_struct *params, CHI_FLOA
         #ifdef BC
         else if (param_type == T_b)
         {
-            double log_b = log_c * (x[i]*(sLimits[1][i]-sLimits[0][i]) + sLimits[0][i]));
+            double log_b = log_c * (x[i]*(sLimits[1][param_type]-sLimits[0][param_type]) + sLimits[0][param_type]));
             if (fabs(log_b-log_b_tumb) > BC_DEV_MAX)
                 return 1;
             params[i] = exp(log_b);
@@ -868,7 +865,7 @@ __device__ int x2params(CHI_FLOAT *x, struct parameters_struct *params, CHI_FLOA
             if (param_type != T_L)
                 #endif
                 // The default way to compute params[i] from x[i]:
-                params[i] = x[i] * (sLimits[1][i]-sLimits[0][i]) + sLimits[0][i];
+                params[i] = x[i] * (sLimits[1][param_type]-sLimits[0][param_type]) + sLimits[0][param_type];
             
             if (param_type == T_c_tumb)
             {
@@ -905,9 +902,9 @@ __device__ int x2params(CHI_FLOAT *x, struct parameters_struct *params, CHI_FLOA
                  * When generating L, we use both the S0/1 ranges, and the given Phi1...Pphi2 range.
                  */
                 if (LAM)
-                    params[i] = (x[i] * (S_LAM0*sLimits[1][i]-sLimits[0][i]) + sLimits[0][i]) / params[sTypes[T_Es][0]];
+                    params[i] = (x[i] * (S_LAM0*sLimits[1][param_type]-sLimits[0][param_type]) + sLimits[0][param_type]) / params[sTypes[T_Es][0]];
                 else
-                    params[i] = (x[i] * (S_LAM1*sLimits[1][i]-sLimits[0][i]) + sLimits[0][i]) * Ii;                
+                    params[i] = (x[i] * (S_LAM1*sLimits[1][param_type]-sLimits[0][param_type]) + sLimits[0][param_type]) * Ii;                
                 #endif
                 
                 #if defined(P_PSI) || defined(P_BOTH)
@@ -922,7 +919,7 @@ __device__ int x2params(CHI_FLOAT *x, struct parameters_struct *params, CHI_FLOA
                 // With double precision, converges to better than 1e-10 after 5 loops, for k2=0...9.999998e-01
                 double a = 1.0;   double g = sqrt(1.0-k2);
                 double a1, g1;
-                for (int i=0; i<5; i++)
+                for (int ii=0; ii<5; ii++)
                 {
                     a1 = 0.5 * (a+g);
                     g1 = sqrt(a*g);
@@ -989,7 +986,7 @@ __global__ void chi2_gpu (struct obs_data *dData, int N_data, int N_filters,
     __shared__ CHI_FLOAT sLimits[2][N_TYPES];
     __shared__ volatile CHI_FLOAT s_f[BSIZE];
     __shared__ volatile int s_thread_id[BSIZE];
-    __shared__ int sProperty[N_PARAMS][5];
+    __shared__ int sProperty[N_PARAMS][N_COLUMNS];
     __shared__ int sTypes[N_TYPES][N_SEG];
     //    __shared__ CHI_FLOAT s_f[BSIZE];
     //    __shared__ int s_thread_id[BSIZE];
@@ -1045,7 +1042,7 @@ __global__ void chi2_gpu (struct obs_data *dData, int N_data, int N_filters,
     // Reading the global states from device memory:
     curandState localState = globalState[id];
     
-    Simplex steps counter:
+    //Simplex steps counter:
     int l = 0;
     
     CHI_FLOAT x[N_PARAMS+1][N_PARAMS];  // simplex points (point index, coordinate)
@@ -1148,13 +1145,13 @@ __global__ void chi2_gpu (struct obs_data *dData, int N_data, int N_filters,
         for (j=0; j<N_PARAMS+1; j++)
         {
             #ifdef P_BOTH
-            if (x2params(x[j], &params, sLimits, &s_x2_params, sProperty, sTypes))
+            if (x2params(x[j], params, sLimits, &s_x2_params, sProperty, sTypes))
             {
                 failed = 1;
                 break;
             }
             #else        
-            x2params(x[j], &params, sLimits, &s_x2_params, sProperty, sTypes);
+            x2params(x[j], params, sLimits, &s_x2_params, sProperty, sTypes);
             #endif        
             f[j] = chi2one(params, sData, N_data, N_filters, delta_V, 0, &s_chi2_params, sTypes);    
         }
@@ -1242,7 +1239,7 @@ __global__ void chi2_gpu (struct obs_data *dData, int N_data, int N_filters,
                 x_r[i] = x0[i] + ALPHA_SIM*(x0[i] - x[ind[N_PARAMS]][i]);
         }
         CHI_FLOAT f_r;
-        if (x2params(x_r,&params,sLimits, &s_x2_params, sProperty, sTypes))
+        if (x2params(x_r,params,sLimits, &s_x2_params, sProperty, sTypes))
             f_r = 1e30;
         else
             f_r = chi2one(params, sData, N_data, N_filters, delta_V, 0, &s_chi2_params, sTypes);
@@ -1267,7 +1264,7 @@ __global__ void chi2_gpu (struct obs_data *dData, int N_data, int N_filters,
                     x_e[i] = x0[i] + GAMMA_SIM*(x_r[i] - x0[i]);
             }
             CHI_FLOAT f_e;
-            if (x2params(x_e,&params,sLimits, &s_x2_params, sProperty, sTypes))
+            if (x2params(x_e,params,sLimits, &s_x2_params, sProperty, sTypes))
                 f_e = 1e30;
             else
                 f_e = chi2one(params, sData, N_data, N_filters, delta_V, 0, &s_chi2_params, sTypes);
@@ -1299,7 +1296,7 @@ __global__ void chi2_gpu (struct obs_data *dData, int N_data, int N_filters,
             if (sProperty[i][P_frozen] == 0)
                 x_r[i] = x0[i] + RHO_SIM*(x[ind[N_PARAMS]][i] - x0[i]);
         }
-        if (x2params(x_r,&params,sLimits, &s_x2_params, sProperty, sTypes))
+        if (x2params(x_r,params,sLimits, &s_x2_params, sProperty, sTypes))
             f_r = 1e30;
         else
             f_r = chi2one(params, sData, N_data, N_filters, delta_V, 0, &s_chi2_params, sTypes);
@@ -1323,7 +1320,7 @@ __global__ void chi2_gpu (struct obs_data *dData, int N_data, int N_filters,
                 if (sProperty[i][P_frozen] == 0)
                     x[ind[j]][i] = x[ind[0]][i] + SIGMA_SIM*(x[ind[j]][i] - x[ind[0]][i]);
             }           
-            if (x2params(x[ind[j]],&params,sLimits, &s_x2_params, sProperty, sTypes))
+            if (x2params(x[ind[j]],params,sLimits, &s_x2_params, sProperty, sTypes))
                 bad = 1;
             else
                 f[ind[j]] = chi2one(params, sData, N_data, N_filters, delta_V, 0, &s_chi2_params, sTypes);
@@ -1375,7 +1372,7 @@ __global__ void chi2_gpu (struct obs_data *dData, int N_data, int N_filters,
     {
         // Copying the found minimum to device memory:
         d_f[blockIdx.x] = s_f[0];
-        x2params(x[ind[0]],&params,sLimits, &s_x2_params, sProperty, sTypes);
+        x2params(x[ind[0]],params,sLimits, &s_x2_params, sProperty, sTypes);
         d_params[blockIdx.x] = params;
     }
     
@@ -1418,12 +1415,14 @@ __global__ void debug_kernel(struct parameters_struct params, struct obs_data *d
 //++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 
 __global__ void chi2_plot (struct obs_data *dData, int N_data, int N_filters,
-                           struct parameters_struct *d_params, struct obs_data *dPlot, int Nplot, struct parameters_struct params, double * d_dlsq2)
+                           double **d_params, struct obs_data *dPlot, int Nplot, double * d_dlsq2)
 // CUDA kernel to compute plot data from input params structure
 {     
     __shared__ double sd2_min[BSIZE];
     CHI_FLOAT delta_V[N_FILTERS];
     __shared__ struct chi2_struct s_chi2_params;
+    __shared__ int sTypes[N_TYPES][N_SEG];
+    double params[N_PARAMS];
     
     // Global thread index for points:
     int id = threadIdx.x + blockDim.x*blockIdx.x;
@@ -1432,6 +1431,16 @@ __global__ void chi2_plot (struct obs_data *dData, int N_data, int N_filters,
     // Doing once per kernel
     if (threadIdx.x == 0)
     {
+        // Reading the initial point from device memory
+        for (int i=0; i<N_PARAMS; i++)
+            params[i] = d_params0[i];
+        for (int i=0; i<N_TYPES; i++)
+        {
+//            sLimits[0][i] = dLimits[0][i];
+//            sLimits[1][i] = dLimits[1][i];
+            for (int iseg=0; iseg<N_SEG; iseg++)
+                sTypes[i][iseg] = dTypes[i][iseg];
+        }
         #ifdef NUDGE
         // Copying the data on the observed minima from device to shared memory:
         s_chi2_params = d_chi2_params;
