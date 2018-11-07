@@ -24,6 +24,8 @@
 const int N_SEG=3;
 // Absolute times - starting points of the data segments:
 const double T_START[N_SEG]={58051.0, 58053.0, 58055.0};
+#else
+const int N_SEG=1;
 #endif
 
 #ifndef sData
@@ -359,7 +361,7 @@ EXTERN unsigned int h_block_counter;
 EXTERN double cl_fr[NCL_MAX];
 EXTERN double cl_H[NCL_MAX];
 EXTERN int dProperty[N_PARAMS][N_COLUMNS];
-EXTERN int dTypes[N_TYPES];
+EXTERN int dTypes[N_TYPES][N_SEG];
 
 #ifdef NUDGE
 EXTERN __device__ struct chi2_struct d_chi2_params;

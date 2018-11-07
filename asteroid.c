@@ -43,7 +43,7 @@ int main (int argc,char **argv)
     // Because of the dependencies, the following order has to be followed: c_tumb -> b_tumb -> Es -> psi_0, and c_tumb -> c -> b, and Es -> L (for P_PHI, P_BOTH)
     int Property[N_PARAMS][N_COLUMNS] = {
         
-//  Columns: Type,      Independent, Frozen, i_seg, Multi-segment, Periodic
+//  P_*:     type,      independent, frozen, iseg,  multi_segment, periodic
            { T_theta_M, 1,           0,      0,     0,             0},  // theta_M
            { T_phi_M,   1,           0,      0,     0,             1},  // phi_M
            { T_phi_0,   1,           0,      0,     0,             1},  // phi_0
@@ -93,25 +93,26 @@ int main (int argc,char **argv)
     }
     #endif                                
     
-    // Initializing the Types vector (contains iparams for each type index, only for iseg=0):    
-    int Types[N_TYPES];
+    // Initializing the Types vector (contains iparams for each type,iseg combo):    
+    int Types[N_TYPES][N_SEG];
     for (j=0; j<N_TYPES; j++)
-        Types[j] = -1;
+        for (int iseg=0; iseg<N_SEG; iseg++)
+            Types[j][iseg] = -1;
     for (i=0; i<N_PARAMS; i++)
     {
-        // Only the first segment is considered:
-        if (Property[i][P_iseg] == 0)
+        if (Property[i][P_multi_segment] == 0)
         {
-            Types[Property[i][P_type]] = i;
+            Types[Property[i][P_type]][Property[i][P_iseg]] = i;
+        }
+        else
+        {
+            // For multi-segment parameters, all iseg columns get the same i value:
+            for (int iseg=0; iseg<N_SEG; iseg++)
+                Types[Property[i][P_type]][iseg] = i;
         }
     }
     
     
-    // Detecting all frozen parameters:
-//    for (i=0; i<N_PARAMS; i++)
-//    {
-//        if (Property[i][P_frozen] == 1)
-//    }    
     
     if (argc == 1)
     {
@@ -126,6 +127,7 @@ int main (int argc,char **argv)
         #if defined(P_PSI) || defined(P_BOTH)
         printf("-Ppsi min max  : minimum and maximum values for Ppsi period, in hours\n");
         #endif
+        printf("-f type_constant value: forces the parameter with the type_constant to be frozen during optimization at \"value\" \n");
         printf("\n");
     }
     
@@ -134,6 +136,9 @@ int main (int argc,char **argv)
     int j = 1;
     int j_input = -1;
     int j_results = -1;
+    int i_frozen = -1;
+    int Fi[N_TYPES];
+    double Fv[N_TYPES];  
     while (j < argc)
     {
         // Input (data) file name:
@@ -202,8 +207,21 @@ int main (int argc,char **argv)
             if (j >= argc)
                 break;
         }
+
+        // Frozen parameter constant and the value
+        if (strcmp(argv[j], "-f") == 0)
+        {
+            i_frozen++;
+            Fi[i_frozen] = atoi(argv[j+1]);
+            Fv[i_frozen] = atof(argv[j+2]);
+            j = j + 2;
+            if (j >= argc)
+                break;
+        }
     }
     
+    // Total number of frozen parameter types:
+    int N_frozen = i_frozen + 1;
     
     Is_GPU_present();
     
@@ -257,14 +275,46 @@ int main (int argc,char **argv)
     hLimits[0][T_c_tumb] = log(0.002);
     hLimits[1][T_c_tumb] = log(1.0);                
     
+    // b_tumb (physical (tumbling) value of the axis b size; always intermediate), in relative to c_tumb units (between 0: 1, and 1: log(c_tumb))
+    // For a symmetric cigar / disk, freeze the limits to 1 / 0
+    hLimits[0][T_b_tumb] = 0;
+    hLimits[1][T_b_tumb] = 1;
+    
+    // Es: relative tumbling energy limits; 0...0.5 is for SAM, 0.5...1 is for LAM
+    // Both limits frozen at very small value -> simple SAM rotator; frozen close to 1 -> simple LAM rotator
+//    hLimits[0][T_Es] = 0;
+//    hLimits[1][T_Es] = 1;
+    
     #ifdef BC
     // Limits on the geometric c shape parameter = the limits on the dynamic c_tumb parameter:
     hLimits[0][T_c] = hLimits[0][T_c_tumb];
     hLimits[1][T_c] = hLimits[1][T_c_tumb];
+
+    // Limits on the geometric b shape parameter, in relative to c units (between 0: 1, and 1: log(c_tumb))
+    // For a symmetric cigar / disk, freeze the limits to 1 / 0
+    hLimits[0][T_b] = 0;
+    hLimits[1][T_b] = 1;
     #endif
     
+    // Updating hLimits and Property for all frozen parameters:
+    for (int i_frozen=0; i<N_frozen; i_frozen++)
+    {
+        int itype = Ni[i_frozen];
+        double value = Nv[i_frozen];
+        // Loop over params from all segments:
+        for (i=0; i<N_PARAMS; i++)
+            if(Property[i][P_type] == itype)
+            {
+                Property[i][P_frozen] = 1;
+                // Setting both limits to identical values = value from the command line argument
+                // This overrides any static Limits definitions from above
+                hLimits[0][itype] = value;
+                hLimits[1][itype] = value;
+            }
+    }
+    
     ERR(cudaMemcpyToSymbol(dProperty, Property, N_COLUMNS*N_PARAMS*sizeof(int), 0, cudaMemcpyHostToDevice));                
-    ERR(cudaMemcpyToSymbol(dTypes, Types, N_TYPES*sizeof(int), 0, cudaMemcpyHostToDevice));                
+    ERR(cudaMemcpyToSymbol(dTypes, Types, N_TYPES*N_SEG*sizeof(int), 0, cudaMemcpyHostToDevice));                
     ERR(cudaMemcpyToSymbol(dLimits, hLimits, 2*N_TYPES*sizeof(CHI_FLOAT), 0, cudaMemcpyHostToDevice));                
     #ifdef P_BOTH
     ERR(cudaMemcpyToSymbol(dPphi, &hPphi, sizeof(float), 0, cudaMemcpyHostToDevice));                
