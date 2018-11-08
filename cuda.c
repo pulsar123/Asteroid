@@ -735,7 +735,7 @@ __device__ void params2x(CHI_FLOAT *x, double *params, CHI_FLOAT sLimits[][N_TYP
             
             else if (param_type == T_b)
             {
-                double par = log(params[i]) / log(params[Types[T_c]]);
+                double par = log(params[i]) / log(params[sTypes[T_c][sProperty[i][P_iseg]]]);
                 x[i] = (par - sLimits[0][param_type]) / (sLimits[1][param_type] - sLimits[0][param_type]);        
             }
             #endif            
@@ -842,7 +842,7 @@ __device__ int x2params(CHI_FLOAT *x, double *params, CHI_FLOAT sLimits[][N_TYPE
         #ifdef BC
         else if (param_type == T_b)
         {
-            double log_b = log_c * (x[i]*(sLimits[1][param_type]-sLimits[0][param_type]) + sLimits[0][param_type]));
+            double log_b = log_c * (x[i]*(sLimits[1][param_type]-sLimits[0][param_type]) + sLimits[0][param_type]);
             if (fabs(log_b-log_b_tumb) > BC_DEV_MAX)
                 return 1;
             params[i] = exp(log_b);
@@ -1083,12 +1083,12 @@ __global__ void chi2_gpu (struct obs_data *dData, int N_data, int N_filters,
             // Initial vales of c/b are equal to initial values of c_tumb/b_tumb:
             if (sProperty[i][P_type] == T_c)
             {
-                x[0][i] = x[0][Types[T_c_tumb]];
+                x[0][i] = x[0][sTypes[T_c_tumb][sProperty[i][P_iseg]]];
                 continue;
             }            
             else if (sProperty[i][P_type] == T_b)
             {
-                x[0][i] = x[0][Types[T_b_tumb]];
+                x[0][i] = x[0][sTypes[T_b_tumb][sProperty[i][P_iseg]]];
                 continue;
             }            
             #endif  // RANDOM_BC 

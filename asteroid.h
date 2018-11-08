@@ -315,7 +315,7 @@ EXTERN CHI_FLOAT *d_f;
 //EXTERN __device__ struct parameters_struct d_params0;
 EXTERN double __device__ d_params[N_BLOCKS][N_PARAMS];
 EXTERN double h_params[N_BLOCKS][N_PARAMS];
-EXTERN __device__ double *d_params0;
+EXTERN __device__ double d_params0[N_PARAMS];
 
 EXTERN __device__ unsigned long long int d_sum;
 EXTERN __device__ unsigned long long int d_sum2;
