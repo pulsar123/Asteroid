@@ -22,8 +22,9 @@ int gpu_prepare(int N_data, int N_filters, int N_threads, int Nplot)
     }
     
 #ifdef SEGMENT
-    ERR(cudaMalloc(&d_start_seg, N_SEG * sizeof(int)));
-    ERR(cudaMemcpy(d_start_seg, h_start_seg, N_SEG * sizeof(int), cudaMemcpyHostToDevice));
+//    ERR(cudaMalloc(&d_start_seg, N_SEG * sizeof(int)));
+    ERR(cudaMemcpyToSymbol(d_start_seg, h_start_seg, N_SEG * sizeof(int), 0, cudaMemcpyHostToDevice));
+    ERR(cudaMemcpyToSymbol(d_plot_start_seg, h_plot_start_seg, N_SEG * sizeof(int), 0, cudaMemcpyHostToDevice));
 #endif    
     
     return 0;

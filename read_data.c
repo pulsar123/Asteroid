@@ -220,7 +220,7 @@ int iseg = 0;
 for (i=0; i<*N_data; i++)    
 {
 #ifdef SEGMENT
-    if (MJD_obs[i] > T_START[iseg])
+    if (iseg < N_SEG && MJD_obs[i] >= T_START[iseg])
     // We found the start of the next data segment
     {        
         h_start_seg[iseg] = i;
@@ -272,6 +272,9 @@ for (i=0; i<*N_data; i++)
 
 // Computing a fake data set, only for plotting
 // Explicitely assuming that ephemeride files contain three data points each    
+#ifdef SEGMENT
+    iseg = 0;
+#endif
 if (Nplot > 0)        
 {
     ERR(cudaMallocHost(&hPlot, Nplot * sizeof(struct obs_data)));
@@ -319,6 +322,14 @@ if (Nplot > 0)
             hPlot[iplot].S_z = hPlot[iplot].S_z / S;
         }
         
+#ifdef SEGMENT
+        if (iseg < N_SEG && hPlot[iplot].MJD+hMJD0 >= T_START[iseg])
+        // We found the start of the next data segment
+        {        
+            h_plot_start_seg[iseg] = iplot;
+            iseg ++;
+        }
+#endif
         
     }
 

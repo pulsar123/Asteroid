@@ -468,8 +468,8 @@ int main (int argc,char **argv)
         FILE * fV=fopen("delta_V","w");
         fprintf(fV, "%8.4f\n", h_delta_V0);
         fclose(fV);
-        #ifdef PROFILES        
         ERR(cudaMemcpyFromSymbol(&h_chi2_plot, d_chi2_plot, sizeof(CHI_FLOAT), 0, cudaMemcpyDeviceToHost));
+        #ifdef PROFILES        
         ERR(cudaMemcpyFromSymbol(&h_chi2_lines, d_chi2_lines, sizeof(h_chi2_lines), 0, cudaMemcpyDeviceToHost));
         #endif        
         #ifdef LSQ

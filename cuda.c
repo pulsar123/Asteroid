@@ -793,7 +793,6 @@ __device__ int x2params(CHI_FLOAT *x, double *params, CHI_FLOAT sLimits[][N_TYPE
         return failed;
     
     double log_c_tumb, log_b_tumb, Is, Ii, psi_min, psi_max;
-    int iseg;
     #ifdef BC
     double log_c;
     #endif
@@ -802,6 +801,7 @@ __device__ int x2params(CHI_FLOAT *x, double *params, CHI_FLOAT sLimits[][N_TYPE
     for (int i=0; i<N_PARAMS; i++)
     {
         int param_type = sProperty[i][P_type];
+        int iseg = sProperty[i][P_iseg];
         
         // First we start with special cases parameters:
         
@@ -810,7 +810,7 @@ __device__ int x2params(CHI_FLOAT *x, double *params, CHI_FLOAT sLimits[][N_TYPE
             log_b_tumb = log_c_tumb * (x[i]*(sLimits[1][param_type]-sLimits[0][param_type]) + sLimits[0][param_type]);
             params[i] = exp(log_b_tumb);
             double b_tumb = params[i];
-            double c_tumb = params[sTypes[T_c_tumb][0]];
+            double c_tumb = params[sTypes[T_c_tumb][iseg]];
             Is = (1.0+b_tumb*b_tumb) / (b_tumb*b_tumb + c_tumb*c_tumb);
             Ii = (1.0+c_tumb*c_tumb) / (b_tumb*b_tumb + c_tumb*c_tumb);
         }
@@ -1020,17 +1020,17 @@ __global__ void chi2_gpu (struct obs_data *dData, int N_data, int N_filters,
         #ifdef P_BOTH
         s_x2_params = x2_params;
         #endif       
+        #ifdef SEGMENT
+        // Copying the starting indexes for data segments to shared memory:
+        for (i=0; i<N_SEG; i++)
+            s_chi2_params.start_seg[i] = d_start_seg[i];
+        #endif    
     }
     #ifdef REOPT
     // Reading the initial point from device memory
     for (i=0; i<N_PARAMS; i++)
         params[i] = d_params0[i];
     #endif        
-    #ifdef SEGMENT
-    // Copying the starting indexes for data segments to shared memory:
-    for (i=0; i<N_SEG; i++)
-        s_chi2_params.start_seg[i] = d_start_seg[i];
-    #endif    
     
     // Downhill simplex optimization approach
     
@@ -1446,11 +1446,22 @@ __global__ void chi2_plot (struct obs_data *dData, int N_data, int N_filters,
         // Copying the data on the observed minima from device to shared memory:
         s_chi2_params = d_chi2_params;
         #endif
+        #ifdef SEGMENT
+        // Copying the starting indexes for data segments to shared memory:
+        for (int i=0; i<N_SEG; i++)
+            s_chi2_params.start_seg[i] = d_start_seg[i];
+        #endif    
         // !!! Will not work in NUDGE mode - NULL
         // Step one: computing constants for each filter using chi^2 method, and the chi2 value
         d_chi2_plot = chi2one(params, dData, N_data, N_filters, delta_V, 0,  &s_chi2_params, sTypes);
         d_delta_V0 = delta_V[0];
         
+        #ifdef SEGMENT
+        // Copying the starting indexes for data segments to shared memory:
+        for (int i=0; i<N_SEG; i++)
+            s_chi2_params.start_seg[i] = d_plot_start_seg[i];
+        #endif    
+
         // Step two: computing the Nplots data points using the delta_V values from above:
         chi2one(params, dPlot, Nplot, N_filters, delta_V, Nplot,  &s_chi2_params, sTypes);
         

@@ -23,7 +23,7 @@
 // Number of independent data segments:
 const int N_SEG=3;
 // Absolute times - starting points of the data segments:
-const double T_START[N_SEG]={58051.0, 58053.0, 58055.0};
+const double T_START[N_SEG]={58051.044623, 58053.078872, 58055.234144};
 #else
 const int N_SEG=1;
 #endif
@@ -342,7 +342,9 @@ EXTERN __device__ struct chi2_struct d_chi2_params;
 
 #ifdef SEGMENT
 EXTERN int h_start_seg[N_SEG];
+EXTERN int h_plot_start_seg[N_SEG];
 EXTERN __device__ int d_start_seg[N_SEG];
+EXTERN __device__ int d_plot_start_seg[N_SEG];
 #endif
 
 #endif
