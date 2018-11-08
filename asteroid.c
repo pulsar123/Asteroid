@@ -17,7 +17,6 @@ int main (int argc,char **argv)
     double params[N_PARAMS];
     CHI_FLOAT chi2_tot=1e32;
     int i;
-    cudaStream_t  ID[2];
     #ifdef P_PHI
     double Pphi1, Pphi2;
     #endif
@@ -129,6 +128,7 @@ int main (int argc,char **argv)
         #endif
         printf("-f type_constant value: forces the parameter with the type_constant to be frozen during optimization at \"value\" \n");
         printf("\n");
+        exit(0);
     }
     
     
@@ -374,7 +374,7 @@ int main (int argc,char **argv)
             #endif        
             
             // The kernel (using stream 0):
-            chi2_gpu<<<N_BLOCKS, BSIZE>>>(dData, N_data, N_filters, d_states, d_f, d_params, x2_params);
+            chi2_gpu<<<N_BLOCKS, BSIZE>>>(dData, N_data, N_filters, d_states, d_f, x2_params);
             
             #ifdef TIMING
             cudaEventRecord(stop, 0);
@@ -393,7 +393,7 @@ int main (int argc,char **argv)
                 {
                     fprintf(fp,"%13.6e ",  h_f[i]);
                     for (j=0; j<N_PARAMS; j++)
-                        if (j == T_L)
+                        if (Property[j][P_type] == T_L)
                             fprintf(fp,"%15.11f ",  48*PI/h_params[i][j]);
                             else
                             fprintf(fp,"%15.11f ",  h_params[i][j]);
@@ -419,7 +419,7 @@ int main (int argc,char **argv)
                 // Priting the best result:
                 printf("%13.6e ",  h_f[i_best]);
                 for (j=0; j<N_PARAMS; j++)
-                    if (j == T_L)
+                    if (Property[j][P_type] == T_L)
                         printf("%15.11f ",  48*PI/h_params[i_best][j]);
                     else
                         printf("%15.11f ",  h_params[i_best][j]);
@@ -430,7 +430,8 @@ int main (int argc,char **argv)
             ERR(cudaDeviceSynchronize());
             
             ERR(cudaMemcpy(h_f, d_f, N_BLOCKS * sizeof(CHI_FLOAT), cudaMemcpyDeviceToHost));
-            ERR(cudaMemcpy(h_params, d_params, N_BLOCKS * N_PARAMS * sizeof(double), cudaMemcpyDeviceToHost));
+//            ERR(cudaMemcpy(h_params, d_params, N_BLOCKS * N_PARAMS * sizeof(double), cudaMemcpyDeviceToHost));
+            ERR(cudaMemcpyFromSymbol(h_params, d_params, N_BLOCKS * N_PARAMS * sizeof(double), 0, cudaMemcpyDeviceToHost));
             ERR(cudaDeviceSynchronize());
             
         }  // End of the while loop
@@ -459,7 +460,7 @@ int main (int argc,char **argv)
         ERR(cudaMemcpyToSymbol(d_params0, params, N_PARAMS*sizeof(double), 0, cudaMemcpyHostToDevice));
         
         // Running the CUDA kernel to produce the plot data from params:
-        chi2_plot<<<NB, BSIZE>>>(dData, N_data, N_filters, d_params, dPlot, Nplot, d_dlsq2);
+        chi2_plot<<<NB, BSIZE>>>(dData, N_data, N_filters, dPlot, Nplot, d_dlsq2);
         ERR(cudaDeviceSynchronize());
         
         ERR(cudaMemcpyFromSymbol(&h_Vmod, d_Vmod, Nplot*sizeof(double), 0, cudaMemcpyDeviceToHost));

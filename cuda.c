@@ -977,7 +977,7 @@ __device__ int x2params(CHI_FLOAT *x, double *params, CHI_FLOAT sLimits[][N_TYPE
 //++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 
 __global__ void chi2_gpu (struct obs_data *dData, int N_data, int N_filters,
-                          curandState* globalState, CHI_FLOAT *d_f, double **d_params, struct x2_struct x2_params)
+                          curandState* globalState, CHI_FLOAT *d_f, struct x2_struct x2_params)
 // CUDA kernel computing chi^2 on GPU
 {        
     #ifndef NO_SDATA
@@ -1011,7 +1011,7 @@ __global__ void chi2_gpu (struct obs_data *dData, int N_data, int N_filters,
                 sTypes[i][iseg] = dTypes[i][iseg];
         }
         for (i=0; i<N_PARAMS; i++)
-            for (j=0; j<5; j++)
+            for (j=0; j<N_COLUMNS; j++)
                 sProperty[i][j] = dProperty[i][j];
             #ifdef NUDGE
             // Copying the data on the observed minima from device to shared memory:
@@ -1373,7 +1373,8 @@ __global__ void chi2_gpu (struct obs_data *dData, int N_data, int N_filters,
         // Copying the found minimum to device memory:
         d_f[blockIdx.x] = s_f[0];
         x2params(x[ind[0]],params,sLimits, &s_x2_params, sProperty, sTypes);
-        d_params[blockIdx.x] = params;
+        for (int i=0; i<N_PARAMS; i++)
+            d_params[blockIdx.x][i] = params[i];
     }
     
     
@@ -1415,7 +1416,7 @@ __global__ void debug_kernel(struct parameters_struct params, struct obs_data *d
 //++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 
 __global__ void chi2_plot (struct obs_data *dData, int N_data, int N_filters,
-                           double **d_params, struct obs_data *dPlot, int Nplot, double * d_dlsq2)
+                           struct obs_data *dPlot, int Nplot, double * d_dlsq2)
 // CUDA kernel to compute plot data from input params structure
 {     
     __shared__ double sd2_min[BSIZE];
