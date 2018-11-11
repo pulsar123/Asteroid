@@ -144,6 +144,13 @@ __device__ CHI_FLOAT chi2one(double *params, struct obs_data *sData, int N_data,
     // orienation in the barycentric frame of reference. This allows us to compute the orientation of the asteroid->sun and asteroid->earth
     // vectors in the asteroid's frame of reference, which is then used to compute it's apparent brightness for the observer.
     
+     #ifdef NUDGE    
+     float t_mod[M_MAX], V_mod[M_MAX];
+     float t_old[2];
+     float V_old[2];
+     int M = 0;
+     #endif    
+        
     
     // Loop for multiple data segments
     // (Will use one segment, for all the data, when SEGMENT is not defined)
@@ -165,6 +172,9 @@ __device__ CHI_FLOAT chi2one(double *params, struct obs_data *sData, int N_data,
         #define P_psi_0    params[sTypes[T_psi_0][iseg]]
         #define P_c        params[sTypes[T_c][iseg]]
         #define P_b        params[sTypes[T_b][iseg]]
+        #define P_theta_R  params[sTypes[T_theta_R][iseg]]
+        #define P_phi_R    params[sTypes[T_phi_R][iseg]]
+        #define P_psi_R    params[sTypes[T_psi_R][iseg]]
         
         
         // Calculations which are time independent:            
@@ -204,13 +214,6 @@ __device__ CHI_FLOAT chi2one(double *params, struct obs_data *sData, int N_data,
         // Initial value of the Euler angle theta is determined by other parameters:
         double theta = asin(sqrt((P_Es-1.0)/(sin(P_psi_0)*sin(P_psi_0)*(Ii_inv-Is_inv)+Is_inv-1.0)));    
         double psi = P_psi_0;
-        
-        #ifdef NUDGE    
-        float t_mod[M_MAX], V_mod[M_MAX];
-        float t_old[2];
-        float V_old[2];
-        int M = 0;
-        #endif    
         
         #ifdef TORQUE
         // Coordinates of the unit vector <r> (the point where the torque force is applied) in the asteroid's frame of reference, bca (isl):
@@ -400,6 +403,49 @@ __device__ CHI_FLOAT chi2one(double *params, struct obs_data *sData, int N_data,
             double c_x = a_y*b_z - a_z*b_y;
             double c_y = a_z*b_x - a_x*b_z;
             double c_z = a_x*b_y - a_y*b_x;
+            
+            #ifdef BC
+            #ifdef ROTATE
+            // Optional rotation of the brightness ellipsoid relative to the kinematic ellipsoid, using angles theta_R, phi_R
+            // Using the same setup, as for the main Euler rotation, above (substituting M->a, XM->b, YM->c)
+            // The meaning of the vectors b,c,a is changing here. At the end these are the new (rotated) basis.
+            cos_phi = cos(P_phi_R);
+            sin_phi = sin(P_phi_R);
+
+            N_x = b_x*cos_phi + c_x*sin_phi;
+            N_y = b_y*cos_phi + c_y*sin_phi;
+            N_z = b_z*cos_phi + c_z*sin_phi;
+            
+            p_x = N_y*a_z - N_z*a_y;
+            p_y = N_z*a_x - N_x*a_z;
+            p_z = N_x*a_y - N_y*a_x;
+            
+            cos_theta = cos(P_theta_R);
+            sin_theta = sin(P_theta_R);
+            
+            // Vector a is changing meaning - now it is the rotated one:
+            a_x = a_x*cos_theta + p_x*sin_theta;
+            a_y = a_y*cos_theta + p_y*sin_theta;
+            a_z = a_z*cos_theta + p_z*sin_theta;
+            
+            w_x = a_y*N_z - a_z*N_y;
+            w_y = a_z*N_x - a_x*N_z;
+            w_z = a_x*N_y - a_y*N_x;
+            
+            sin_psi = sin(P_psi_R);
+            cos_psi = cos(P_psi_R);
+            
+            // Vector b is changing meaning - now it is the rotated one:
+            b_x = N_x*cos_psi + w_x*sin_psi;
+            b_y = N_y*cos_psi + w_y*sin_psi;
+            b_z = N_z*cos_psi + w_z*sin_psi;
+            
+            // Vector c is changing meaning - now it is the rotated one:
+            c_x = a_y*b_z - a_z*b_y;
+            c_y = a_z*b_x - a_x*b_z;
+            c_z = a_x*b_y - a_y*b_x;
+            #endif  // ROTATE
+            #endif  // BC
             
             // Now following Muinonen & Lumme, 2015 to compute the visual brightness of the asteroid.
             // Attention! My (Samarasinha and A'Hearn 1991) frame of reference is b-c-a, but the Muinonen's frame is a-b-c
@@ -684,6 +730,14 @@ __device__ void params2x(CHI_FLOAT *x, double *params, CHI_FLOAT sLimits[][N_TYP
             }
             else
             {
+                #ifdef BC
+                if (param_type == T_c)
+                {
+                    // Parameter "c" has the same limits as "c_tumb", and log distribution:
+                    x[i] = (log(params[i]) - sLimits[0][T_c_tumb]) / (sLimits[1][T_c_tumb] - sLimits[0][T_c_tumb]);        
+                    continue;
+                }
+                #endif
                 if (param_type == T_c_tumb)
                     par = log(par);
                 x[i] = (par - sLimits[0][param_type]) / (sLimits[1][param_type] - sLimits[0][param_type]);        
@@ -726,13 +780,7 @@ __device__ void params2x(CHI_FLOAT *x, double *params, CHI_FLOAT sLimits[][N_TYP
                 x[i] = (params[i] - psi_min) / (psi_max - psi_min);                
             }
             
-            #ifdef BC
-            else if (param_type == T_c)
-            {
-                // Parameter "c" has the same limits as "c_tumb", and log distribution:
-                x[i] = (log(params[i]) - sLimits[0][T_c_tumb]) / (sLimits[1][T_c_tumb] - sLimits[0][T_c_tumb]);        
-            }
-            
+            #ifdef BC            
             else if (param_type == T_b)
             {
                 double par = log(params[i]) / log(params[sTypes[T_c][sProperty[i][P_iseg]]]);
@@ -1072,7 +1120,7 @@ __global__ void chi2_gpu (struct obs_data *dData, int N_data, int N_filters,
             double x_max = 1;
             if (x[0][i] + 0.5*DX_RAND < 1.0)
                 x_max = x[0][i] + 0.5*DX_RAND;
-            x[0][i] = x[0][i] + DX_RAND*curand_uniform(&localState) + x_min;            
+            x[0][i] = DX_RAND*curand_uniform(&localState)*(x_max-x_min) + x_min;            
         }
         #else  // REOPT  
         // Initial random point
@@ -1126,7 +1174,9 @@ __global__ void chi2_gpu (struct obs_data *dData, int N_data, int N_filters,
                     // In REOPT mode, initial displacements are random, with log distrubution between DX_MIN and DX_MAX:
                     CHI_FLOAT dx_ini = exp(curand_uniform(&localState) * (DX_MAX-DX_MIN) + DX_MIN);
                     // !!! Will fail for some displacements:
-                    x[j][i] = x[0][i] + dx_ini;
+                    // ??? Now with a random sign:
+                    float r = curand_uniform(&localState)*2 - 1;
+                    x[j][i] = x[0][i] + dx_ini * r/fabs(r);
                     #else                
                     x[j][i] = x[0][i] + DX_INI;
                     #endif                

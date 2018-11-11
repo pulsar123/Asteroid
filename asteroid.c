@@ -19,6 +19,8 @@ int main (int argc,char **argv)
     int i;
     #ifdef P_PHI
     double Pphi1, Pphi2;
+    float hPphi;
+    float hPphi2;
     #endif
     #if defined(P_PSI) || defined(P_BOTH)
     double Ppsi1, Ppsi2;
@@ -38,7 +40,6 @@ int main (int argc,char **argv)
 
     // Array describing all optimizable model parameters (initializing only the first segment - i_seg=0)    
     // Set the Frozen value to 1 to fix (exclude from optimization) the corresponding parameters for all segments
-    // !!! I need a way to provide the values for the frozen parameters
     // Because of the dependencies, the following order has to be followed: c_tumb -> b_tumb -> Es -> psi_0, and c_tumb -> c -> b, and Es -> L (for P_PHI, P_BOTH)
     int Property[N_PARAMS][N_COLUMNS] = {
         
@@ -62,7 +63,12 @@ int main (int argc,char **argv)
            { T_psi_0,   0,           0,      0,     0,             0},  // psi_0
     #ifdef BC                                  
            { T_c,       1,           0,      0,     1,             0},  // c
-           { T_b,       0,           0,      0,     1,             0}   // b
+           { T_b,       0,           0,      0,     1,             0},   // b
+    #ifdef ROTATE
+           { T_theta_R, 1,           0,      0,     1,             0},  // theta_R
+           { T_phi_R,   1,           0,      0,     1,             1},  // phi_R
+           { T_psi_R,   1,           0,      0,     1,             1},  // psi_R
+    #endif
     #endif                                  
     
     };
@@ -127,6 +133,7 @@ int main (int argc,char **argv)
         printf("-Ppsi min max  : minimum and maximum values for Ppsi period, in hours\n");
         #endif
         printf("-f type_constant value: forces the parameter with the type_constant to be frozen during optimization at \"value\" \n");
+        printf("-l type_constant limit1 limit2: specify range for the parameter type_constant\n");
         printf("\n");
         exit(0);
     }
@@ -137,8 +144,9 @@ int main (int argc,char **argv)
     int j_input = -1;
     int j_results = -1;
     int i_frozen = -1;
-    int Fi[N_TYPES];
-    double Fv[N_TYPES];  
+    int i_limits = -1;
+    int Fi[N_TYPES], Li[N_TYPES];
+    double Fv[N_TYPES], L0[N_TYPES], L1[N_TYPES];  
     while (j < argc)
     {
         // Input (data) file name:
@@ -165,8 +173,8 @@ int main (int argc,char **argv)
         {
             Pphi1 = atof(argv[j+1]);
             Pphi2 = atof(argv[j+2]);
-            hPphi = P_phi1 / 24.0 / (2*PI);
-            hPphi2 = P_phi2 / 24.0 / (2*PI);    
+            hPphi = Pphi1 / 24.0 / (2*PI);
+            hPphi2 = Pphi2 / 24.0 / (2*PI);    
             j = j + 3;
             if (j >= argc)
                 break;
@@ -214,7 +222,19 @@ int main (int argc,char **argv)
             i_frozen++;
             Fi[i_frozen] = atoi(argv[j+1]);
             Fv[i_frozen] = atof(argv[j+2]);
-            j = j + 2;
+            j = j + 3;
+            if (j >= argc)
+                break;
+        }
+
+        // Parameter constant and the two limits (full range)
+        if (strcmp(argv[j], "-l") == 0)
+        {
+            i_limits++;
+            Li[i_limits] = atoi(argv[j+1]);
+            L0[i_limits] = atof(argv[j+2]);
+            L1[i_limits] = atof(argv[j+3]);
+            j = j + 4;
             if (j >= argc)
                 break;
         }
@@ -222,6 +242,8 @@ int main (int argc,char **argv)
     
     // Total number of frozen parameter types:
     int N_frozen = i_frozen + 1;
+    // Total number of parameters with custom limits:
+    int N_limits = i_limits + 1;
     
     Is_GPU_present();
     
@@ -294,10 +316,16 @@ int main (int argc,char **argv)
     // For a symmetric cigar / disk, freeze the limits to 1 / 0
     hLimits[0][T_b] = 0;
     hLimits[1][T_b] = 1;
+
+    #ifdef ROTATE
+    // Theta_R (polar angle when rotating the brightness ellipsoid relative to the kinematic ellipsoid); range 0...pi
+    hLimits[0][T_theta_R] = 0.001/RAD;
+    hLimits[1][T_theta_R] = 179.999/RAD;
+    #endif
     #endif
     
     // Updating hLimits and Property for all frozen parameters:
-    for (int i_frozen=0; i<N_frozen; i_frozen++)
+    for (int i_frozen=0; i_frozen<N_frozen; i_frozen++)
     {
         int itype = Fi[i_frozen];
         double value = Fv[i_frozen];
@@ -311,6 +339,14 @@ int main (int argc,char **argv)
                 hLimits[0][itype] = value;
                 hLimits[1][itype] = value;
             }
+    }
+
+    // Applying custom limits from the commnd line arguments:
+    for (int i_limits=0; i_limits<N_limits; i_limits++)
+    {
+        int itype = Li[i_limits];
+        hLimits[0][itype] = L0[itype];
+        hLimits[1][itype] = L1[itype];
     }
     
     ERR(cudaMemcpyToSymbol(dProperty, Property, N_COLUMNS*N_PARAMS*sizeof(int), 0, cudaMemcpyHostToDevice));                

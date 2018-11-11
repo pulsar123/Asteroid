@@ -47,6 +47,12 @@ const int DN_BC = 2;
 const int DN_BC = 0;
 #endif
 
+#ifdef ROTATE
+const int DN_ROT = 3;
+#else
+const int DN_ROT = 0;
+#endif
+
 #ifdef TREND
 const int DN_TREND = 1;
 #else
@@ -62,11 +68,11 @@ const int DN_TORQUE = 0;
 #ifdef SEGMENT
 // In multi-segmented mode, two obligatory parameters (c_tumb, b_tumb) and three optional parameters (c, b, A) are fixed across all segments:
 // TORQUE cannot be used here
-const int N_PARAMS = (6+DN_TORQUE)*N_SEG + 2 + DN_BC + DN_TREND;
+const int N_PARAMS = (6+DN_TORQUE)*N_SEG + 2 + DN_BC + DN_ROT + DN_TREND;
 // Number of parameters in a single (0-th) segment:
-const int N_PARAMS0 = 8 + DN_BC + DN_TREND + DN_TORQUE;
+const int N_PARAMS0 = 8 + DN_BC + DN_ROT + DN_TREND + DN_TORQUE;
 #else
-const int N_PARAMS = 8 + DN_BC + DN_TREND + DN_TORQUE;
+const int N_PARAMS = 8 + DN_BC + DN_ROT + DN_TREND + DN_TORQUE;
 #endif
 
 //-------------------------- Property array -------------------------
@@ -81,8 +87,11 @@ const int P_periodic       = 5;  // phi-like parameter (periodic, changes betwee
 // Number of the columns of the Property table:
 const int N_COLUMNS = 6;
 
+// Total number of parameter types (determines the length of the Limits and Types arrays):
+const int N_TYPES =  18;
+
 // Parameter type constants:
-const int T_theta_M = 0;
+const int T_theta_M = 0;  
 const int T_phi_M =   1;
 const int T_phi_0 =   2;
 const int T_L =       3;
@@ -102,10 +111,13 @@ const int T_psi_0 =  12;
 #ifdef BC
 const int T_c =      13;
 const int T_b =      14;
+#ifdef ROTATE
+const int T_theta_R =15;
+const int T_phi_R =  16;
+const int T_psi_R =  17;
+#endif
 #endif
 
-// Total number of parameter types (determines the length of the Limits and Types arrays):
-const int N_TYPES =  15;
 //-----------------------------------------------------------------------
 
 
@@ -199,7 +211,7 @@ const float DT_MAX = 0.12;  // Maximum 1D distance between observed and model mi
 const float DV_MAX = 2.4;  // Maximum 1D distance between observed and model minima in brightness magnitudes; 2.4
 const float D2_MAX = sqrt(2)*DT_MAX;  // Maximum 2D distance between observed and model minima in equivalent days
 const float DT_MAX2 = 1.5 * DT_MAX; // Additional multipler for DT_MAX defining the time window size (relative to observed minima) where model minima are memorized
-const float P_MIN = 0.01;  // Reward strength for closeness of model minima to observed ones; 0...1; ->0 is the strongest reward
+const float P_MIN = 0.3;  // Reward strength for closeness of model minima to observed ones; 0...1; ->0 is the strongest reward
 const float CHI2_0 = 5; // Below this value of chi2a, P_tot reward is fully applied
 const float CHI2_1 = 30; // Above this value of chi2a, P_tot reward is not applied. The CHI2_0 ... CHI2_1 is the transition zone
 const float L_RC = 0.1; // Lorentzian core radius for the nudge function, range 0...1
