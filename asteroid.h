@@ -19,11 +19,18 @@
 // Precision for observational data (structure obs_data):
 #define OBS_TYPE double
 
+#ifdef REOPT
+ #undef P_PSI
+ #undef P_PHI
+ #undef P_BOTH
+#endif
+
 #ifdef SEGMENT
 // Number of independent data segments:
-const int N_SEG=3;
+const int N_SEG=4;
 // Absolute times - starting points of the data segments:
-const double T_START[N_SEG]={58051.044623, 58053.078872, 58055.234144};
+//const double T_START[N_SEG]={58051.044623, 58053.078872, 58055.234144};
+const double T_START[N_SEG]={58051.044623, 58053.078872, 58054.093273, 58055.234144};
 #else
 const int N_SEG=1;
 #endif
@@ -122,7 +129,7 @@ const int T_psi_R =  17;
 
 
 // Maximum number of filters:
-const int N_FILTERS = 1;
+const int N_FILTERS = 2;
 
 // When b and c parameters are used, maximum ln deviation from corresponding b_tumb, c_tumb during optimization:
 const float BC_DEV_MAX = 100;  //2.3
@@ -135,19 +142,19 @@ const int BSIZE = 256;   // Threads in a block (64 ... 1024, step of 64); 384; 2
 #ifdef DEBUG
 const int N_BLOCKS = 56*1;
 #else
-const int N_BLOCKS = 56*5; // Should be proportional to the number of SMs (56 for P100); for some reason 10 results in a crash; use 5 for now
+const int N_BLOCKS = 56*1; // Should be proportional to the number of SMs (56 for P100); for some reason 10 results in a crash; use 5 for now
 #endif
 //const int N_SERIAL = 1; // number of serial iglob loops inside the kernel (>=1)
 //const int N_WARPS = BSIZE / 32;
 
 // ODE time step (days):
-const double TIME_STEP = 1e-2;  // 1e-2
+const double TIME_STEP = 1e-2;  // 1e-2 !!!
 
 // Simplex parameters:
 #if defined(TIMING) || defined(DEBUG)
 const unsigned int N_STEPS = 100; 
 #else
-const unsigned int N_STEPS = 7500; // Number of simplex steps per CUDA block (per simplex run) 27,000 per hour (N=7; BS=256; NB=56*4)
+const unsigned int N_STEPS = 1000; // Number of simplex steps per CUDA block (per simplex run) 27,000 per hour (N=7; BS=256; NB=56*4)
 #endif
 #ifdef DEBUG
 const unsigned int DT_DUMP = 30;
@@ -173,7 +180,7 @@ const int MAX_LINE_LENGTH = 128;
 // Maximum number of filters:
 //const int MAX_FILTERS = 100;
 // Maximum number of data points:
-const int MAX_DATA = 390;
+const int MAX_DATA = 490;
 
 // Number of time points for plotting
 const int NPLOT = 6000; // 6000 !!!
@@ -188,9 +195,9 @@ const double T_SCALE = 0.06;  // in days
 // Only matter for REOPT option:
 // Minimum and maximum initial simplex step:
 const CHI_FLOAT DX_MIN = -9.2; // log(0.0001)
-const CHI_FLOAT DX_MAX = -2.3; // log(0.1) -3.51
+const CHI_FLOAT DX_MAX = -6.9; // log(0.1) -3.51
 // Initial point is randomly shifted along each dimension by maximum 1/2 of the following amount (dimensionless):
-const CHI_FLOAT DX_RAND = 0.1; 
+const CHI_FLOAT DX_RAND = 0.001; 
 
 // Maximum number of clusters in minima() periodogram search
 const int NCL_MAX = 5;
@@ -211,8 +218,8 @@ const float DT_MAX = 0.12;  // Maximum 1D distance between observed and model mi
 const float DV_MAX = 2.4;  // Maximum 1D distance between observed and model minima in brightness magnitudes; 2.4
 const float D2_MAX = sqrt(2)*DT_MAX;  // Maximum 2D distance between observed and model minima in equivalent days
 const float DT_MAX2 = 1.5 * DT_MAX; // Additional multipler for DT_MAX defining the time window size (relative to observed minima) where model minima are memorized
-const float P_MIN = 0.3;  // Reward strength for closeness of model minima to observed ones; 0...1; ->0 is the strongest reward
-const float CHI2_0 = 5; // Below this value of chi2a, P_tot reward is fully applied
+const float P_MIN = 0.01;  // Reward strength for closeness of model minima to observed ones; 0...1; ->0 is the strongest reward
+const float CHI2_0 = 10; // Below this value of chi2a, P_tot reward is fully applied
 const float CHI2_1 = 30; // Above this value of chi2a, P_tot reward is not applied. The CHI2_0 ... CHI2_1 is the transition zone
 const float L_RC = 0.1; // Lorentzian core radius for the nudge function, range 0...1
 const float L_RC2 = L_RC * L_RC; // Derived parameter
@@ -334,8 +341,8 @@ EXTERN __device__ unsigned long long int d_sum2;
 EXTERN __device__ int d_min;
 EXTERN __device__ int d_max;
 EXTERN __device__ unsigned int d_block_counter;
-EXTERN __device__ CHI_FLOAT d_delta_V0;
-EXTERN CHI_FLOAT h_delta_V0;
+EXTERN __device__ CHI_FLOAT d_delta_V[N_FILTERS];
+EXTERN CHI_FLOAT h_delta_V[N_FILTERS];
 EXTERN CHI_FLOAT *h_f;
 EXTERN unsigned long long int h_sum;
 EXTERN unsigned long long int h_sum2;
@@ -358,7 +365,9 @@ EXTERN int h_plot_start_seg[N_SEG];
 EXTERN __device__ int d_start_seg[N_SEG];
 EXTERN __device__ int d_plot_start_seg[N_SEG];
 #endif
-
+#ifdef P_BOTH
+EXTERN __device__ float dPphi, dPphi2;
+#endif
 #endif
 
 

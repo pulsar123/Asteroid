@@ -17,8 +17,10 @@ int main (int argc,char **argv)
     double params[N_PARAMS];
     CHI_FLOAT chi2_tot=1e32;
     int i;
-    #ifdef P_PHI
+    #if defined(P_PHI) || defined(P_BOTH)
     double Pphi1, Pphi2;
+    #endif
+    #ifdef P_PSI
     float hPphi;
     float hPphi2;
     #endif
@@ -125,6 +127,7 @@ int main (int argc,char **argv)
         printf("-i name  : input (data) file name\n");
         printf("-o name  : output (results) file name\n");
         printf("-m param1 param2 ... paramN  : input model parameters, for plotting and re-optimization\n");
+        printf("     If one of the parameters has a special value of \"v\", it is allowed to vary randomly within its full range.");
         printf("-plot    : plotting (only makes sense when -m is also used)\n");
         #if defined(P_PHI) || defined(P_BOTH)
         printf("-Pphi min max  : minimum and maximum values for Pphi period, in hours\n");
@@ -198,9 +201,18 @@ int main (int argc,char **argv)
         {
             for (int k=0; k<N_PARAMS; k++)
             {
-                params[k] = atof(argv[j+1+k]);
-                if (Property[k][P_type] == T_L)
-                    params[k] = 48.0*PI/params[k];
+                if (argv[j+1+k][0] == 'v')
+                {
+                    // The special value of "-1" for P_frozen parameter means this parameter is randomly changing within its full range:
+                    Property[k][P_frozen] = -1;
+                    params[k] = 0;  // Arbitrary value, not used
+                }
+                else
+                {
+                    params[k] = atof(argv[j+1+k]);
+                    if (Property[k][P_type] == T_L)
+                        params[k] = 48.0*PI/params[k];
+                }
             }
             j = j + 1 + N_PARAMS;
             if (j >= argc)
@@ -280,8 +292,8 @@ int main (int argc,char **argv)
     #ifdef TREND
     //scaling parameter "A" for de-trending the brightness curve, in magnitude/radian units (to be multiplied by the phase angle alpha to get magnitude correction):
     // Physically plausible values are negative, -1.75 ... -0.5 mag/rad
-    hLimits[0][T_A] = -10;
-    hLimits[1][T_A] = 10;
+    hLimits[0][T_A] = -1.75;
+    hLimits[1][T_A] = -0.5;
     #endif        
     
     #ifdef TORQUE
@@ -290,11 +302,11 @@ int main (int argc,char **argv)
     hLimits[1][T_theta_K] = 179.999/RAD;
     // Amplitude of the torque, K; >=0; units are 1/day^2
     hLimits[0][T_K] = 0;
-    hLimits[1][T_K] = 600;
+    hLimits[1][T_K] = 100;
     #endif        
     
     // c_tumb (physical (tumbling) value of the axis c size; always smallest)
-    hLimits[0][T_c_tumb] = log(0.002);
+    hLimits[0][T_c_tumb] = log(0.1);
     hLimits[1][T_c_tumb] = log(1.0);                
     
     // b_tumb (physical (tumbling) value of the axis b size; always intermediate), in relative to c_tumb units (between 0: 1, and 1: log(c_tumb))
@@ -309,8 +321,10 @@ int main (int argc,char **argv)
     
     #ifdef BC
     // Limits on the geometric c shape parameter = the limits on the dynamic c_tumb parameter:
-    hLimits[0][T_c] = hLimits[0][T_c_tumb];
-    hLimits[1][T_c] = hLimits[1][T_c_tumb];
+    hLimits[0][T_c] = log(0.1);
+    hLimits[1][T_c] = log(1.0);
+//    hLimits[0][T_c] = hLimits[0][T_c_tumb];
+//    hLimits[1][T_c] = hLimits[1][T_c_tumb];
 
     // Limits on the geometric b shape parameter, in relative to c units (between 0: 1, and 1: log(c_tumb))
     // For a symmetric cigar / disk, freeze the limits to 1 / 0
@@ -345,8 +359,8 @@ int main (int argc,char **argv)
     for (int i_limits=0; i_limits<N_limits; i_limits++)
     {
         int itype = Li[i_limits];
-        hLimits[0][itype] = L0[itype];
-        hLimits[1][itype] = L1[itype];
+        hLimits[0][itype] = L0[i_limits];
+        hLimits[1][itype] = L1[i_limits];
     }
     
     ERR(cudaMemcpyToSymbol(dProperty, Property, N_COLUMNS*N_PARAMS*sizeof(int), 0, cudaMemcpyHostToDevice));                
@@ -378,7 +392,7 @@ int main (int argc,char **argv)
         curandState* d_states;
         ERR(cudaMalloc ( &d_states, N_BLOCKS*BSIZE*sizeof( curandState ) ));
         // setup seeds, initialize d_f
-        #ifdef TIMING        
+        #if defined(TIMING) || defined(DEBUG)
         setup_kernel <<< N_BLOCKS, BSIZE >>> ( d_states, (unsigned long)0, d_f);
         #else
         setup_kernel <<< N_BLOCKS, BSIZE >>> ( d_states, (unsigned long)(time(NULL)), d_f);
@@ -500,9 +514,10 @@ int main (int argc,char **argv)
         ERR(cudaDeviceSynchronize());
         
         ERR(cudaMemcpyFromSymbol(&h_Vmod, d_Vmod, Nplot*sizeof(double), 0, cudaMemcpyDeviceToHost));
-        ERR(cudaMemcpyFromSymbol(&h_delta_V0, d_delta_V0, sizeof(CHI_FLOAT), 0, cudaMemcpyDeviceToHost));
+        ERR(cudaMemcpyFromSymbol(&h_delta_V, d_delta_V, N_FILTERS*sizeof(CHI_FLOAT), 0, cudaMemcpyDeviceToHost));
         FILE * fV=fopen("delta_V","w");
-        fprintf(fV, "%8.4f\n", h_delta_V0);
+        for (int m=0; m<N_FILTERS; m++)
+            fprintf(fV, "%8.4f\n", h_delta_V[m]);
         fclose(fV);
         ERR(cudaMemcpyFromSymbol(&h_chi2_plot, d_chi2_plot, sizeof(CHI_FLOAT), 0, cudaMemcpyDeviceToHost));
         #ifdef PROFILES        
@@ -581,7 +596,7 @@ int main (int argc,char **argv)
         fp = fopen("data.dat", "w");
         for (i=0; i<N_data; i++)
             // The time here is corrected for light travel
-            fprintf(fp, "%13.7f %13.6e %13.6e w\n", hMJD0+hData[i].MJD, hData[i].V, 1/sqrt(hData[i].w));
+            fprintf(fp, "%13.7f %13.6e %13.6e w\n", hMJD0+hData[i].MJD, hData[i].V-h_delta_V[hData[i].Filter]+h_delta_V[0], 1/sqrt(hData[i].w));
         fclose(fp);
         
         fp = fopen("lines.dat", "w");

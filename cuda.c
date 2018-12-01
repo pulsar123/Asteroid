@@ -143,14 +143,14 @@ __device__ CHI_FLOAT chi2one(double *params, struct obs_data *sData, int N_data,
     // we derive the asteroid's internal axes (coinciding with b, c, a for x, y, z, or i, s, l)
     // orienation in the barycentric frame of reference. This allows us to compute the orientation of the asteroid->sun and asteroid->earth
     // vectors in the asteroid's frame of reference, which is then used to compute it's apparent brightness for the observer.
+
+    #ifdef NUDGE    
+    int M = 0;
+    float t_mod[M_MAX], V_mod[M_MAX];
+    float t_old[2];
+    float V_old[2];
+    #endif
     
-     #ifdef NUDGE    
-     float t_mod[M_MAX], V_mod[M_MAX];
-     float t_old[2];
-     float V_old[2];
-     int M = 0;
-     #endif    
-        
     
     // Loop for multiple data segments
     // (Will use one segment, for all the data, when SEGMENT is not defined)
@@ -406,8 +406,8 @@ __device__ CHI_FLOAT chi2one(double *params, struct obs_data *sData, int N_data,
             
             #ifdef BC
             #ifdef ROTATE
-            // Optional rotation of the brightness ellipsoid relative to the kinematic ellipsoid, using angles theta_R, phi_R
-            // Using the same setup, as for the main Euler rotation, above (substituting M->a, XM->b, YM->c)
+            // Optional rotation of the brightness ellipsoid relative to the kinematic ellipsoid, using angles theta_R, phi_R, psi_R
+            // Using the same setup, as for the main Euler rotation, above (substituting XM->b, YM->c, M->a)
             // The meaning of the vectors b,c,a is changing here. At the end these are the new (rotated) basis.
             cos_phi = cos(P_phi_R);
             sin_phi = sin(P_phi_R);
@@ -519,10 +519,10 @@ __device__ CHI_FLOAT chi2one(double *params, struct obs_data *sData, int N_data,
             }
             #ifdef NUDGE
             // Determining if the previous time point was a local minimum
-            if (i < 2)
+            if (i < i1 + 2)
             {
-                t_old[i] = sData[i].MJD;
-                V_old[i] = Vmod;
+                t_old[i-i1] = sData[i].MJD;
+                V_old[i-i1] = Vmod;
             }
             else
             {
@@ -714,9 +714,9 @@ __device__ void params2x(CHI_FLOAT *x, double *params, CHI_FLOAT sLimits[][N_TYP
     for (int i=0; i<N_PARAMS; i++)
     {
         int param_type = sProperty[i][P_type];
-        if (sProperty[i][P_frozen] == 1)
+        if (sProperty[i][P_frozen] != 0)
         {
-            // For frozen parameters, arbitrarily setting x to zero:
+            // For frozen (P_frozen=1) or fully relaxed (P_frozen=-1) parameters, arbitrarily setting x to zero:
             x[i] = 0;
             continue;
         }
@@ -1064,7 +1064,7 @@ __global__ void chi2_gpu (struct obs_data *dData, int N_data, int N_filters,
             #ifdef NUDGE
             // Copying the data on the observed minima from device to shared memory:
             s_chi2_params = d_chi2_params;
-        #endif
+            #endif
         #ifdef P_BOTH
         s_x2_params = x2_params;
         #endif       
@@ -1112,15 +1112,28 @@ __global__ void chi2_gpu (struct obs_data *dData, int N_data, int N_filters,
         // Random displacement of the initial point, uniformly distributed within +-0.5*DX_RAND:
         for (i=0; i<N_PARAMS; i++)
         {
-            // Sticking to the 0...1 interval for x:
-            // (Allowed to switch LAM/SAM here)
-            double x_min = 0;
-            if (x[0][i] - 0.5*DX_RAND > 0.0)
-                x_min = x[0][i] - 0.5*DX_RAND;
-            double x_max = 1;
-            if (x[0][i] + 0.5*DX_RAND < 1.0)
-                x_max = x[0][i] + 0.5*DX_RAND;
-            x[0][i] = DX_RAND*curand_uniform(&localState)*(x_max-x_min) + x_min;            
+            if (sProperty[i][P_frozen] == -1)
+                // P_frozen=-1 parameters can vary initially within the whole range
+            {
+                // Random number [0,1[
+                float r = curand_uniform(&localState);
+                // The DX_INI business is to prevent the initial simplex going beyong the limits
+                // The allowed interval is 1e-6 ... 1-DX_INI-1e-6
+                x[0][i] = 1e-6 + (1.0 - DX_INI - 2e-6) * r;
+            }
+            else
+                // P_frozen=0 parameters start close to the original values
+            {
+                // Sticking to the 0...1 interval for x:
+                // (Allowed to switch LAM/SAM here)
+                double x_min = 0;
+                if (x[0][i] - 0.5*DX_RAND > 0.0)
+                    x_min = x[0][i] - 0.5*DX_RAND;
+                double x_max = 1;
+                if (x[0][i] + 0.5*DX_RAND < 1.0)
+                    x_max = x[0][i] + 0.5*DX_RAND;
+                x[0][i] = DX_RAND*curand_uniform(&localState)*(x_max-x_min) + x_min;            
+            }
         }
         #else  // REOPT  
         // Initial random point
@@ -1285,7 +1298,7 @@ __global__ void chi2_gpu (struct obs_data *dData, int N_data, int N_filters,
         CHI_FLOAT x_r[N_PARAMS];
         for (i=0; i<N_PARAMS; i++)
         {
-            if (sProperty[i][P_frozen] == 0)
+            if (sProperty[i][P_frozen] != 1)
                 x_r[i] = x0[i] + ALPHA_SIM*(x0[i] - x[ind[N_PARAMS]][i]);
         }
         CHI_FLOAT f_r;
@@ -1310,7 +1323,7 @@ __global__ void chi2_gpu (struct obs_data *dData, int N_data, int N_filters,
             CHI_FLOAT x_e[N_PARAMS];
             for (i=0; i<N_PARAMS; i++)
             {
-                if (sProperty[i][P_frozen] == 0)
+                if (sProperty[i][P_frozen] != 1)
                     x_e[i] = x0[i] + GAMMA_SIM*(x_r[i] - x0[i]);
             }
             CHI_FLOAT f_e;
@@ -1343,7 +1356,7 @@ __global__ void chi2_gpu (struct obs_data *dData, int N_data, int N_filters,
         // (Here we repurpose x_r and f_r for the contraction stuff)
         for (i=0; i<N_PARAMS; i++)
         {
-            if (sProperty[i][P_frozen] == 0)
+            if (sProperty[i][P_frozen] != 1)
                 x_r[i] = x0[i] + RHO_SIM*(x[ind[N_PARAMS]][i] - x0[i]);
         }
         if (x2params(x_r,params,sLimits, &s_x2_params, sProperty, sTypes))
@@ -1367,7 +1380,7 @@ __global__ void chi2_gpu (struct obs_data *dData, int N_data, int N_filters,
         {
             for (i=0; i<N_PARAMS; i++)
             {
-                if (sProperty[i][P_frozen] == 0)
+                if (sProperty[i][P_frozen] != 1)
                     x[ind[j]][i] = x[ind[0]][i] + SIGMA_SIM*(x[ind[j]][i] - x[ind[0]][i]);
             }           
             if (x2params(x[ind[j]],params,sLimits, &s_x2_params, sProperty, sTypes))
@@ -1502,9 +1515,10 @@ __global__ void chi2_plot (struct obs_data *dData, int N_data, int N_filters,
             s_chi2_params.start_seg[i] = d_start_seg[i];
         #endif    
         // !!! Will not work in NUDGE mode - NULL
-        // Step one: computing constants for each filter using chi^2 method, and the chi2 value
+        // Step one: computing constants for each filter (delta_V[]) using chi^2 method, and the chi2 value
         d_chi2_plot = chi2one(params, dData, N_data, N_filters, delta_V, 0,  &s_chi2_params, sTypes);
-        d_delta_V0 = delta_V[0];
+        for (int m=0; m<N_FILTERS; m++)
+            d_delta_V[m] = delta_V[m];
         
         #ifdef SEGMENT
         // Copying the starting indexes for data segments to shared memory:
