@@ -33,6 +33,8 @@ int main (int argc,char **argv)
     double P_phi2;
     float hPphi2;
     #endif   
+    int travel = 0;
+    int keep = 0;
     
     // Observational data:
     int N_data; // Number of data points
@@ -127,7 +129,7 @@ int main (int argc,char **argv)
         printf("-i name  : input (data) file name\n");
         printf("-o name  : output (results) file name\n");
         printf("-m param1 param2 ... paramN  : input model parameters, for plotting and re-optimization\n");
-        printf("     If one of the parameters has a special value of \"v\", it is allowed to vary randomly within its full range.");
+        printf("     If one of the parameters has a special value of \"v\", it is allowed to vary randomly within its full range.\n");
         printf("-plot    : plotting (only makes sense when -m is also used)\n");
         #if defined(P_PHI) || defined(P_BOTH)
         printf("-Pphi min max  : minimum and maximum values for Pphi period, in hours\n");
@@ -137,10 +139,16 @@ int main (int argc,char **argv)
         #endif
         printf("-f type_constant value: forces the parameter with the type_constant to be frozen during optimization at \"value\" \n");
         printf("-l type_constant limit1 limit2: specify range for the parameter type_constant\n");
+        #ifdef REOPT
+        printf("-t : travelling reoptimization\n");
+        #endif
+        printf("-keep : keep all intermediate results, not just the best ones\n");
         printf("\n");
         exit(0);
     }
-    
+
+    if (argc == 1)
+        exit(0);
     
     // Processing the command line arguments:
     int j = 1;
@@ -152,6 +160,12 @@ int main (int argc,char **argv)
     double Fv[N_TYPES], L0[N_TYPES], L1[N_TYPES];  
     while (j < argc)
     {
+        if (argv[j][0] != '-')
+        {
+            printf("Bad arguments!\n");
+            exit(1);
+        }
+        
         // Input (data) file name:
         if (strcmp(argv[j], "-i") == 0)
         {
@@ -228,6 +242,24 @@ int main (int argc,char **argv)
                 break;
         }
 
+        // traveling reoptimization:
+        if (strcmp(argv[j], "-t") == 0)
+        {
+            travel = 1;
+            j = j + 1;
+            if (j >= argc)
+                break;
+        }
+
+        // traveling reoptimization:
+        if (strcmp(argv[j], "-keep") == 0)
+        {
+            keep = 1;
+            j = j + 1;
+            if (j >= argc)
+                break;
+        }
+
         // Frozen parameter constant and the value
         if (strcmp(argv[j], "-f") == 0)
         {
@@ -252,7 +284,13 @@ int main (int argc,char **argv)
         }
     }
     
-    // Total number of frozen parameter types:
+    if (j_input == -1)
+      {
+          printf("-i parameter is missing!\n");
+          exit(1);
+      }
+
+        // Total number of frozen parameter types:
     int N_frozen = i_frozen + 1;
     // Total number of parameters with custom limits:
     int N_limits = i_limits + 1;
@@ -306,7 +344,7 @@ int main (int argc,char **argv)
     #endif        
     
     // c_tumb (physical (tumbling) value of the axis c size; always smallest)
-    hLimits[0][T_c_tumb] = log(0.1);
+    hLimits[0][T_c_tumb] = log(0.01);
     hLimits[1][T_c_tumb] = log(1.0);                
     
     // b_tumb (physical (tumbling) value of the axis b size; always intermediate), in relative to c_tumb units (between 0: 1, and 1: log(c_tumb))
@@ -321,10 +359,10 @@ int main (int argc,char **argv)
     
     #ifdef BC
     // Limits on the geometric c shape parameter = the limits on the dynamic c_tumb parameter:
-    hLimits[0][T_c] = log(0.1);
-    hLimits[1][T_c] = log(1.0);
-//    hLimits[0][T_c] = hLimits[0][T_c_tumb];
-//    hLimits[1][T_c] = hLimits[1][T_c_tumb];
+//    hLimits[0][T_c] = log(0.1);
+//    hLimits[1][T_c] = log(1.0);
+    hLimits[0][T_c] = hLimits[0][T_c_tumb];
+    hLimits[1][T_c] = hLimits[1][T_c_tumb];
 
     // Limits on the geometric b shape parameter, in relative to c units (between 0: 1, and 1: log(c_tumb))
     // For a symmetric cigar / disk, freeze the limits to 1 / 0
@@ -383,19 +421,25 @@ int main (int argc,char **argv)
     #endif
     
     
-    if (Nplot == 0)
+    if (Nplot == 0)                
     {
         printf("\n*** Simplex optimization ***\n\n");
         printf("  N_threads = %d\n", N_threads);        
+        
+        if (j_results == -1)
+        {
+            printf("Bad output file name!\n");
+            exit(1);
+        }
         
         // Initializing the device random number generator:
         curandState* d_states;
         ERR(cudaMalloc ( &d_states, N_BLOCKS*BSIZE*sizeof( curandState ) ));
         // setup seeds, initialize d_f
         #if defined(TIMING) || defined(DEBUG)
-        setup_kernel <<< N_BLOCKS, BSIZE >>> ( d_states, (unsigned long)0, d_f);
+        setup_kernel <<< N_BLOCKS, BSIZE >>> ( d_states, (unsigned long)0, d_f, 1);
         #else
-        setup_kernel <<< N_BLOCKS, BSIZE >>> ( d_states, (unsigned long)(time(NULL)), d_f);
+        setup_kernel <<< N_BLOCKS, BSIZE >>> ( d_states, (unsigned long)(time(NULL)), d_f, 1);
         #endif
         
         #ifdef REOPT
@@ -438,10 +482,17 @@ int main (int argc,char **argv)
             
             if (loop_counter > 1)
             {
-                fp = fopen(argv[j_results], "w");
+                if (keep)
+                    // In the "keep" mode, we append new results
+                    fp = fopen(argv[j_results], "a");
+                    else
+                    // In the default mode, we overwtite the results with the current best ones
+                    fp = fopen(argv[j_results], "w");
                 for (i=0; i<N_BLOCKS; i++)
                 {
                     fprintf(fp,"%13.6e ",  h_f[i]);
+                    for (int m=0; m<N_filters; m++)
+                        fprintf(fp,"%13.6e ",  h_dV[i][m]);
                     for (j=0; j<N_PARAMS; j++)
                         if (Property[j][P_type] == T_L)
                             fprintf(fp,"%15.11f ",  48*PI/h_params[i][j]);
@@ -466,6 +517,16 @@ int main (int argc,char **argv)
                     }
                 }
                 
+                #ifdef REOPT
+                if (travel)
+                    // In "traveling reoptimization" mode, we move the starting point to the best point found in the previous cycle
+                {
+                    for (j=0; j<N_PARAMS; j++)
+                        params[j] = h_params[i_best][j];
+                    ERR(cudaMemcpyToSymbol(d_params0, params, N_PARAMS*sizeof(double), 0, cudaMemcpyHostToDevice));
+                }
+                #endif        
+
                 // Priting the best result:
                 printf("%13.6e ",  h_f[i_best]);
                 for (j=0; j<N_PARAMS; j++)
@@ -480,9 +541,13 @@ int main (int argc,char **argv)
             ERR(cudaDeviceSynchronize());
             
             ERR(cudaMemcpy(h_f, d_f, N_BLOCKS * sizeof(CHI_FLOAT), cudaMemcpyDeviceToHost));
-//            ERR(cudaMemcpy(h_params, d_params, N_BLOCKS * N_PARAMS * sizeof(double), cudaMemcpyDeviceToHost));
             ERR(cudaMemcpyFromSymbol(h_params, d_params, N_BLOCKS * N_PARAMS * sizeof(double), 0, cudaMemcpyDeviceToHost));
+            ERR(cudaMemcpyFromSymbol(h_dV, d_dV, N_BLOCKS * N_FILTERS * sizeof(double), 0, cudaMemcpyDeviceToHost));
             ERR(cudaDeviceSynchronize());
+
+            if (keep)
+                // If we are keeping all intermediate results, we have to reset d_f to 1e30 at the end of each loop:
+                setup_kernel <<< N_BLOCKS, BSIZE >>> ( d_states, (unsigned long)0, d_f, 0);
             
         }  // End of the while loop
         

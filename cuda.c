@@ -1437,7 +1437,11 @@ __global__ void chi2_gpu (struct obs_data *dData, int N_data, int N_filters,
         d_f[blockIdx.x] = s_f[0];
         x2params(x[ind[0]],params,sLimits, &s_x2_params, sProperty, sTypes);
         for (int i=0; i<N_PARAMS; i++)
+        {
             d_params[blockIdx.x][i] = params[i];
+            for (int m=0; m<N_filters; m++)
+                d_dV[blockIdx.x][m] = delta_V[m];
+        }
     }
     
     
@@ -1647,12 +1651,14 @@ __global__ void chi2_plot (struct obs_data *dData, int N_data, int N_filters,
 
 
 //--------------------------------------------------------------------------------------------------------------------------------------------------------------------------
-__global__ void setup_kernel ( curandState * state, unsigned long seed, CHI_FLOAT *d_f)
+__global__ void setup_kernel ( curandState * state, unsigned long seed, CHI_FLOAT *d_f, int generate_seeds)
 {
     // Global thread index:
     unsigned long long id = blockIdx.x*blockDim.x + threadIdx.x;
-    // Generating initial states for all threads in a kernel:
-    curand_init ( (unsigned long long)seed, id, 0, &state[id] );
+    
+    if (generate_seeds)
+        // Generating initial states for all threads in a kernel:
+        curand_init ( (unsigned long long)seed, id, 0, &state[id] );
     
     if (threadIdx.x==0)
     {

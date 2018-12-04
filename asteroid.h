@@ -129,7 +129,7 @@ const int T_psi_R =  17;
 
 
 // Maximum number of filters:
-const int N_FILTERS = 2;
+const int N_FILTERS = 1;
 
 // When b and c parameters are used, maximum ln deviation from corresponding b_tumb, c_tumb during optimization:
 const float BC_DEV_MAX = 100;  //2.3
@@ -142,7 +142,7 @@ const int BSIZE = 256;   // Threads in a block (64 ... 1024, step of 64); 384; 2
 #ifdef DEBUG
 const int N_BLOCKS = 56*1;
 #else
-const int N_BLOCKS = 56*1; // Should be proportional to the number of SMs (56 for P100); for some reason 10 results in a crash; use 5 for now
+const int N_BLOCKS = 56*10; // Should be proportional to the number of SMs (56 for P100); for some reason 10 results in a crash; use 5 for now
 #endif
 //const int N_SERIAL = 1; // number of serial iglob loops inside the kernel (>=1)
 //const int N_WARPS = BSIZE / 32;
@@ -180,7 +180,7 @@ const int MAX_LINE_LENGTH = 128;
 // Maximum number of filters:
 //const int MAX_FILTERS = 100;
 // Maximum number of data points:
-const int MAX_DATA = 490;
+const int MAX_DATA = 497;
 
 // Number of time points for plotting
 const int NPLOT = 6000; // 6000 !!!
@@ -194,10 +194,10 @@ const double T_SCALE = 0.06;  // in days
 
 // Only matter for REOPT option:
 // Minimum and maximum initial simplex step:
-const CHI_FLOAT DX_MIN = -9.2; // log(0.0001)
-const CHI_FLOAT DX_MAX = -6.9; // log(0.1) -3.51
+const CHI_FLOAT DX_MIN = -6.9; // log(0.0001)
+const CHI_FLOAT DX_MAX = -5.8; // log(0.1) -3.51
 // Initial point is randomly shifted along each dimension by maximum 1/2 of the following amount (dimensionless):
-const CHI_FLOAT DX_RAND = 0.001; 
+const CHI_FLOAT DX_RAND = 0.003; 
 
 // Maximum number of clusters in minima() periodogram search
 const int NCL_MAX = 5;
@@ -279,7 +279,7 @@ int minima(struct obs_data * dPlot, double * Vm, int Nplot);
 int prepare_chi2_params(int *);
 int gpu_prepare(int, int, int, int);
 
-__global__ void setup_kernel ( curandState *, unsigned long, CHI_FLOAT *);
+__global__ void setup_kernel ( curandState *, unsigned long, CHI_FLOAT *, int);
 __global__ void chi2_gpu(struct obs_data *, int, int, curandState*, CHI_FLOAT*, struct x2_struct);
 __global__ void chi2_plot(struct obs_data *, int, int,
                           struct obs_data *, int, double *);
@@ -333,7 +333,9 @@ EXTERN CHI_FLOAT *d_f;
 //EXTERN struct parameters_struct *d_params;
 //EXTERN __device__ struct parameters_struct d_params0;
 EXTERN double __device__ d_params[N_BLOCKS][N_PARAMS];
+EXTERN double __device__ d_dV[N_BLOCKS][N_FILTERS];
 EXTERN double h_params[N_BLOCKS][N_PARAMS];
+EXTERN double h_dV[N_BLOCKS][N_FILTERS];
 EXTERN __device__ double d_params0[N_PARAMS];
 
 EXTERN __device__ unsigned long long int d_sum;
