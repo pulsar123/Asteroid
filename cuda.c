@@ -175,6 +175,7 @@ __device__ CHI_FLOAT chi2one(double *params, struct obs_data *sData, int N_data,
         #define P_theta_R  params[sTypes[T_theta_R][iseg]]
         #define P_phi_R    params[sTypes[T_phi_R][iseg]]
         #define P_psi_R    params[sTypes[T_psi_R][iseg]]
+        #define P_kappa    params[sTypes[T_kappa][iseg]]
         
         
         // Calculations which are time independent:            
@@ -404,7 +405,6 @@ __device__ CHI_FLOAT chi2one(double *params, struct obs_data *sData, int N_data,
             double c_y = a_z*b_x - a_x*b_z;
             double c_z = a_x*b_y - a_y*b_x;
             
-            #ifdef BC
             #ifdef ROTATE
             // Optional rotation of the brightness ellipsoid relative to the kinematic ellipsoid, using angles theta_R, phi_R, psi_R
             // Using the same setup, as for the main Euler rotation, above (substituting XM->b, YM->c, M->a)
@@ -445,7 +445,6 @@ __device__ CHI_FLOAT chi2one(double *params, struct obs_data *sData, int N_data,
             c_y = a_z*b_x - a_x*b_z;
             c_z = a_x*b_y - a_y*b_x;
             #endif  // ROTATE
-            #endif  // BC
             
             // Now following Muinonen & Lumme, 2015 to compute the visual brightness of the asteroid.
             // Attention! My (Samarasinha and A'Hearn 1991) frame of reference is b-c-a, but the Muinonen's frame is a-b-c
@@ -474,6 +473,23 @@ __device__ CHI_FLOAT chi2one(double *params, struct obs_data *sData, int N_data,
             double c = P_c_tumb;
             #endif        
             
+            #ifdef BW_BALL
+            /* The simplest non-geometric brightness model - "black and white ball".
+             * The "a" axis end hemisphere is dark (albedo kappa<1), the oppostire hemisphere is bright (albedo=1).
+             * Assuming the phase angle = 0 (sun is behind the observer) for simplicity.
+             * This has to be used with the ROTATE option, to explore different dark spot orientations relative to the
+             * kinematic frame of reference.
+             */
+            
+            // Alpha is the angle between the (rotated) axis "a" and the direction to the observer (Ep)
+            double cos_alpha = a_x*Ep_x + a_y*Ep_y + a_z*Ep_z;
+            // Relative bw ball brightness (1 when only the bright hemisphere is visible; kappa when only the dark one):
+            Vmod = -2.5*log10(0.5*(P_kappa*(1+cos_alpha) + (1-cos_alpha)));
+            
+            #else
+            /* The defaul brightness model (triaxial ellipsoid, constant albedo), from Muinonen & Lumme, 2015
+             */
+            
             // The two scalars from eq.(12) of Muinonen & Lumme, 2015; assuming a=1
             // Switching from Muinonen coords (abc) to Samarasinha coords (bca)
             scalar_Sun   = sqrt(Sp_x*Sp_x/(b*b) + Sp_y*Sp_y/(c*c) + Sp_z*Sp_z);
@@ -495,6 +511,7 @@ __device__ CHI_FLOAT chi2one(double *params, struct obs_data *sData, int N_data,
             // Simplest case of isotropic single-particle scattering, P(alpha)=1:
             Vmod = -2.5*log10(b*c * scalar_Sun*scalar_Earth/scalar * (cos(lambda_p-alpha_p) + cos_lambda_p +
             sin_lambda_p*sin(lambda_p-alpha_p) * log(1.0 / tan(0.5*lambda_p) / tan(0.5*(alpha_p-lambda_p)))));
+            #endif  // if BW_BALL
             
             #ifdef TREND
             // Solar phase angle:
@@ -740,6 +757,10 @@ __device__ void params2x(CHI_FLOAT *x, double *params, CHI_FLOAT sLimits[][N_TYP
                 #endif
                 if (param_type == T_c_tumb)
                     par = log(par);
+                #ifdef BW_BALL
+                if (param_type == T_kappa)
+                    par = log(par);
+                #endif
                 x[i] = (par - sLimits[0][param_type]) / (sLimits[1][param_type] - sLimits[0][param_type]);        
             }
         }
@@ -937,6 +958,12 @@ __device__ int x2params(CHI_FLOAT *x, double *params, CHI_FLOAT sLimits[][N_TYPE
                 if (fabs(log_c-log_c_tumb) > BC_DEV_MAX)
                     return 1;
                 params[i] = exp(log_c);
+            }
+            #endif            
+            #ifdef BW_BALL
+            else if (param_type == T_kappa)
+            {
+                params[i] = exp(params[i]);
             }
             #endif            
             else if (param_type == T_L)

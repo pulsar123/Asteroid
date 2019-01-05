@@ -41,6 +41,12 @@ int main (int argc,char **argv)
     int N_filters; // Number of filters used in the data        
     int Nplot = 0;
     
+    #ifdef ONE_LE
+    int const LE = 1;
+    #else
+    int const LE = 0;
+    #endif
+    
 
     // Array describing all optimizable model parameters (initializing only the first segment - i_seg=0)    
     // Set the Frozen value to 1 to fix (exclude from optimization) the corresponding parameters for all segments
@@ -62,17 +68,20 @@ int main (int argc,char **argv)
     #endif
            { T_c_tumb,  1,           0,      0,     1,             0},  // c_tumb
            { T_b_tumb,  0,           0,      0,     1,             0},  // b_tumb
-           { T_Es,      0,           0,      0,     0,             0},  // Es
-           { T_L,       1,           0,      0,     0,             0},  // L / P_psi / P_phi
+           { T_Es,      0,           0,      0,    LE,             0},  // Es
+           { T_L,       1,           0,      0,    LE,             0},  // L / P_psi / P_phi
            { T_psi_0,   0,           0,      0,     0,             0},  // psi_0
     #ifdef BC                                  
            { T_c,       1,           0,      0,     1,             0},  // c
            { T_b,       0,           0,      0,     1,             0},   // b
+    #endif                                  
     #ifdef ROTATE
            { T_theta_R, 1,           0,      0,     1,             0},  // theta_R
            { T_phi_R,   1,           0,      0,     1,             1},  // phi_R
            { T_psi_R,   1,           0,      0,     1,             1},  // psi_R
     #endif
+    #ifdef BW_BALL                                
+           { T_kappa,   1,           0,      0,     1,             0},  // kappa
     #endif                                  
     
     };
@@ -368,14 +377,20 @@ int main (int argc,char **argv)
     // For a symmetric cigar / disk, freeze the limits to 1 / 0
     hLimits[0][T_b] = 0;
     hLimits[1][T_b] = 1;
+    #endif
 
     #ifdef ROTATE
     // Theta_R (polar angle when rotating the brightness ellipsoid relative to the kinematic ellipsoid); range 0...pi
     hLimits[0][T_theta_R] = 0.001/RAD;
     hLimits[1][T_theta_R] = 179.999/RAD;
     #endif
-    #endif
     
+    #ifdef BW_BALL
+    // dark/bright sides albedo ratio kappa=0...1, log scale
+    hLimits[0][T_kappa] = log(0.01);
+    hLimits[1][T_kappa] = log(0.1);
+    #endif
+
     // Updating hLimits and Property for all frozen parameters:
     for (int i_frozen=0; i_frozen<N_frozen; i_frozen++)
     {

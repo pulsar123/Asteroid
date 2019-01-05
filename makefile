@@ -1,6 +1,7 @@
 # Macro parameters:
 
 # BC : if defined, "physical b,c" and "photometric b,c" are independent parameters; if not, they are the same thing
+# BW_BALL : simplest albedo (non-geometric) brightness model - black and white ball. Also enables ROTATE.
 # DEBUG : used with interactive (debugging) runs, reduced kernels and print time intervals
 # DEBUG2 : likley not functional; used for cuda code debugging
 # DUMP_DV : dumping 5.0*log10(1.0/E * 1.0/S) in read_data.c for all obs. data points
@@ -12,6 +13,7 @@
 # NO_SDATA : don't created shared memory sData array, use directly the device memory version
 # NOPRINT : if defined, do not create files model.dat, data.dat, lines.dat
 # NUDGE : nudging the model minima towards the observed minima (in 2D - t,V coordinates) during optimization (not working with SEGMENT)
+# ONE_LE : only in SEGMENT mode: makes L,Es parameters multi-segment (fixed across all segments)
 # PARABOLIC_MAX : use more accurate (parabola) method to find brightness minima when doing periodogramm (only with MINIMA_PRINT)
 # P_BOTH : combined P_psi and P_phi constraints (input args: P_psi1 P_psi2 P_phi). P_Psi is a free parameter, P_phi is a constant. A rejection method is used during optimization.
 # P_PHI : if defined, Pphi1 Pphi2 args need to be provided; L is no longer an input parameter, and is computed from P_phi using an approximate empirical relation
@@ -35,10 +37,10 @@ ifeq ($(CLUSTER),monk)
   ARCH=sm_20
 endif  
 
-OPT=-O2 --ptxas-options=-v -arch=$(ARCH) -DGPU -DRELAXED -DP_PSI
+OPT=-O2 --ptxas-options=-v -arch=$(ARCH) -DGPU -DRELAXED -DP_PSI -DBW_BALL -DDEBUG
 INC=-I/usr/include/cuda -I.
 
-BINARY=asteroid2
+BINARY=asteroid
 
 objects = asteroid.o read_data.o misc.o cuda.o gpu_prepare.o
 

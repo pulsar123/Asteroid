@@ -25,12 +25,17 @@
  #undef P_BOTH
 #endif
 
+#ifdef BW_BALL
+ #define ROTATE
+#endif
+
 #ifdef SEGMENT
-// Number of independent data segments:
-const int N_SEG=4;
 // Absolute times - starting points of the data segments:
-//const double T_START[N_SEG]={58051.044623, 58053.078872, 58055.234144};
-const double T_START[N_SEG]={58051.044623, 58053.078872, 58054.093273, 58055.234144};
+#if N_SEG == 3
+ const double T_START[N_SEG]={58051.044623, 58053.078872, 58055.234144};
+ #else
+ const double T_START[N_SEG]={58051.044623, 58053.078872, 58054.093273, 58055.234144};
+ #endif
 #else
 const int N_SEG=1;
 #endif
@@ -72,14 +77,26 @@ const int DN_TORQUE = 4;
 const int DN_TORQUE = 0;
 #endif
 
+#ifdef ONE_LE
+const int DN_LE = 2;
+#else
+const int DN_LE = 0;
+#endif
+
+#ifdef BW_BALL
+const int DN_BW = 1;
+#else
+const int DN_BW = 0;
+#endif
+
 #ifdef SEGMENT
 // In multi-segmented mode, two obligatory parameters (c_tumb, b_tumb) and three optional parameters (c, b, A) are fixed across all segments:
 // TORQUE cannot be used here
-const int N_PARAMS = (6+DN_TORQUE)*N_SEG + 2 + DN_BC + DN_ROT + DN_TREND;
+const int N_PARAMS = (6+DN_TORQUE)*N_SEG + 2 + DN_BC + DN_ROT + DN_TREND - DN_LE*(N_SEG-1) + DN_BW;
 // Number of parameters in a single (0-th) segment:
-const int N_PARAMS0 = 8 + DN_BC + DN_ROT + DN_TREND + DN_TORQUE;
+const int N_PARAMS0 = 8 + DN_BC + DN_ROT + DN_TREND + DN_TORQUE +DN_BW;
 #else
-const int N_PARAMS = 8 + DN_BC + DN_ROT + DN_TREND + DN_TORQUE;
+const int N_PARAMS = 8 + DN_BC + DN_ROT + DN_TREND + DN_TORQUE + DN_BW;
 #endif
 
 //-------------------------- Property array -------------------------
@@ -94,36 +111,40 @@ const int P_periodic       = 5;  // phi-like parameter (periodic, changes betwee
 // Number of the columns of the Property table:
 const int N_COLUMNS = 6;
 
-// Total number of parameter types (determines the length of the Limits and Types arrays):
-const int N_TYPES =  18;
 
 // Parameter type constants:
-const int T_theta_M = 0;  
-const int T_phi_M =   1;
-const int T_phi_0 =   2;
-const int T_L =       3;
+// Using non-standard macro parameter __COUNTER__ (increments by 1 every time it's called; works under gcc and icc)
+const int T_theta_M = __COUNTER__;  
+const int T_phi_M =   __COUNTER__;
+const int T_phi_0 =   __COUNTER__;
+const int T_L =       __COUNTER__;
 #ifdef TREND
-const int T_A =       4;
+const int T_A =       __COUNTER__;
 #endif
 #ifdef TORQUE
-const int T_theta_K = 5;
-const int T_phi_K =   6;
-const int T_phi_F =   7;
-const int T_K =       8;
+const int T_theta_K = __COUNTER__;
+const int T_phi_K =   __COUNTER__;
+const int T_phi_F =   __COUNTER__;
+const int T_K =       __COUNTER__;
 #endif
-const int T_c_tumb =  9;
-const int T_b_tumb = 10;
-const int T_Es =     11;
-const int T_psi_0 =  12;
+const int T_c_tumb =  __COUNTER__;
+const int T_b_tumb =  __COUNTER__;
+const int T_Es =      __COUNTER__;
+const int T_psi_0 =   __COUNTER__;
 #ifdef BC
-const int T_c =      13;
-const int T_b =      14;
+const int T_c =       __COUNTER__;
+const int T_b =       __COUNTER__;
+#endif
 #ifdef ROTATE
-const int T_theta_R =15;
-const int T_phi_R =  16;
-const int T_psi_R =  17;
+const int T_theta_R = __COUNTER__;
+const int T_phi_R =   __COUNTER__;
+const int T_psi_R =   __COUNTER__;
 #endif
+#ifdef BW_BALL
+const int T_kappa =   __COUNTER__;
 #endif
+// Total number of parameter types (determines the length of the Limits and Types arrays):
+const int N_TYPES =   __COUNTER__;
 
 //-----------------------------------------------------------------------
 
@@ -142,7 +163,7 @@ const int BSIZE = 256;   // Threads in a block (64 ... 1024, step of 64); 384; 2
 #ifdef DEBUG
 const int N_BLOCKS = 56*1;
 #else
-const int N_BLOCKS = 56*10; // Should be proportional to the number of SMs (56 for P100); for some reason 10 results in a crash; use 5 for now
+const int N_BLOCKS = 56*5; // Should be proportional to the number of SMs (56 for P100); for some reason 10 results in a crash; use 5 for now
 #endif
 //const int N_SERIAL = 1; // number of serial iglob loops inside the kernel (>=1)
 //const int N_WARPS = BSIZE / 32;
@@ -154,7 +175,7 @@ const double TIME_STEP = 1e-2;  // 1e-2 !!!
 #if defined(TIMING) || defined(DEBUG)
 const unsigned int N_STEPS = 100; 
 #else
-const unsigned int N_STEPS = 1000; // Number of simplex steps per CUDA block (per simplex run) 27,000 per hour (N=7; BS=256; NB=56*4)
+const unsigned int N_STEPS = 3000; // Number of simplex steps per CUDA block (per simplex run) 27,000 per hour (N=7; BS=256; NB=56*4)
 #endif
 #ifdef DEBUG
 const unsigned int DT_DUMP = 30;
