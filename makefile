@@ -26,6 +26,7 @@
 # SEGMENT : multiple data segments (specified by T_START[] vector)
 # TIMING : time the main kernel (chi2_gpu)
 # TORQUE : adding a simple constant torque model, with 4 extra parameters: theta_K, phi_K, phi_F, and K. Noew we need to solve completely different ODEs - 6 of them
+# TORQUE2 (implies TORQUE): torque parameters change half-way through the data (at mid-point in time). Adds 4 more parameters (theta_K2, phi_K2, phi_F2, K2)
 # TREND : detrending the time evolution of the brightness, via the scaling parameter a (proxy for G-parameter from HG reflectivity law) - adds one free parameter
 # TUMBLE : obsolete (now tumbling is always enabled)
 
@@ -37,7 +38,7 @@ ifeq ($(CLUSTER),monk)
   ARCH=sm_20
 endif  
 
-OPT=-O2 --ptxas-options=-v -arch=$(ARCH) -DGPU -DRELAXED -DP_PSI -DBW_BALL -DDEBUG
+OPT=-G -g --ptxas-options=-v -arch=$(ARCH) -DGPU -DRELAXED -DP_PSI -DTORQUE2 -DDEBUG
 INC=-I/usr/include/cuda -I.
 
 BINARY=asteroid

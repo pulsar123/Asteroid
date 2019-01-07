@@ -66,6 +66,12 @@ int main (int argc,char **argv)
            { T_phi_F,   1,           0,      0,     0,             1},  // phi_F
            { T_K,       1,           0,      0,     0,             0},  // K
     #endif
+    #ifdef TORQUE2
+           { T_theta_K2,1,           0,      0,     0,             0},  // theta_K2
+           { T_phi_K2,  1,           0,      0,     0,             1},  // phi_K2
+           { T_phi_F2,  1,           0,      0,     0,             1},  // phi_F2
+           { T_K2,      1,           0,      0,     0,             0},  // K2
+    #endif
            { T_c_tumb,  1,           0,      0,     1,             0},  // c_tumb
            { T_b_tumb,  0,           0,      0,     1,             0},  // b_tumb
            { T_Es,      0,           0,      0,    LE,             0},  // Es
@@ -350,6 +356,12 @@ int main (int argc,char **argv)
     // Amplitude of the torque, K; >=0; units are 1/day^2
     hLimits[0][T_K] = 0;
     hLimits[1][T_K] = 100;
+    #endif        
+    #ifdef TORQUE2
+    hLimits[0][T_theta_K2] = hLimits[0][T_theta_K];
+    hLimits[1][T_theta_K2] = hLimits[1][T_theta_K];
+    hLimits[0][T_K2] = hLimits[0][T_K];
+    hLimits[1][T_K2] = hLimits[1][T_K];
     #endif        
     
     // c_tumb (physical (tumbling) value of the axis c size; always smallest)

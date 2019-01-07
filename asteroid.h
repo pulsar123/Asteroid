@@ -29,6 +29,10 @@
  #define ROTATE
 #endif
 
+#ifdef TORQUE2
+ #define TORQUE
+#endif
+
 #ifdef SEGMENT
 // Absolute times - starting points of the data segments:
 #if N_SEG == 3
@@ -72,7 +76,11 @@ const int DN_TREND = 0;
 #endif
 
 #ifdef TORQUE
-const int DN_TORQUE = 4;
+  #ifdef TORQUE2
+  const int DN_TORQUE = 8;
+  #else
+  const int DN_TORQUE = 4;
+  #endif
 #else
 const int DN_TORQUE = 0;
 #endif
@@ -126,6 +134,12 @@ const int T_theta_K = __COUNTER__;
 const int T_phi_K =   __COUNTER__;
 const int T_phi_F =   __COUNTER__;
 const int T_K =       __COUNTER__;
+#endif
+#ifdef TORQUE2
+const int T_theta_K2 = __COUNTER__;
+const int T_phi_K2 =   __COUNTER__;
+const int T_phi_F2 =   __COUNTER__;
+const int T_K2 =       __COUNTER__;
 #endif
 const int T_c_tumb =  __COUNTER__;
 const int T_b_tumb =  __COUNTER__;

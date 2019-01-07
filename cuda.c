@@ -77,6 +77,46 @@ __device__ void ODE_func (double y[], double f[], double mu[])
 }
 
 
+#ifdef TORQUE
+__device__ void compute_torque(double *theta_K, double *phi_K, double *phi_F, double *K, double *Ii_inv, double *Is_inv, double *mu)
+// Computing three mu[] parameters from torque parameters
+{
+    // Coordinates of the unit vector <r> (the point where the torque force is applied) in the asteroid's frame of reference, bca (isl):
+    double r_x = sin(*theta_K) * sin(*phi_K);
+    double r_y = sin(*theta_K) * cos(*phi_K);
+    double r_z = cos(*theta_K);
+    
+    double r_xy = sqrt(r_x*r_x + r_y*r_y);
+    // Unit vector T=[r x a] (the z-th component = 0):
+    double T_x = r_y / r_xy;
+    double T_y = -r_x / r_xy;
+    // Unit vector D=[T x r]:
+    double D_x = -r_x*r_z/r_xy;
+    double D_y = -r_y*r_z/r_xy;
+    double D_z = r_xy;
+    
+    double cos_phi_F = cos(*phi_F);
+    double sin_phi_F = sin(*phi_F);
+    
+    // The torque force is in the plane defined by two perpendicular vectors T and D, at the angle phi_F counting from T towards D
+    // Unit vector in the direction of the torque force:
+    double F_x = T_x*cos_phi_F + D_x*sin_phi_F;
+    double F_y = T_y*cos_phi_F + D_y*sin_phi_F;
+    double F_z =                 D_z*sin_phi_F;
+    
+    // The torque K=[r x F] , here isl is xyz:
+    double Ki = *K * (r_y*F_z - r_z*F_y);
+    double Ks = *K * (r_z*F_x - r_x*F_z);
+    double Kl = *K * (r_x*F_y - r_y*F_x);
+    
+    mu[3] = Ki * *Ii_inv;
+    mu[4] = Ks * *Is_inv;
+    mu[5] = Kl;
+    return;
+}
+#endif
+
+
 __device__ CHI_FLOAT chi2one(double *params, struct obs_data *sData, int N_data, int N_filters, CHI_FLOAT *delta_V, int Nplot, struct chi2_struct *s_chi2_params, int sTypes[][N_SEG])
 // Computung chi^2 for a single model parameters combination, on GPU, by a single thread
 // NUDGE is not supported in SEGMENT mode!
@@ -166,6 +206,10 @@ __device__ CHI_FLOAT chi2one(double *params, struct obs_data *sData, int N_data,
         #define P_phi_K    params[sTypes[T_phi_K][iseg]]
         #define P_phi_F    params[sTypes[T_phi_F][iseg]]
         #define P_K        params[sTypes[T_K][iseg]]
+        #define P_theta_K2 params[sTypes[T_theta_K2][iseg]]
+        #define P_phi_K2   params[sTypes[T_phi_K2][iseg]]
+        #define P_phi_F2   params[sTypes[T_phi_F2][iseg]]
+        #define P_K2       params[sTypes[T_K2][iseg]]
         #define P_c_tumb   params[sTypes[T_c_tumb][iseg]]
         #define P_b_tumb   params[sTypes[T_b_tumb][iseg]]
         #define P_Es       params[sTypes[T_Es][iseg]]
@@ -217,50 +261,20 @@ __device__ CHI_FLOAT chi2one(double *params, struct obs_data *sData, int N_data,
         double psi = P_psi_0;
         
         #ifdef TORQUE
-        // Coordinates of the unit vector <r> (the point where the torque force is applied) in the asteroid's frame of reference, bca (isl):
-        double r_x = sin(P_theta_K) * sin(P_phi_K);
-        double r_y = sin(P_theta_K) * cos(P_phi_K);
-        double r_z = cos(P_theta_K);
-        
-        double r_xy = sqrt(r_x*r_x + r_y*r_y);
-        // Unit vector T=[r x a] (the z-th component = 0):
-        double T_x = r_y / r_xy;
-        double T_y = -r_x / r_xy;
-        // Unit vector D=[T x r]:
-        double D_x = -r_x*r_z/r_xy;
-        double D_y = -r_y*r_z/r_xy;
-        double D_z = r_xy;
-        
-        double cos_phi_F = cos(P_phi_F);
-        double sin_phi_F = sin(P_phi_F);
-        // The torque force is in the plane defined by two perpendicular vectors T and D, at the angle phi_F counting from T towards D
-        // Unit vector in the direction of the torque force:
-        double F_x = T_x*cos_phi_F + D_x*sin_phi_F;
-        double F_y = T_y*cos_phi_F + D_y*sin_phi_F;
-        double F_z =                 D_z*sin_phi_F;
-        
-        // The torque K=[r x F] , here isl is xyz:
-        double Ki = P_K * (r_y*F_z - r_z*F_y);
-        double Ks = P_K * (r_z*F_x - r_x*F_z);
-        double Kl = P_K * (r_x*F_y - r_y*F_x);
-        
         double mu[6];
         // Parameters for the ODEs (don't change with time):
         // Using the fact that Il = 1:
         mu[0] = (Is-1.0)*Ii_inv;
         mu[1] = (1.0-Ii)*Is_inv;
         mu[2] = Ii - Is;
-        mu[3] = Ki * Ii_inv;
-        mu[4] = Ks * Is_inv;
-        mu[5] = Kl;
-        
+        compute_torque(&P_theta_K, &P_phi_K, &P_phi_F, &P_K, &Ii_inv, &Is_inv, mu);
         // Initial values for the three components of the angular velocity vector in the asteroid's frame of reference
         // Initially this vector's orientation is determined by the initial Euler angles, theta, psi, and phi
         double Omega_i = P_L * Ii_inv * sin(theta) * sin(psi);
         double Omega_s = P_L * Is_inv * sin(theta) * cos(psi);
         double Omega_l = P_L * cos(theta);
-        
-        #else    
+        #else
+                
         double mu[3];
         double Ip = 0.5*(Ii_inv + Is_inv);
         double Im = 0.5*(Ii_inv - Is_inv);
@@ -301,6 +315,15 @@ __device__ CHI_FLOAT chi2one(double *params, struct obs_data *sData, int N_data,
                 N_steps = (sData[i].MJD - sData[i-1].MJD) / TIME_STEP + 1;
                 // Current equidistant time steps (h<=TIME_STEP):
                 h = (sData[i].MJD - sData[i-1].MJD) / N_steps;
+                #ifdef TORQUE2
+                // The time when torque parameters change is half-way between the two extreme data points:
+                float MJD_half = 0.5*(sData[i2-1].MJD + sData[i1].MJD);
+                int l2 = -1;
+                // Changing torque parameters in the second half of the data:
+                if (sData[i-1].MJD <= MJD_half && sData[i].MJD > MJD_half)
+                    // Number of ODE steps (h) until we hit the mid-point:
+                    l2 = (int)((MJD_half - sData[i-1].MJD) / h);
+                #endif
                 
                 // Initial values for ODEs variables = the old values, from the previous i cycle:
                 #ifdef TORQUE
@@ -324,6 +347,12 @@ __device__ CHI_FLOAT chi2one(double *params, struct obs_data *sData, int N_data,
                 for (int l=0; l<N_steps; l++)
                 {
                     double K1[N_ODE], K2[N_ODE], K3[N_ODE], K4[N_ODE], f[N_ODE];
+                    
+                    #ifdef TORQUE2
+                    if (l == l2)
+                        // In the middle of the full data time interval, updatimg mu values to the second set of torque parameters:
+                        compute_torque(&P_theta_K2, &P_phi_K2, &P_phi_F2, &P_K2, &Ii_inv, &Is_inv, mu);
+                    #endif
                     
                     ODE_func (y, K1, mu);
                     
@@ -1099,7 +1128,7 @@ __global__ void chi2_gpu (struct obs_data *dData, int N_data, int N_filters,
         // Copying the starting indexes for data segments to shared memory:
         for (i=0; i<N_SEG; i++)
             s_chi2_params.start_seg[i] = d_start_seg[i];
-        #endif    
+        #endif   
     }
     #ifdef REOPT
     // Reading the initial point from device memory

@@ -217,6 +217,7 @@ double E, S;
 #ifdef SEGMENT
 int iseg = 0;
 #endif
+
 for (i=0; i<*N_data; i++)    
 {
 #ifdef SEGMENT
