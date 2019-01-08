@@ -77,9 +77,9 @@ const int DN_TREND = 0;
 
 #ifdef TORQUE
   #ifdef TORQUE2
-  const int DN_TORQUE = 8;
+  const int DN_TORQUE = 6;
   #else
-  const int DN_TORQUE = 4;
+  const int DN_TORQUE = 3;
   #endif
 #else
 const int DN_TORQUE = 0;
@@ -99,10 +99,9 @@ const int DN_BW = 0;
 
 #ifdef SEGMENT
 // In multi-segmented mode, two obligatory parameters (c_tumb, b_tumb) and three optional parameters (c, b, A) are fixed across all segments:
-// TORQUE cannot be used here
 const int N_PARAMS = (6+DN_TORQUE)*N_SEG + 2 + DN_BC + DN_ROT + DN_TREND - DN_LE*(N_SEG-1) + DN_BW;
 // Number of parameters in a single (0-th) segment:
-const int N_PARAMS0 = 8 + DN_BC + DN_ROT + DN_TREND + DN_TORQUE +DN_BW;
+const int N_PARAMS0 = 8 + DN_BC + DN_ROT + DN_TREND + DN_TORQUE + DN_BW;
 #else
 const int N_PARAMS = 8 + DN_BC + DN_ROT + DN_TREND + DN_TORQUE + DN_BW;
 #endif
@@ -130,16 +129,14 @@ const int T_L =       __COUNTER__;
 const int T_A =       __COUNTER__;
 #endif
 #ifdef TORQUE
-const int T_theta_K = __COUNTER__;
-const int T_phi_K =   __COUNTER__;
-const int T_phi_F =   __COUNTER__;
-const int T_K =       __COUNTER__;
+const int T_Ti =      __COUNTER__;
+const int T_Ts =      __COUNTER__;
+const int T_Tl =      __COUNTER__;
 #endif
 #ifdef TORQUE2
-const int T_theta_K2 = __COUNTER__;
-const int T_phi_K2 =   __COUNTER__;
-const int T_phi_F2 =   __COUNTER__;
-const int T_K2 =       __COUNTER__;
+const int T_T2i =      __COUNTER__;
+const int T_T2s =      __COUNTER__;
+const int T_T2l =      __COUNTER__;
 #endif
 const int T_c_tumb =  __COUNTER__;
 const int T_b_tumb =  __COUNTER__;

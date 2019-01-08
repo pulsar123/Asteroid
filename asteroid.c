@@ -61,16 +61,14 @@ int main (int argc,char **argv)
            { T_A,       1,           0,      0,     1,             0},  // A
     #endif
     #ifdef TORQUE
-           { T_theta_K, 1,           0,      0,     0,             0},  // theta_K
-           { T_phi_K,   1,           0,      0,     0,             1},  // phi_K
-           { T_phi_F,   1,           0,      0,     0,             1},  // phi_F
-           { T_K,       1,           0,      0,     0,             0},  // K
+           { T_Ti,      1,           0,      0,     0,             0},  // Ti
+           { T_Ts,      1,           0,      0,     0,             0},  // Ts
+           { T_Tl,      1,           0,      0,     0,             0},  // Tl
     #endif
     #ifdef TORQUE2
-           { T_theta_K2,1,           0,      0,     0,             0},  // theta_K2
-           { T_phi_K2,  1,           0,      0,     0,             1},  // phi_K2
-           { T_phi_F2,  1,           0,      0,     0,             1},  // phi_F2
-           { T_K2,      1,           0,      0,     0,             0},  // K2
+           { T_T2i,     1,           0,      0,     0,             0},  // T2i
+           { T_T2s,     1,           0,      0,     0,             0},  // T2s
+           { T_T2l,     1,           0,      0,     0,             0},  // T2l
     #endif
            { T_c_tumb,  1,           0,      0,     1,             0},  // c_tumb
            { T_b_tumb,  0,           0,      0,     1,             0},  // b_tumb
@@ -350,18 +348,22 @@ int main (int argc,char **argv)
     #endif        
     
     #ifdef TORQUE
-    // First orientation angle for the vector r to the point on the surface where the torque is applied, theta_K; 0 ... 180
-    hLimits[0][T_theta_K] = 0.001/RAD;
-    hLimits[1][T_theta_K] = 179.999/RAD;
-    // Amplitude of the torque, K; >=0; units are 1/day^2
-    hLimits[0][T_K] = 0;
-    hLimits[1][T_K] = 100;
+    // Maximum amplitude for torque parameters (units are rad/day)
+    double Tmax = 10.0;
+    hLimits[0][T_Ti] = -Tmax;
+    hLimits[1][T_Ti] =  Tmax;
+    hLimits[0][T_Ts] = -Tmax;
+    hLimits[1][T_Ts] =  Tmax;
+    hLimits[0][T_Tl] = -Tmax;
+    hLimits[1][T_Tl] =  Tmax;
     #endif        
     #ifdef TORQUE2
-    hLimits[0][T_theta_K2] = hLimits[0][T_theta_K];
-    hLimits[1][T_theta_K2] = hLimits[1][T_theta_K];
-    hLimits[0][T_K2] = hLimits[0][T_K];
-    hLimits[1][T_K2] = hLimits[1][T_K];
+    hLimits[0][T_T2i] = -Tmax;
+    hLimits[1][T_T2i] =  Tmax;
+    hLimits[0][T_T2s] = -Tmax;
+    hLimits[1][T_T2s] =  Tmax;
+    hLimits[0][T_T2l] = -Tmax;
+    hLimits[1][T_T2l] =  Tmax;
     #endif        
     
     // c_tumb (physical (tumbling) value of the axis c size; always smallest)

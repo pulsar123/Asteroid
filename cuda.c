@@ -77,45 +77,6 @@ __device__ void ODE_func (double y[], double f[], double mu[])
 }
 
 
-#ifdef TORQUE
-__device__ void compute_torque(double *theta_K, double *phi_K, double *phi_F, double *K, double *Ii_inv, double *Is_inv, double *mu)
-// Computing three mu[] parameters from torque parameters
-{
-    // Coordinates of the unit vector <r> (the point where the torque force is applied) in the asteroid's frame of reference, bca (isl):
-    double r_x = sin(*theta_K) * sin(*phi_K);
-    double r_y = sin(*theta_K) * cos(*phi_K);
-    double r_z = cos(*theta_K);
-    
-    double r_xy = sqrt(r_x*r_x + r_y*r_y);
-    // Unit vector T=[r x a] (the z-th component = 0):
-    double T_x = r_y / r_xy;
-    double T_y = -r_x / r_xy;
-    // Unit vector D=[T x r]:
-    double D_x = -r_x*r_z/r_xy;
-    double D_y = -r_y*r_z/r_xy;
-    double D_z = r_xy;
-    
-    double cos_phi_F = cos(*phi_F);
-    double sin_phi_F = sin(*phi_F);
-    
-    // The torque force is in the plane defined by two perpendicular vectors T and D, at the angle phi_F counting from T towards D
-    // Unit vector in the direction of the torque force:
-    double F_x = T_x*cos_phi_F + D_x*sin_phi_F;
-    double F_y = T_y*cos_phi_F + D_y*sin_phi_F;
-    double F_z =                 D_z*sin_phi_F;
-    
-    // The torque K=[r x F] , here isl is xyz:
-    double Ki = *K * (r_y*F_z - r_z*F_y);
-    double Ks = *K * (r_z*F_x - r_x*F_z);
-    double Kl = *K * (r_x*F_y - r_y*F_x);
-    
-    mu[3] = Ki * *Ii_inv;
-    mu[4] = Ks * *Is_inv;
-    mu[5] = Kl;
-    return;
-}
-#endif
-
 
 __device__ CHI_FLOAT chi2one(double *params, struct obs_data *sData, int N_data, int N_filters, CHI_FLOAT *delta_V, int Nplot, struct chi2_struct *s_chi2_params, int sTypes[][N_SEG])
 // Computung chi^2 for a single model parameters combination, on GPU, by a single thread
@@ -154,10 +115,7 @@ __device__ CHI_FLOAT chi2one(double *params, struct obs_data *sData, int N_data,
      *      - c_tumb: log10 of the physical (tumbling) value of the smallest axis c size; c < b < a=1
      *      - A (only in TREND mode): scaling parameter "A" for de-trending the brightness curve, in magnitude/radian units (to be multiplied by the phase angle alpha to get magnitude correction)
      *     TORQUE parameters:
-     *      - theta_K: Orientation angle theta for the vector <r> for the surface point where the torque is applied (asteroid's frame of reference); range 0 ... pi
-     *      - phi_K: Orientation angle phi for the vector <r> for the surface point where the torque is applied (asteroid's frame of reference); range 0... 2*pi (periodic)
-     *      - phi_F: direction of the torque force in the plane, perpendiculat to <r> (the reference direction is that of T=[r x a], towards the vector D=[T x r]); range 0... 2*pi (periodic)
-     *      - K: amplitude of the torque force, |r|*|F_t|, where F_t is the tangential componenbt of the force; units are rad/day^2
+     *      - Ti, Ts, Tl: derivatives for the corresponding Omega_i,s,l angles; units are rad/day
      *      
      *     Derived values:
      *      - Ii_inv = 1/Ii; inverse principle moment of inertia Ii
@@ -202,14 +160,12 @@ __device__ CHI_FLOAT chi2one(double *params, struct obs_data *sData, int N_data,
         #define P_phi_0    params[sTypes[T_phi_0][iseg]]
         #define P_L        params[sTypes[T_L][iseg]]
         #define P_A        params[sTypes[T_A][iseg]]
-        #define P_theta_K  params[sTypes[T_theta_K][iseg]]
-        #define P_phi_K    params[sTypes[T_phi_K][iseg]]
-        #define P_phi_F    params[sTypes[T_phi_F][iseg]]
-        #define P_K        params[sTypes[T_K][iseg]]
-        #define P_theta_K2 params[sTypes[T_theta_K2][iseg]]
-        #define P_phi_K2   params[sTypes[T_phi_K2][iseg]]
-        #define P_phi_F2   params[sTypes[T_phi_F2][iseg]]
-        #define P_K2       params[sTypes[T_K2][iseg]]
+        #define P_Ti       params[sTypes[T_Ti][iseg]]
+        #define P_Ts       params[sTypes[T_Ts][iseg]]
+        #define P_Tl       params[sTypes[T_Tl][iseg]]
+        #define P_T2i      params[sTypes[T_T2i][iseg]]
+        #define P_T2s      params[sTypes[T_T2s][iseg]]
+        #define P_T2l      params[sTypes[T_T2l][iseg]]
         #define P_c_tumb   params[sTypes[T_c_tumb][iseg]]
         #define P_b_tumb   params[sTypes[T_b_tumb][iseg]]
         #define P_Es       params[sTypes[T_Es][iseg]]
@@ -267,7 +223,9 @@ __device__ CHI_FLOAT chi2one(double *params, struct obs_data *sData, int N_data,
         mu[0] = (Is-1.0)*Ii_inv;
         mu[1] = (1.0-Ii)*Is_inv;
         mu[2] = Ii - Is;
-        compute_torque(&P_theta_K, &P_phi_K, &P_phi_F, &P_K, &Ii_inv, &Is_inv, mu);
+        mu[3] = P_Ti;
+        mu[4] = P_Ts;
+        mu[5] = P_Tl;
         // Initial values for the three components of the angular velocity vector in the asteroid's frame of reference
         // Initially this vector's orientation is determined by the initial Euler angles, theta, psi, and phi
         double Omega_i = P_L * Ii_inv * sin(theta) * sin(psi);
@@ -351,7 +309,11 @@ __device__ CHI_FLOAT chi2one(double *params, struct obs_data *sData, int N_data,
                     #ifdef TORQUE2
                     if (l == l2)
                         // In the middle of the full data time interval, updatimg mu values to the second set of torque parameters:
-                        compute_torque(&P_theta_K2, &P_phi_K2, &P_phi_F2, &P_K2, &Ii_inv, &Is_inv, mu);
+                    {
+                        mu[3] = P_T2i;
+                        mu[4] = P_T2s;
+                        mu[5] = P_T2l;
+                    }
                     #endif
                     
                     ODE_func (y, K1, mu);
@@ -867,21 +829,29 @@ __device__ int x2params(CHI_FLOAT *x, double *params, CHI_FLOAT sLimits[][N_TYPE
             continue;
         
         #ifdef RELAXED
-        #if defined(P_PHI) || defined(P_PSI) || defined(P_BOTH)
-        // Relaxing only c_tumb in P_PHI / P_PSI / combined modes
-        if (param_type == T_c_tumb)
-            continue;
-        #else        
-        // Relaxing L and c_tumb: (physical values are enforced below)
-        if (param_type == T_L || param_type == T_c_tumb)
-            continue;
-        #endif
-        #ifdef BC        
-        // Relaxing c:
-        if (param_type == T_c)
-            continue;
-        #endif        
-        #endif
+          #if defined(P_PHI) || defined(P_PSI) || defined(P_BOTH)
+          // Relaxing only c_tumb in P_PHI / P_PSI / combined modes
+          if (param_type == T_c_tumb)
+              continue;
+          #else        
+          // Relaxing L and c_tumb: (physical values are enforced below)
+          if (param_type == T_L || param_type == T_c_tumb)
+              continue;
+          #endif
+          #ifdef BC        
+          // Relaxing c:
+          if (param_type == T_c)
+              continue;
+          #endif 
+          #ifdef TORQUE
+          if (param_type == T_Ti || param_type == T_Ts || param_type == T_Tl)
+              continue;          
+          #endif
+          #ifdef TORQUE2
+          if (param_type == T_T2i || param_type == T_T2s || param_type == T_T2l)
+              continue;          
+          #endif
+        #endif  // RELAXED
         
         if (x[i]<0.0 || x[i]>=1.0)
             failed = 1;
