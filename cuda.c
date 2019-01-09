@@ -166,6 +166,7 @@ __device__ CHI_FLOAT chi2one(double *params, struct obs_data *sData, int N_data,
         #define P_T2i      params[sTypes[T_T2i][iseg]]
         #define P_T2s      params[sTypes[T_T2s][iseg]]
         #define P_T2l      params[sTypes[T_T2l][iseg]]
+        #define P_Tt       params[sTypes[T_Tt][iseg]]
         #define P_c_tumb   params[sTypes[T_c_tumb][iseg]]
         #define P_b_tumb   params[sTypes[T_b_tumb][iseg]]
         #define P_Es       params[sTypes[T_Es][iseg]]
@@ -267,21 +268,45 @@ __device__ CHI_FLOAT chi2one(double *params, struct obs_data *sData, int N_data,
             {
                 int N_steps;
                 double h;
+                OBS_TYPE t1 = sData[i-1].MJD;
+                OBS_TYPE t2 = sData[i].MJD;
+                
+                #ifdef TORQUE2
+                // The split point (in time) between the two torque regimes (can vary between sData[i1].MJD and sData[i2-1].MJD):
+                OBS_TYPE t_split = P_Tt*(sData[i2-1].MJD - sData[i1].MJD) + sData[i1].MJD;
+                int Nsplit;
+                if (t_split >= t1 && t_split < t2)
+                    // We are in the split time interval (when torque changes inside the interval), so need to run the ODE loop twice - 
+                    // before and after the torque change
+                    Nsplit = 2;
+                else
+                    Nsplit = 1;
+                for (int isplit=0; isplit<Nsplit; isplit++)
+                {
+                    if (Nsplit == 2)
+                    {
+                        if (isplit == 0)
+                        {
+                            t2 = t_split;
+                        }
+                        else
+                        {
+                            t1 = t_split;
+                            t2 = sData[i].MJD;
+                            // Right after the split point, changing the torque parameters to th second set:
+                            mu[3] = P_T2i;
+                            mu[4] = P_T2s;
+                            mu[5] = P_T2l;
+                        }
+                    }
+                        
+                #endif
                 
                 // How many integration steps to the current (i-th) observed value, from the previous (i-1) one:
                 // Forcing the maximum possible time step of TIME_STEP days (macro parameter), to ensure accuracy
-                N_steps = (sData[i].MJD - sData[i-1].MJD) / TIME_STEP + 1;
+                N_steps = (t2 - t1) / TIME_STEP + 1;
                 // Current equidistant time steps (h<=TIME_STEP):
-                h = (sData[i].MJD - sData[i-1].MJD) / N_steps;
-                #ifdef TORQUE2
-                // The time when torque parameters change is half-way between the two extreme data points:
-                float MJD_half = 0.5*(sData[i2-1].MJD + sData[i1].MJD);
-                int l2 = -1;
-                // Changing torque parameters in the second half of the data:
-                if (sData[i-1].MJD <= MJD_half && sData[i].MJD > MJD_half)
-                    // Number of ODE steps (h) until we hit the mid-point:
-                    l2 = (int)((MJD_half - sData[i-1].MJD) / h);
-                #endif
+                h = (t2 - t1) / N_steps;
                 
                 // Initial values for ODEs variables = the old values, from the previous i cycle:
                 #ifdef TORQUE
@@ -305,16 +330,6 @@ __device__ CHI_FLOAT chi2one(double *params, struct obs_data *sData, int N_data,
                 for (int l=0; l<N_steps; l++)
                 {
                     double K1[N_ODE], K2[N_ODE], K3[N_ODE], K4[N_ODE], f[N_ODE];
-                    
-                    #ifdef TORQUE2
-                    if (l == l2)
-                        // In the middle of the full data time interval, updatimg mu values to the second set of torque parameters:
-                    {
-                        mu[3] = P_T2i;
-                        mu[4] = P_T2s;
-                        mu[5] = P_T2l;
-                    }
-                    #endif
                     
                     ODE_func (y, K1, mu);
                     
@@ -348,6 +363,10 @@ __device__ CHI_FLOAT chi2one(double *params, struct obs_data *sData, int N_data,
                 phi = y[0];
                 theta = y[1];
                 psi = y[2];                    
+                #endif
+                
+                #ifdef TORQUE2
+                }  // isplit loop
                 #endif
             }                
             

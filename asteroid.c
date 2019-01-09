@@ -69,6 +69,7 @@ int main (int argc,char **argv)
            { T_T2i,     1,           0,      0,     0,             0},  // T2i
            { T_T2s,     1,           0,      0,     0,             0},  // T2s
            { T_T2l,     1,           0,      0,     0,             0},  // T2l
+           { T_Tt,      1,           0,      0,     0,             0},  // Tt
     #endif
            { T_c_tumb,  1,           0,      0,     1,             0},  // c_tumb
            { T_b_tumb,  0,           0,      0,     1,             0},  // b_tumb
@@ -364,6 +365,9 @@ int main (int argc,char **argv)
     hLimits[1][T_T2s] =  Tmax;
     hLimits[0][T_T2l] = -Tmax;
     hLimits[1][T_T2l] =  Tmax;
+    // The fractional split point (in time) between the two torque regimes; 0 is for torque2 only, 1 is for torque1 only
+    hLimits[0][T_Tt]  =  0.001;
+    hLimits[1][T_Tt]  =  0.999;
     #endif        
     
     // c_tumb (physical (tumbling) value of the axis c size; always smallest)

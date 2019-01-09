@@ -77,7 +77,7 @@ const int DN_TREND = 0;
 
 #ifdef TORQUE
   #ifdef TORQUE2
-  const int DN_TORQUE = 6;
+  const int DN_TORQUE = 7;
   #else
   const int DN_TORQUE = 3;
   #endif
@@ -137,6 +137,7 @@ const int T_Tl =      __COUNTER__;
 const int T_T2i =      __COUNTER__;
 const int T_T2s =      __COUNTER__;
 const int T_T2l =      __COUNTER__;
+const int T_Tt  =      __COUNTER__;
 #endif
 const int T_c_tumb =  __COUNTER__;
 const int T_b_tumb =  __COUNTER__;
@@ -174,7 +175,7 @@ const int BSIZE = 256;   // Threads in a block (64 ... 1024, step of 64); 384; 2
 #ifdef DEBUG
 const int N_BLOCKS = 56*1;
 #else
-const int N_BLOCKS = 56*5; // Should be proportional to the number of SMs (56 for P100); for some reason 10 results in a crash; use 5 for now
+const int N_BLOCKS = 56*2; // Should be proportional to the number of SMs (56 for P100); for some reason 10 results in a crash; use 5 for now
 #endif
 //const int N_SERIAL = 1; // number of serial iglob loops inside the kernel (>=1)
 //const int N_WARPS = BSIZE / 32;
@@ -186,7 +187,7 @@ const double TIME_STEP = 1e-2;  // 1e-2 !!!
 #if defined(TIMING) || defined(DEBUG)
 const unsigned int N_STEPS = 100; 
 #else
-const unsigned int N_STEPS = 3000; // Number of simplex steps per CUDA block (per simplex run) 27,000 per hour (N=7; BS=256; NB=56*4)
+const unsigned int N_STEPS = 5000; // Number of simplex steps per CUDA block (per simplex run) 27,000 per hour (N=7; BS=256; NB=56*4)
 #endif
 #ifdef DEBUG
 const unsigned int DT_DUMP = 30;
