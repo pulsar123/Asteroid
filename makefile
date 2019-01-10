@@ -38,7 +38,7 @@ ifeq ($(CLUSTER),monk)
   ARCH=sm_20
 endif  
 
-OPT=-O2 --ptxas-options=-v -arch=$(ARCH) -DGPU -DRELAXED -DP_PSI -DTORQUE2 -DBC
+OPT=-O2 --ptxas-options=-v -arch=$(ARCH) -DGPU -DRELAXED -DP_PSI -DTORQUE2 -DBC -DREOPT -DDEBUG
 INC=-I/usr/include/cuda -I.
 
 BINARY=asteroid

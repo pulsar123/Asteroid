@@ -230,7 +230,7 @@ const double T_SCALE = 0.06;  // in days
 const CHI_FLOAT DX_MIN = -6.9; // log(0.0001)
 const CHI_FLOAT DX_MAX = -5.8; // log(0.1) -3.51
 // Initial point is randomly shifted along each dimension by maximum 1/2 of the following amount (dimensionless):
-const CHI_FLOAT DX_RAND = 0.003; 
+const CHI_FLOAT DX_RAND = 0.001; 
 
 // Maximum number of clusters in minima() periodogram search
 const int NCL_MAX = 5;

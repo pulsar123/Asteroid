@@ -35,11 +35,14 @@ int main (int argc,char **argv)
     #endif   
     int travel = 0;
     int keep = 0;
+    int best = 0;
     
     // Observational data:
     int N_data; // Number of data points
     int N_filters; // Number of filters used in the data        
     int Nplot = 0;
+    unsigned long int seed = 0;
+    int Ncases = -1;
     
     #ifdef ONE_LE
     int const LE = 1;
@@ -140,10 +143,15 @@ int main (int argc,char **argv)
     if (argc == 1)
     {
         printf("\n Command line arguments:\n\n");
+        printf("-best : only keep the best result\n");
+        printf("-f type_constant value: forces the parameter with the type_constant to be frozen during optimization at \"value\" \n");
         printf("-i name  : input (data) file name\n");
-        printf("-o name  : output (results) file name\n");
+        printf("-keep : keep all intermediate results, not just the best ones\n");
+        printf("-l type_constant limit1 limit2: specify range for the parameter type_constant\n");
         printf("-m param1 param2 ... paramN  : input model parameters, for plotting and re-optimization\n");
         printf("     If one of the parameters has a special value of \"v\", it is allowed to vary randomly within its full range.\n");
+        printf("-N number : exit after \"number\" cycles\n");
+        printf("-o name  : output (results) file name\n");        
         printf("-plot    : plotting (only makes sense when -m is also used)\n");
         #if defined(P_PHI) || defined(P_BOTH)
         printf("-Pphi min max  : minimum and maximum values for Pphi period, in hours\n");
@@ -151,12 +159,10 @@ int main (int argc,char **argv)
         #if defined(P_PSI) || defined(P_BOTH)
         printf("-Ppsi min max  : minimum and maximum values for Ppsi period, in hours\n");
         #endif
-        printf("-f type_constant value: forces the parameter with the type_constant to be frozen during optimization at \"value\" \n");
-        printf("-l type_constant limit1 limit2: specify range for the parameter type_constant\n");
+        printf("-seed SEED : use the SEED number to initialize the random number generator\n");
         #ifdef REOPT
         printf("-t : travelling reoptimization\n");
         #endif
-        printf("-keep : keep all intermediate results, not just the best ones\n");
         printf("\n");
         exit(0);
     }
@@ -265,11 +271,34 @@ int main (int argc,char **argv)
                 break;
         }
 
-        // traveling reoptimization:
         if (strcmp(argv[j], "-keep") == 0)
         {
             keep = 1;
             j = j + 1;
+            if (j >= argc)
+                break;
+        }
+
+        if (strcmp(argv[j], "-best") == 0)
+        {
+            best = 1;
+            j = j + 1;
+            if (j >= argc)
+                break;
+        }
+
+        if (strcmp(argv[j], "-seed") == 0)
+        {
+            seed = strtoul(argv[j+1], NULL, 10);
+            j = j + 2;
+            if (j >= argc)
+                break;
+        }
+
+        if (strcmp(argv[j], "-N") == 0)
+        {
+            Ncases = atoi(argv[j+1]);
+            j = j + 2;
             if (j >= argc)
                 break;
         }
@@ -469,11 +498,12 @@ int main (int argc,char **argv)
         curandState* d_states;
         ERR(cudaMalloc ( &d_states, N_BLOCKS*BSIZE*sizeof( curandState ) ));
         // setup seeds, initialize d_f
-        #if defined(TIMING) || defined(DEBUG)
-        setup_kernel <<< N_BLOCKS, BSIZE >>> ( d_states, (unsigned long)0, d_f, 1);
-        #else
-        setup_kernel <<< N_BLOCKS, BSIZE >>> ( d_states, (unsigned long)(time(NULL)), d_f, 1);
-        #endif
+        if (seed == 0)
+            // seed=0 when no seed was provided on the command line; using time to randomize it:
+            setup_kernel <<< N_BLOCKS, BSIZE >>> ( d_states, (unsigned long)(time(NULL)), d_f, 1);
+        else
+            // Otherwise use the explicitely provided value of seed (good for post-processing, profiling and debugging):
+            setup_kernel <<< N_BLOCKS, BSIZE >>> ( d_states, seed, d_f, 1);
         
         #ifdef REOPT
         ERR(cudaMemcpyToSymbol(d_params0, params, N_PARAMS*sizeof(double), 0, cudaMemcpyHostToDevice));
@@ -513,32 +543,20 @@ int main (int argc,char **argv)
             exit(0);
             #endif        
             
-            if (loop_counter > 1)
+            ERR(cudaDeviceSynchronize());
+            
+            ERR(cudaMemcpy(h_f, d_f, N_BLOCKS * sizeof(CHI_FLOAT), cudaMemcpyDeviceToHost));
+            ERR(cudaMemcpyFromSymbol(h_params, d_params, N_BLOCKS * N_PARAMS * sizeof(double), 0, cudaMemcpyDeviceToHost));
+            ERR(cudaMemcpyFromSymbol(h_dV, d_dV, N_BLOCKS * N_FILTERS * sizeof(double), 0, cudaMemcpyDeviceToHost));
+            ERR(cudaDeviceSynchronize());
+
+            if (loop_counter > 0)
             {
-                if (keep)
-                    // In the "keep" mode, we append new results
-                    fp = fopen(argv[j_results], "a");
-                    else
-                    // In the default mode, we overwtite the results with the current best ones
-                    fp = fopen(argv[j_results], "w");
-                for (i=0; i<N_BLOCKS; i++)
-                {
-                    fprintf(fp,"%13.6e ",  h_f[i]);
-                    for (int m=0; m<N_filters; m++)
-                        fprintf(fp,"%13.6e ",  h_dV[i][m]);
-                    for (j=0; j<N_PARAMS; j++)
-                        if (Property[j][P_type] == T_L)
-                            fprintf(fp,"%15.11f ",  48*PI/h_params[i][j]);
-                            else
-                            fprintf(fp,"%15.11f ",  h_params[i][j]);
-                    fprintf(fp,"\n");
-                }
-                fclose(fp);
-                                
                 // Finding the best result between all threads:        
                 int i_best = 0;
                 chi2_tot = 1e32;
                 int Nresults = 0;
+                double iii;
                 for (i=0; i<N_BLOCKS; i++)
                 {
                     if (h_f[i] < 1e29)
@@ -548,6 +566,14 @@ int main (int argc,char **argv)
                         chi2_tot = h_f[i];
                         i_best = i;
                     }
+                    // Bringing periodic parameters to the canonic range of values
+                    for (j=0; j<N_PARAMS; j++)
+                    {
+                        if (Property[j][P_periodic] == 1 || Property[j][P_type] == T_psi_0)
+                            // To [0,2*pi[ range:
+                            h_params[i][j] = 2*PI * modf(h_params[i][j]/(2*PI), &iii);
+                    }
+                    
                 }
                 
                 #ifdef REOPT
@@ -569,18 +595,46 @@ int main (int argc,char **argv)
                         printf("%15.11f ",  h_params[i_best][j]);
                     printf("\n");
                 fflush(stdout);
+
+                if (keep)
+                    // In the "keep" mode, we append new results
+                    fp = fopen(argv[j_results], "a");
+                    else
+                    // In the default mode, we overwtite the results with the current best ones
+                    fp = fopen(argv[j_results], "w");
+                int i1, i2;
+                if (best)
+                    // If best=1, printing only the best model (one line)
+                {
+                    i1 = i_best;   i2 = i_best + 1;
+                }
+                else
+                    // If best <> 1, printing all models
+                {
+                    i1 = 0;  i2 = N_BLOCKS;
+                }
+                for (i=i1; i<i2; i++)
+                {
+                    fprintf(fp,"%13.6e ",  h_f[i]);
+                    for (int m=0; m<N_filters; m++)
+                        fprintf(fp,"%13.6e ",  h_dV[i][m]);
+                    for (j=0; j<N_PARAMS; j++)
+                        if (Property[j][P_type] == T_L)
+                            fprintf(fp,"%15.11f ",  48*PI/h_params[i][j]);
+                            else
+                            fprintf(fp,"%15.11f ",  h_params[i][j]);
+                    fprintf(fp,"\n");
+                }
+                fclose(fp);
+                                
             }
             
-            ERR(cudaDeviceSynchronize());
-            
-            ERR(cudaMemcpy(h_f, d_f, N_BLOCKS * sizeof(CHI_FLOAT), cudaMemcpyDeviceToHost));
-            ERR(cudaMemcpyFromSymbol(h_params, d_params, N_BLOCKS * N_PARAMS * sizeof(double), 0, cudaMemcpyDeviceToHost));
-            ERR(cudaMemcpyFromSymbol(h_dV, d_dV, N_BLOCKS * N_FILTERS * sizeof(double), 0, cudaMemcpyDeviceToHost));
-            ERR(cudaDeviceSynchronize());
-
             if (keep)
                 // If we are keeping all intermediate results, we have to reset d_f to 1e30 at the end of each loop:
                 setup_kernel <<< N_BLOCKS, BSIZE >>> ( d_states, (unsigned long)0, d_f, 0);
+
+            if (loop_counter == Ncases)
+                break;            
             
         }  // End of the while loop
         
