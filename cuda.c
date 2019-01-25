@@ -359,6 +359,16 @@ __device__ CHI_FLOAT chi2one(double *params, struct obs_data *sData, int N_data,
                 phi     = y[3];
                 theta   = y[4];
                 psi     = y[5];
+                #ifdef LAST
+                if (Nplot>0 && i==Nplot-1)
+                // Preserving the final values of L nd E:
+                {
+                    double L_last = sqrt(Omega_i*Omega_i*Ii*Ii + Omega_s*Omega_s*Is*Is + Omega_l*Omega_l);
+                    double E_last = 1 + 1/(L_last*L_last) * (sin(psi)*sin(psi)*(Ii_inv-Is_inv)+Is_inv-1) * (Omega_i*Omega_i*Ii*Ii + Omega_s*Omega_s*Is*Is);
+                    d_L_last = L_last;
+                    d_E_last = E_last;
+                }
+                #endif
                 #else
                 phi = y[0];
                 theta = y[1];

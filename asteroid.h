@@ -403,6 +403,11 @@ EXTERN __device__ int d_plot_start_seg[N_SEG];
 #ifdef P_BOTH
 EXTERN __device__ float dPphi, dPphi2;
 #endif
+#ifdef LAST
+EXTERN __device__ double d_L_last, d_E_last;
+#endif
+
+
 #endif
 
 

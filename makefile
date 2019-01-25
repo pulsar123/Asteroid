@@ -6,6 +6,7 @@
 # DEBUG2 : likley not functional; used for cuda code debugging
 # DUMP_DV : dumping 5.0*log10(1.0/E * 1.0/S) in read_data.c for all obs. data points
 # DUMP_RED_BLUE : dumping the converted/corrected obs. data (MJD, V, w)
+# LAST : (only for TORQUE) when -plot is used, printing the final values of the model parameters (L and E)
 # LSQ : likely not functional. Computing 2D least squares distances between the data points and the model, in chi2_plot
 # MIN_DV : force certain minimum for dV (magnitudes) of the brightness curve
 # MINIMA_PRINT : dumping periodogramm (fr, H) as min_profile.dat, in misc.c
@@ -38,7 +39,7 @@ ifeq ($(CLUSTER),monk)
   ARCH=sm_20
 endif  
 
-OPT=-O2 --ptxas-options=-v -arch=$(ARCH) -DGPU -DRELAXED -DP_PSI -DTORQUE2 -DBC -DREOPT -DDEBUG
+OPT=-O2 --ptxas-options=-v -arch=$(ARCH) -DGPU -DRELAXED -DP_PSI -DBC -DTORQUE -DLAST
 INC=-I/usr/include/cuda -I.
 
 BINARY=asteroid

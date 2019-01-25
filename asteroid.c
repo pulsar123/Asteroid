@@ -678,6 +678,42 @@ int main (int argc,char **argv)
         #ifdef LSQ
         ERR(cudaMemcpy(h_dlsq2, d_dlsq2, N_data*sizeof(double), cudaMemcpyDeviceToHost));
         #endif        
+          // Printing the initial and final (only for TORQUE) model state (for later computations of P_psi, P_phi etc)
+          FILE *fmod=fopen("model_params.dat","w");
+          // Initial model:
+                    for (j=0; j<N_PARAMS; j++)
+                    {
+                        // Skipping the torque parameters:
+                        if (Property[j][P_type]==T_Ti || Property[j][P_type]==T_Ts || Property[j][P_type]==T_Tl || Property[j][P_type]==T_c || Property[j][P_type]==T_b)
+                            continue;
+                        if (Property[j][P_type] == T_L)
+                            fprintf(fmod, "%15.11f ",  48*PI/params[j]);
+                            else
+                            fprintf(fmod, "%15.11f ",  params[j]);
+                    }
+                    fprintf(fmod, "\n");
+        #ifdef TORQUE
+          #ifdef LAST
+          double L_last, E_last;
+          ERR(cudaMemcpyFromSymbol(&L_last, d_L_last, sizeof(double), 0, cudaMemcpyDeviceToHost));
+          ERR(cudaMemcpyFromSymbol(&E_last, d_E_last, sizeof(double), 0, cudaMemcpyDeviceToHost));
+          // Final model:
+                    for (j=0; j<N_PARAMS; j++)
+                    {
+                        // Skipping the torque parameters:
+                        if (Property[j][P_type]==T_Ti || Property[j][P_type]==T_Ts || Property[j][P_type]==T_Tl || Property[j][P_type]==T_c || Property[j][P_type]==T_b)
+                            continue;
+                        if (Property[j][P_type] == T_L)
+                            fprintf(fmod, "%15.11f ",  48*PI/L_last);
+                        else if (Property[j][P_type] == T_Es)
+                            fprintf(fmod, "%15.11f ",  E_last);
+                        else
+                            fprintf(fmod, "%15.11f ",  params[j]);
+                    }
+                    fprintf(fmod, "\n");
+          #endif
+        #endif
+        fclose (fmod);
         ERR(cudaDeviceSynchronize());
         
         // Finding minima and computing periodogramm
