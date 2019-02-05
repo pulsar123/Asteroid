@@ -1088,11 +1088,9 @@ __global__ void chi2_gpu (struct obs_data *dData, int N_data, int N_filters,
     #endif
     __shared__ CHI_FLOAT sLimits[2][N_TYPES];
     __shared__ volatile CHI_FLOAT s_f[BSIZE];
-    __shared__ volatile int s_thread_id[BSIZE];
+//    __shared__ volatile int s_thread_id[BSIZE];
     __shared__ int sProperty[N_PARAMS][N_COLUMNS];
     __shared__ int sTypes[N_TYPES][N_SEG];
-    //    __shared__ CHI_FLOAT s_f[BSIZE];
-    //    __shared__ int s_thread_id[BSIZE];
     __shared__ struct chi2_struct s_chi2_params;
     __shared__ struct x2_struct s_x2_params;
     int i, j;
@@ -1152,8 +1150,8 @@ __global__ void chi2_gpu (struct obs_data *dData, int N_data, int N_filters,
     CHI_FLOAT f[N_PARAMS+1]; // chi2 values for the simplex edges (point index)
     int ind[N_PARAMS+1]; // Indexes to the sorted array (point index)
     
-    #ifdef P_BOTH
     bool failed;
+    #ifdef P_BOTH
     //    for (int itry=0; itry<100; itry++)
     while (1)
     {
@@ -1257,20 +1255,14 @@ __global__ void chi2_gpu (struct obs_data *dData, int N_data, int N_filters,
         }
         
         // Computing the initial function values (chi2):        
-        #ifdef P_BOTH
         failed = 0;
-        #endif    
         for (j=0; j<N_PARAMS+1; j++)
         {
-            #ifdef P_BOTH
             if (x2params(x[j], params, sLimits, &s_x2_params, sProperty, sTypes))
             {
                 failed = 1;
                 break;
             }
-            #else        
-            x2params(x[j], params, sLimits, &s_x2_params, sProperty, sTypes);
-            #endif        
             f[j] = chi2one(params, sData, N_data, N_filters, delta_V, 0, &s_chi2_params, sTypes);    
         }
         
@@ -1284,10 +1276,8 @@ __global__ void chi2_gpu (struct obs_data *dData, int N_data, int N_filters,
     // The main simplex loop
     while (1)
     {
-        #ifdef P_BOTH
         if (failed == 1)
             break;
-        #endif
         l++;  // Incrementing the global (for the whole lifetime of the thread) simplex steps counter by one
         
         // Sorting the simplex:
@@ -1446,26 +1436,24 @@ __global__ void chi2_gpu (struct obs_data *dData, int N_data, int N_filters,
         // We failed the optimization
         if (bad)
         {
-            f[ind[0]] = 1e30;
+            failed = 1;
             break;
         }
         
     }  // inner while loop
     
     
-    #ifdef P_BOTH
-    if (failed == 1 || f[ind[0]] < 1e-5)
+//    if (failed == 1 || f[ind[0]] < 1e-5)
+    if (failed == 1)
         s_f[threadIdx.x] = 1e30;
     else
         s_f[threadIdx.x] = f[ind[0]];
-    #else        
-    s_f[threadIdx.x] = f[ind[0]];
-    #endif
-    s_thread_id[threadIdx.x] = threadIdx.x;
+//    s_thread_id[threadIdx.x] = threadIdx.x;
     
     __syncthreads();
     //!!! AT this point not all warps initialized s_f and s_thread_id! It looks like __syncthreads doesn't work!
     
+    /*
     // Binary reduction:
     int nTotalThreads = blockDim.x;
     while(nTotalThreads > 1)
@@ -1473,7 +1461,7 @@ __global__ void chi2_gpu (struct obs_data *dData, int N_data, int N_filters,
         int halfPoint = nTotalThreads / 2; // Number of active threads
         if (threadIdx.x < halfPoint) {
             int thread2 = threadIdx.x + halfPoint; // the second element index
-            float temp = s_f[thread2];
+            CHI_FLOAT temp = s_f[thread2];
             if (temp < s_f[threadIdx.x])
             {
                 s_f[threadIdx.x] = temp;
@@ -1484,12 +1472,33 @@ __global__ void chi2_gpu (struct obs_data *dData, int N_data, int N_filters,
         nTotalThreads = halfPoint; // Reducing the binary tree size by two
     }
     // At this point, the smallest chi2 in the block is in s_f[0]
+    */
     
-    if (threadIdx.x == s_thread_id[0] && s_f[0] < d_f[blockIdx.x])
+    // Serial reduction:
+    __shared__ volatile int thread_min;
+    __shared__ volatile CHI_FLOAT smin;
+    if (threadIdx.x == 0)
+    {
+        thread_min = 0;
+        smin = HUGE;
+        for (int j=0; j<blockDim.x; j++)
+        {
+            if (s_f[j] < smin)
+            {
+                smin = s_f[j];
+                thread_min = j;
+            }
+        }
+    }
+    __syncthreads();
+    
+//    if (threadIdx.x == s_thread_id[0] && s_f[0] < d_f[blockIdx.x])
+    if (threadIdx.x == thread_min && smin < d_f[blockIdx.x])
         // Keeping the current best result if it's better than the previous kernel result for the same blockID
     {
         // Copying the found minimum to device memory:
-        d_f[blockIdx.x] = s_f[0];
+//        d_f[blockIdx.x] = s_f[0];
+        d_f[blockIdx.x] = smin;
         x2params(x[ind[0]],params,sLimits, &s_x2_params, sProperty, sTypes);
         for (int i=0; i<N_PARAMS; i++)
         {
@@ -1499,8 +1508,9 @@ __global__ void chi2_gpu (struct obs_data *dData, int N_data, int N_filters,
         }
     }
     
+
     
-    // Writing the global states from device memory:
+    // Writing the global states to device memory:
     globalState[id] = localState;
     
     return;        

@@ -171,7 +171,7 @@ const float BC_DEV1 = 1.1; //1.3
 
 
 // GPU optimization parameters:
-const int BSIZE = 256;   // Threads in a block (64 ... 1024, step of 64); 384; 256
+const int BSIZE = 256;   // Threads in a block (64 ... 1024, step of 64); 256
 #ifdef DEBUG
 const int N_BLOCKS = 56*1;
 #else

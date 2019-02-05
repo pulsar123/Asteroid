@@ -545,9 +545,9 @@ int main (int argc,char **argv)
             
             ERR(cudaDeviceSynchronize());
             
-            ERR(cudaMemcpy(h_f, d_f, N_BLOCKS * sizeof(CHI_FLOAT), cudaMemcpyDeviceToHost));
             ERR(cudaMemcpyFromSymbol(h_params, d_params, N_BLOCKS * N_PARAMS * sizeof(double), 0, cudaMemcpyDeviceToHost));
             ERR(cudaMemcpyFromSymbol(h_dV, d_dV, N_BLOCKS * N_FILTERS * sizeof(double), 0, cudaMemcpyDeviceToHost));
+            ERR(cudaMemcpy(h_f, d_f, N_BLOCKS * sizeof(CHI_FLOAT), cudaMemcpyDeviceToHost));
             ERR(cudaDeviceSynchronize());
 
             if (loop_counter > 0)
@@ -684,8 +684,18 @@ int main (int argc,char **argv)
                     for (j=0; j<N_PARAMS; j++)
                     {
                         // Skipping the torque parameters:
-                        if (Property[j][P_type]==T_Ti || Property[j][P_type]==T_Ts || Property[j][P_type]==T_Tl || Property[j][P_type]==T_c || Property[j][P_type]==T_b)
+                        #ifdef TORQUE
+                        if (Property[j][P_type]==T_Ti || Property[j][P_type]==T_Ts || Property[j][P_type]==T_Tl)
                             continue;
+                        #endif
+                        #ifdef BC
+                        if (Property[j][P_type]==T_c || Property[j][P_type]==T_b)
+                            continue;
+                        #endif
+                        #ifdef TREND
+                        if (Property[j][P_type]==T_A)
+                            continue;
+                        #endif
                         if (Property[j][P_type] == T_L)
                             fprintf(fmod, "%15.11f ",  48*PI/params[j]);
                             else
@@ -701,8 +711,16 @@ int main (int argc,char **argv)
                     for (j=0; j<N_PARAMS; j++)
                     {
                         // Skipping the torque parameters:
-                        if (Property[j][P_type]==T_Ti || Property[j][P_type]==T_Ts || Property[j][P_type]==T_Tl || Property[j][P_type]==T_c || Property[j][P_type]==T_b)
+                        if (Property[j][P_type]==T_Ti || Property[j][P_type]==T_Ts || Property[j][P_type]==T_Tl)
                             continue;
+                        #ifdef BC
+                        if (Property[j][P_type]==T_c || Property[j][P_type]==T_b)
+                            continue;
+                        #endif
+                        #ifdef TREND
+                        if (Property[j][P_type]==T_A)
+                            continue;
+                        #endif
                         if (Property[j][P_type] == T_L)
                             fprintf(fmod, "%15.11f ",  48*PI/L_last);
                         else if (Property[j][P_type] == T_Es)
