@@ -493,7 +493,7 @@ __device__ CHI_FLOAT chi2one(double *params, struct obs_data *sData, int N_data,
             double c = P_c_tumb;
             #endif        
             
-            #ifdef BW_BALL
+            #if defined(BW_BALL)
             /* The simplest non-geometric brightness model - "black and white ball".
              * The "a" axis end hemisphere is dark (albedo kappa<1), the oppostire hemisphere is bright (albedo=1).
              * Assuming the phase angle = 0 (sun is behind the observer) for simplicity.
@@ -505,6 +505,61 @@ __device__ CHI_FLOAT chi2one(double *params, struct obs_data *sData, int N_data,
             double cos_alpha = a_x*Ep_x + a_y*Ep_y + a_z*Ep_z;
             // Relative bw ball brightness (1 when only the bright hemisphere is visible; kappa when only the dark one):
             Vmod = -2.5*log10(0.5*(P_kappa*(1+cos_alpha) + (1-cos_alpha)));
+            
+            #elif defined(RECT)
+            /* Simplified (phase is fixed at 0) rectangular prism brightness model.
+             * Here a, b, c correspond to half-lengths of the longest, intermediate, and shortest sides.
+             * Phase is fixed at 0, so all we are computing is the surface area of the prism projected on the plane of sky.
+             * Except for special cases, projected rectangular prism will consist of the three projected sides
+             * (which are parallelograms in projection): (a,b), (b,c), and (a,c).
+             * */
+            // Scaling the unit vectors b,c by the lengths provided by b and c (a=1):
+            b_x = b * b_x;
+            b_y = b * b_y;
+            b_z = b * b_z;
+            
+            c_x = c * c_x;
+            c_y = c * c_y;
+            c_z = c * c_z;
+            
+            // Projected axes (onto the plane of sky):
+            double ap_x = a_y*Ep_z - a_z*Ep_y;
+            double ap_y = a_z*Ep_x - a_x*Ep_z;
+            double ap_z = a_x*Ep_y - a_y*Ep_x;
+            
+            double bp_x = b_y*Ep_z - b_z*Ep_y;
+            double bp_y = b_z*Ep_x - b_x*Ep_z;
+            double bp_z = b_x*Ep_y - b_y*Ep_x;
+
+            double cp_x = c_y*Ep_z - c_z*Ep_y;
+            double cp_y = c_z*Ep_x - c_x*Ep_z;
+            double cp_z = c_x*Ep_y - c_y*Ep_x;
+
+            // Vector products to be used in surface area of the projected prism computation:
+            double ab_x = ap_y*bp_z - ap_z*bp_y;
+            double ab_y = ap_z*bp_x - ap_x*bp_z;
+            double ab_z = ap_x*bp_y - ap_y*bp_x;
+            
+            double ac_x = ap_y*cp_z - ap_z*cp_y;
+            double ac_y = ap_z*cp_x - ap_x*cp_z;
+            double ac_z = ap_x*cp_y - ap_y*cp_x;
+            
+            double bc_x = bp_y*cp_z - bp_z*cp_y;
+            double bc_y = bp_z*cp_x - bp_x*cp_z;
+            double bc_z = bp_x*cp_y - bp_y*cp_x;    
+            
+            // Brightness is assumed to be proportional to the surface area of the projected rectangular prism (so no phase effects):
+            double ab = ab_x*ab_x+ab_y*ab_y+ab_z*ab_z;
+            double ac = ac_x*ac_x+ac_y*ac_y+ac_z*ac_z;
+            double bc = bc_x*bc_x+bc_y*bc_y+bc_z*bc_z;
+            if (ab < 0.0)
+                ab = 0.0;
+            if (bc < 0.0)
+                bc = 0.0;
+            if (ac < 0.0)
+                ac = 0.0;
+//            Vmod = -2.5*log10(4*(sqrt(ab) + sqrt(bc) + sqrt(ac)));
+            Vmod = 4*(sqrt(ab) + sqrt(bc) + sqrt(ac));
             
             #else
             /* The defaul brightness model (triaxial ellipsoid, constant albedo), from Muinonen & Lumme, 2015
@@ -960,7 +1015,7 @@ __device__ int x2params(CHI_FLOAT *x, double *params, CHI_FLOAT sLimits[][N_TYPE
             #ifdef P_PHI
             // Only in P_PHI mode, L parameter is not computed here, but a few lines below
             if (param_type != T_L)
-                #endif
+            #endif
                 // The default way to compute params[i] from x[i]:
                 params[i] = x[i] * (sLimits[1][param_type]-sLimits[0][param_type]) + sLimits[0][param_type];
             

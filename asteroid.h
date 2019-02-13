@@ -33,6 +33,10 @@
  #define TORQUE
 #endif
 
+#ifdef RECT
+ #define BC
+#endif 
+
 #ifdef SEGMENT
 // Absolute times - starting points of the data segments:
 #if N_SEG == 3
@@ -230,7 +234,7 @@ const double T_SCALE = 0.06;  // in days
 const CHI_FLOAT DX_MIN = -6.9; // log(0.0001)
 const CHI_FLOAT DX_MAX = -5.8; // log(0.1) -3.51
 // Initial point is randomly shifted along each dimension by maximum 1/2 of the following amount (dimensionless):
-const CHI_FLOAT DX_RAND = 0.001; 
+const CHI_FLOAT DX_RAND = 0.0003; 
 
 // Maximum number of clusters in minima() periodogram search
 const int NCL_MAX = 5;
@@ -248,7 +252,7 @@ const int M_MAX = 30;  // Maximum number of model local minima
 const float M_MAX2 = 20;  // Soft limit on the number of local model minima (should be between NOBS_MAX and M_MAX); if M>N_MAX2, we start to punsih chi2
 const int NOBS_MAX = 10;  // Maximum number of observed minima
 const float DT_MAX = 0.12;  // Maximum 1D distance between observed and model minima in days; 0.12
-const float DV_MAX = 2.4;  // Maximum 1D distance between observed and model minima in brightness magnitudes; 2.4
+const float DV_MAX = 24;  // Maximum 1D distance between observed and model minima in brightness magnitudes; 2.4
 const float D2_MAX = sqrt(2)*DT_MAX;  // Maximum 2D distance between observed and model minima in equivalent days
 const float DT_MAX2 = 1.5 * DT_MAX; // Additional multipler for DT_MAX defining the time window size (relative to observed minima) where model minima are memorized
 const float P_MIN = 0.01;  // Reward strength for closeness of model minima to observed ones; 0...1; ->0 is the strongest reward
