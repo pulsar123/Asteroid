@@ -558,8 +558,8 @@ __device__ CHI_FLOAT chi2one(double *params, struct obs_data *sData, int N_data,
                 bc = 0.0;
             if (ac < 0.0)
                 ac = 0.0;
-//            Vmod = -2.5*log10(4*(sqrt(ab) + sqrt(bc) + sqrt(ac)));
-            Vmod = 4*(sqrt(ab) + sqrt(bc) + sqrt(ac));
+            Vmod = -2.5*log10(4*(sqrt(ab) + sqrt(bc) + sqrt(ac)));
+//            Vmod = 4*(sqrt(ab) + sqrt(bc) + sqrt(ac));
             
             #else
             /* The defaul brightness model (triaxial ellipsoid, constant albedo), from Muinonen & Lumme, 2015
