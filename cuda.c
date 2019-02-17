@@ -83,8 +83,6 @@ __device__ CHI_FLOAT chi2one(double *params, struct obs_data *sData, int N_data,
 // NUDGE is not supported in SEGMENT mode!
 {
     int i, m;
-    double cos_alpha_p, sin_alpha_p, scalar_Sun, scalar_Earth, scalar;
-    double cos_lambda_p, sin_lambda_p, Vmod, alpha_p, lambda_p;
     double Ep_x, Ep_y, Ep_z, Sp_x, Sp_y, Sp_z;
     CHI_FLOAT chi2a;
     double sum_y2[N_FILTERS];
@@ -493,6 +491,8 @@ __device__ CHI_FLOAT chi2one(double *params, struct obs_data *sData, int N_data,
             double c = P_c_tumb;
             #endif        
             
+            double Vmod;
+            
             #if defined(BW_BALL)
             /* The simplest non-geometric brightness model - "black and white ball".
              * The "a" axis end hemisphere is dark (albedo kappa<1), the oppostire hemisphere is bright (albedo=1).
@@ -559,11 +559,12 @@ __device__ CHI_FLOAT chi2one(double *params, struct obs_data *sData, int N_data,
             if (ac < 0.0)
                 ac = 0.0;
             Vmod = -2.5*log10(4*(sqrt(ab) + sqrt(bc) + sqrt(ac)));
-//            Vmod = 4*(sqrt(ab) + sqrt(bc) + sqrt(ac));
             
             #else
             /* The defaul brightness model (triaxial ellipsoid, constant albedo), from Muinonen & Lumme, 2015
              */
+            double cos_alpha_p, sin_alpha_p, scalar_Sun, scalar_Earth, scalar;
+            double cos_lambda_p, sin_lambda_p, alpha_p, lambda_p;
             
             // The two scalars from eq.(12) of Muinonen & Lumme, 2015; assuming a=1
             // Switching from Muinonen coords (abc) to Samarasinha coords (bca)
@@ -819,6 +820,7 @@ __device__ void params2x(CHI_FLOAT *x, double *params, CHI_FLOAT sLimits[][N_TYP
             if (sProperty[i][P_periodic] == 1)
             {
                 x[i] = par / (2*PI);
+                x[i] = x[i] - floor(x[i]);  // Converting to the canonical interval (0..1)
             }
             else
             {
@@ -913,6 +915,9 @@ __device__ int x2params(CHI_FLOAT *x, double *params, CHI_FLOAT sLimits[][N_TYPE
             continue;
         
         #ifdef RELAXED
+        // During reoptimization we are using L explicitly:
+          if (s_x2_params->reopt  && param_type == T_L)
+              continue;
           #if defined(P_PHI) || defined(P_PSI) || defined(P_BOTH)
           // Relaxing only c_tumb in P_PHI / P_PSI / combined modes
           if (param_type == T_c_tumb)
@@ -1014,7 +1019,8 @@ __device__ int x2params(CHI_FLOAT *x, double *params, CHI_FLOAT sLimits[][N_TYPE
         {
             #ifdef P_PHI
             // Only in P_PHI mode, L parameter is not computed here, but a few lines below
-            if (param_type != T_L)
+            // (Unless it's reoptimization)
+            if (param_type != T_L || s_x2_params->reopt)
             #endif
                 // The default way to compute params[i] from x[i]:
                 params[i] = x[i] * (sLimits[1][param_type]-sLimits[0][param_type]) + sLimits[0][param_type];
@@ -1049,7 +1055,7 @@ __device__ int x2params(CHI_FLOAT *x, double *params, CHI_FLOAT sLimits[][N_TYPE
                 params[i] = exp(params[i]);
             }
             #endif            
-            else if (param_type == T_L)
+            else if (param_type == T_L && !s_x2_params->reopt)
             {
                 #if defined(P_PSI) || defined(P_PHI) || defined(P_BOTH)            
                 // In P_* modes, T_L parameter has a different meaning
@@ -1134,7 +1140,7 @@ __device__ int x2params(CHI_FLOAT *x, double *params, CHI_FLOAT sLimits[][N_TYPE
 
 //++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 
-__global__ void chi2_gpu (struct obs_data *dData, int N_data, int N_filters,
+__global__ void chi2_gpu (struct obs_data *dData, int N_data, int N_filters, int reopt,
                           curandState* globalState, CHI_FLOAT *d_f, struct x2_struct x2_params)
 // CUDA kernel computing chi^2 on GPU
 {        
@@ -1182,16 +1188,22 @@ __global__ void chi2_gpu (struct obs_data *dData, int N_data, int N_filters,
             s_chi2_params.start_seg[i] = d_start_seg[i];
         #endif   
     }
-    #ifdef REOPT
-    // Reading the initial point from device memory
-    for (i=0; i<N_PARAMS; i++)
-        params[i] = d_params0[i];
-    #endif        
     
     // Downhill simplex optimization approach
     
     __syncthreads();
-    
+
+    CHI_FLOAT x[N_PARAMS+1][N_PARAMS];  // simplex points (point index, coordinate)
+
+    if (reopt)
+    {
+        // Reading the initial point from device memory
+        for (i=0; i<N_PARAMS; i++)
+            params[i] = d_params0[i];
+        // Converting from physical to dimensionless (0...1 scale) parameters:
+        params2x(x[0], params, sLimits, sProperty, sTypes);
+    }
+        
     // Global thread index:
     int id = threadIdx.x + blockDim.x*blockIdx.x;
     
@@ -1201,88 +1213,65 @@ __global__ void chi2_gpu (struct obs_data *dData, int N_data, int N_filters,
     //Simplex steps counter:
     int l = 0;
     
-    CHI_FLOAT x[N_PARAMS+1][N_PARAMS];  // simplex points (point index, coordinate)
     CHI_FLOAT f[N_PARAMS+1]; // chi2 values for the simplex edges (point index)
-    int ind[N_PARAMS+1]; // Indexes to the sorted array (point index)
+    
+    s_x2_params.reopt = reopt;
     
     bool failed;
     #ifdef P_BOTH
     //    for (int itry=0; itry<100; itry++)
     while (1)
     {
-        #endif
-        
-        
-        #ifdef REOPT
-        // Converting from physical to dimensionless (0...1 scale) parameters:
-        params2x(x[0], params, sLimits, sProperty, sTypes);
-        
-        // Random displacement of the initial point, uniformly distributed within +-0.5*DX_RAND:
+    #endif
+
+        // Setting the initial values of x[0][i] vector
         for (i=0; i<N_PARAMS; i++)
         {
-            if (sProperty[i][P_frozen] == -1)
-                // P_frozen=-1 parameters can vary initially within the whole range
-            {
-                // Random number [0,1[
-                float r = curand_uniform(&localState);
-                // The DX_INI business is to prevent the initial simplex going beyong the limits
-                // The allowed interval is 1e-6 ... 1-DX_INI-1e-6
-                x[0][i] = 1e-6 + (1.0 - DX_INI - 2e-6) * r;
-            }
-            else
-                // P_frozen=0 parameters start close to the original values
-            {
-                // Sticking to the 0...1 interval for x:
-                // (Allowed to switch LAM/SAM here)
-                double x_min = 0;
-                if (x[0][i] - 0.5*DX_RAND > 0.0)
-                    x_min = x[0][i] - 0.5*DX_RAND;
-                double x_max = 1;
-                if (x[0][i] + 0.5*DX_RAND < 1.0)
-                    x_max = x[0][i] + 0.5*DX_RAND;
-                x[0][i] = DX_RAND*curand_uniform(&localState)*(x_max-x_min) + x_min;            
-            }
-        }
-        #else  // REOPT  
-        // Initial random point
-        for (i=0; i<N_PARAMS; i++)
-        {
+            // Generating random number in [0..1[ interval:
+            float r = curand_uniform(&localState);
+            
             #ifdef BC
             #ifndef RANDOM_BC
-            // Initial vales of c/b are equal to initial values of c_tumb/b_tumb:
-            if (sProperty[i][P_type] == T_c)
+            if (!reopt)
             {
-                x[0][i] = x[0][sTypes[T_c_tumb][sProperty[i][P_iseg]]];
-                continue;
-            }            
-            else if (sProperty[i][P_type] == T_b)
-            {
-                x[0][i] = x[0][sTypes[T_b_tumb][sProperty[i][P_iseg]]];
-                continue;
-            }            
+                // Initial vales of c/b are equal to initial values of c_tumb/b_tumb:
+                if (sProperty[i][P_type] == T_c)
+                {
+                    x[0][i] = x[0][sTypes[T_c_tumb][sProperty[i][P_iseg]]];
+                    continue;
+                }            
+                else if (sProperty[i][P_type] == T_b)
+                {
+                    x[0][i] = x[0][sTypes[T_b_tumb][sProperty[i][P_iseg]]];
+                    continue;
+                }            
+            }
             #endif  // RANDOM_BC 
             #endif  // BC      
-            // Random number [0,1[
-            float r = curand_uniform(&localState);
-            if (sProperty[i][P_type] == T_Es)
+            
+            if (!reopt || reopt && sProperty[i][P_frozen]==-1)
             {
-                // Using the x value for Es to determine the mode (1:LAM. 0:SAM)
-                int LAM = r>=0.5;
-                if (LAM == 0)
-                    // Interval 1e-6 ... 0.5-DX_INI-1e-6:
-                    x[0][i] = 1e-6 + (1 - 2*DX_INI - 4e-6) * r;
-                else
-                    // Interval 0.5+1e-6 ... 1-DX_INI-1e-6:
-                    x[0][i] = 0.5 + 1e-6 + (1 - 2*DX_INI - 4e-6) * (r-0.5);
+                // The allowed interval is 1e-8  ... 1-1e-8:
+                x[0][i] = 1e-8 + r*(1.0 - 2e-8);
             }
-            else
-                // The DX_INI business is to prevent the initial simplex going beyong the limits
-                // The allowed interval is 1e-6 ... 1-DX_INI-1e-6
-                x[0][i] = 1e-6 + (1.0 - DX_INI - 2e-6) * r;
+                        
+            if (reopt && sProperty[i][P_frozen]!=-1)
+             // P_frozen=0 parameters start close to the original values, within +-DX_RAND
+            {
+                x[0][i] = x[0][i] + 2*(r-0.5)*DX_RAND;
+                #ifndef RELAXED  //???
+                // The allowed interval is 1e-8  ... 1-1e-8:
+                if (x[0][i] < 1e-8)
+                    x[0][i] = 1e-8;
+                if (x[0][i] > 1 - 1e-8)
+                    x[0][i] = 1 - 1e-8;
+                #endif
+            }
+            
         }
-        #endif // REOPT    
-        
-        // Simplex initialization
+
+                
+        // Simplex initialization (initial values x[j][i] for all j>0)
         // Vertex loop:
         for (j=1; j<N_PARAMS+1; j++)
         {
@@ -1291,16 +1280,22 @@ __global__ void chi2_gpu (struct obs_data *dData, int N_data, int N_filters,
             {
                 if (i == j-1)
                 {
-                    #ifdef REOPT
-                    // In REOPT mode, initial displacements are random, with log distrubution between DX_MIN and DX_MAX:
-                    CHI_FLOAT dx_ini = exp(curand_uniform(&localState) * (DX_MAX-DX_MIN) + DX_MIN);
-                    // !!! Will fail for some displacements:
-                    // ??? Now with a random sign:
-                    float r = curand_uniform(&localState)*2 - 1;
-                    x[j][i] = x[0][i] + dx_ini * r/fabs(r);
-                    #else                
-                    x[j][i] = x[0][i] + DX_INI;
-                    #endif                
+                    float r = curand_uniform(&localState);
+                    // Step can be both negative and positive:
+                    if (r < 0.5)
+                        x[j][i] = x[0][i] - DX_INI;
+                    else
+                        x[j][i] = x[0][i] + DX_INI;
+                    #ifndef RELAXED  //???
+                    if (sProperty[i][P_periodic] != 1)
+                    // Enforcing 0..1 interval on non-periodic parameters
+                    {
+                        if (x[j][i] < 0.0)
+                            x[j][i] = 0.0;
+                        if (x[j][i] > 1.0)
+                            x[j][i] = 1.0;
+                    }
+                    #endif
                 }
                 else
                 {
@@ -1318,6 +1313,7 @@ __global__ void chi2_gpu (struct obs_data *dData, int N_data, int N_filters,
                 failed = 1;
                 break;
             }
+
             f[j] = chi2one(params, sData, N_data, N_filters, delta_V, 0, &s_chi2_params, sTypes);    
         }
         
@@ -1327,6 +1323,7 @@ __global__ void chi2_gpu (struct obs_data *dData, int N_data, int N_filters,
     }  // end of for loop
     #endif
     
+    int ind[N_PARAMS+1]; // Indexes to the sorted array (point index)
     
     // The main simplex loop
     while (1)

@@ -23,7 +23,6 @@
 # RANDOM_BC : (not working) for BC mode. If defined, initial guess for brightness b,c parameters are random (not coinciding with the kinematic b,c parameters).
 # RECT : rectangular prism simplified (phase=0) brightness model (here b, c parameters are half-lengths of the second and third shortest sides). Uses BC internally
 # RELAXED : during optimization, the free parameteres has the least possible degree of constraint.
-# REOPT : if defined, use the model point provided via args, and searhc for minima around it
 # ROTATE: only in BC mode; rotates the asteroid brightness frame relative to the inertia frame; two extra parameters: theta_R, phi_R
 # SEGMENT : multiple data segments (specified by T_START[] vector)
 # TIMING : time the main kernel (chi2_gpu)
@@ -40,7 +39,7 @@ ifeq ($(CLUSTER),monk)
   ARCH=sm_20
 endif  
 
-OPT=-O2 --ptxas-options=-v -arch=$(ARCH) -DGPU -DRELAXED -DP_PSI -DTORQUE -DRECT
+OPT=-O2 --ptxas-options=-v -arch=$(ARCH) -DGPU -DRELAXED -DP_PSI -DRECT -DTORQUE
 INC=-I/usr/include/cuda -I.
 
 BINARY=asteroid

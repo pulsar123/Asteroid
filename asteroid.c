@@ -36,6 +36,7 @@ int main (int argc,char **argv)
     int travel = 0;
     int keep = 0;
     int best = 0;
+    int reopt = 0;
     
     // Observational data:
     int N_data; // Number of data points
@@ -145,24 +146,23 @@ int main (int argc,char **argv)
         printf("\n Command line arguments:\n\n");
         printf("-best : only keep the best result\n");
         printf("-f type_constant value: forces the parameter with the type_constant to be frozen during optimization at \"value\" \n");
-        printf("-i name  : input (data) file name\n");
+        printf("-i name : input (data) file name\n");
         printf("-keep : keep all intermediate results, not just the best ones\n");
-        printf("-l type_constant limit1 limit2: specify range for the parameter type_constant\n");
-        printf("-m param1 param2 ... paramN  : input model parameters, for plotting and re-optimization\n");
+        printf("-l type_constant limit1 limit2 : specify range for the parameter type_constant\n");
+        printf("-m param1 param2 ... paramN : input model parameters, for plotting and re-optimization\n");
         printf("     If one of the parameters has a special value of \"v\", it is allowed to vary randomly within its full range.\n");
         printf("-N number : exit after \"number\" cycles\n");
-        printf("-o name  : output (results) file name\n");        
-        printf("-plot    : plotting (only makes sense when -m is also used)\n");
+        printf("-o name : output (results) file name\n");        
+        printf("-plot : plotting (only makes sense when -m is also used)\n");
         #if defined(P_PHI) || defined(P_BOTH)
-        printf("-Pphi min max  : minimum and maximum values for Pphi period, in hours\n");
+        printf("-Pphi min max : minimum and maximum values for Pphi period, in hours\n");
         #endif
         #if defined(P_PSI) || defined(P_BOTH)
-        printf("-Ppsi min max  : minimum and maximum values for Ppsi period, in hours\n");
+        printf("-Ppsi min max : minimum and maximum values for Ppsi period, in hours\n");
         #endif
+        printf("-reopt : reoptimize the model provided with -m switch\n");
         printf("-seed SEED : use the SEED number to initialize the random number generator\n");
-        #ifdef REOPT
         printf("-t : travelling reoptimization\n");
-        #endif
         printf("\n");
         exit(0);
     }
@@ -271,6 +271,14 @@ int main (int argc,char **argv)
                 break;
         }
 
+        if (strcmp(argv[j], "-reopt") == 0)
+        {
+            reopt = 1;
+            j = j + 1;
+            if (j >= argc)
+                break;
+        }
+
         if (strcmp(argv[j], "-keep") == 0)
         {
             keep = 1;
@@ -357,18 +365,19 @@ int main (int argc,char **argv)
     // Angular momentum L value, radians/day; if P is period in hours, L=48*pi/P
     hLimits[0][T_L] = 48.0*PI / 10; // 8.5
     hLimits[1][T_L] = 48.0*PI / 0.1; // 0.4    
-    #ifndef REOPT
-    // In P_PHI mode has a different meaning: 48*pi/Pphi2 ... 48*pi/Pphi1 (used to generate L)
-    #ifdef P_PHI
-    hLimits[0][T_L] = 48.0*PI / Pphi2;
-    hLimits[1][T_L] = 48.0*PI / Pphi1;
-    #endif
-    // In P_PSI mode has a different meaning: 1/Ppsi2 ... 1/Ppsi1, 1/days (used to derive L)
-    #if defined(P_PSI) || defined(P_BOTH)
-    hLimits[0][T_L] = 24.0/Ppsi2;
-    hLimits[1][T_L] = 24.0/Ppsi1;
-    #endif
-    #endif    
+    if (!reopt)
+    {
+        // In P_PHI mode has a different meaning: 48*pi/Pphi2 ... 48*pi/Pphi1 (used to generate L)
+        #ifdef P_PHI
+        hLimits[0][T_L] = 48.0*PI / Pphi2;
+        hLimits[1][T_L] = 48.0*PI / Pphi1;
+        #endif
+        // In P_PSI mode has a different meaning: 1/Ppsi2 ... 1/Ppsi1, 1/days (used to derive L)
+        #if defined(P_PSI) || defined(P_BOTH)
+        hLimits[0][T_L] = 24.0/Ppsi2;
+        hLimits[1][T_L] = 24.0/Ppsi1;
+        #endif
+    }
     
     #ifdef TREND
     //scaling parameter "A" for de-trending the brightness curve, in magnitude/radian units (to be multiplied by the phase angle alpha to get magnitude correction):
@@ -505,9 +514,8 @@ int main (int argc,char **argv)
             // Otherwise use the explicitely provided value of seed (good for post-processing, profiling and debugging):
             setup_kernel <<< N_BLOCKS, BSIZE >>> ( d_states, seed, d_f, 1);
         
-        #ifdef REOPT
-        ERR(cudaMemcpyToSymbol(d_params0, params, N_PARAMS*sizeof(double), 0, cudaMemcpyHostToDevice));
-        #endif        
+        if (reopt)
+            ERR(cudaMemcpyToSymbol(d_params0, params, N_PARAMS*sizeof(double), 0, cudaMemcpyHostToDevice));
         
         ERR(cudaDeviceSynchronize());    
         
@@ -531,7 +539,7 @@ int main (int argc,char **argv)
             #endif        
             
             // The kernel (using stream 0):
-            chi2_gpu<<<N_BLOCKS, BSIZE>>>(dData, N_data, N_filters, d_states, d_f, x2_params);
+            chi2_gpu<<<N_BLOCKS, BSIZE>>>(dData, N_data, N_filters, reopt, d_states, d_f, x2_params);
             
             #ifdef TIMING
             cudaEventRecord(stop, 0);
@@ -576,15 +584,13 @@ int main (int argc,char **argv)
                     
                 }
                 
-                #ifdef REOPT
-                if (travel)
+                if (reopt && travel)
                     // In "traveling reoptimization" mode, we move the starting point to the best point found in the previous cycle
                 {
                     for (j=0; j<N_PARAMS; j++)
                         params[j] = h_params[i_best][j];
                     ERR(cudaMemcpyToSymbol(d_params0, params, N_PARAMS*sizeof(double), 0, cudaMemcpyHostToDevice));
                 }
-                #endif        
 
                 // Priting the best result:
                 printf("%13.6e ",  h_f[i_best]);

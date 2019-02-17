@@ -19,12 +19,6 @@
 // Precision for observational data (structure obs_data):
 #define OBS_TYPE double
 
-#ifdef REOPT
- #undef P_PSI
- #undef P_PHI
- #undef P_BOTH
-#endif
-
 #ifdef BW_BALL
  #define ROTATE
 #endif
@@ -199,7 +193,7 @@ const unsigned int DT_DUMP = 30;
 const unsigned int DT_DUMP = 300; // Time in seconds between results dump (to stdout)
 #endif
 const int N_WRITE = 1; // Every N_WRITE dumps make a dump to results.dat file
-const CHI_FLOAT DX_INI = 0.01;  // Scale-free initial step
+const CHI_FLOAT DX_INI = 0.001;  // Scale-free initial step
 const CHI_FLOAT SIZE_MIN = 1e-5; // Scale-free smallest simplex size (convergence criterion)
 // Dimensionless simplex constants:
 const CHI_FLOAT ALPHA_SIM = 1.0;
@@ -229,12 +223,12 @@ const double DELTA_MAX = 0.001;
 const double V_SCALE = 1.0;  // in magnitudes
 const double T_SCALE = 0.06;  // in days
 
-// Only matter for REOPT option:
+// Only matter for reopt option:
 // Minimum and maximum initial simplex step:
-const CHI_FLOAT DX_MIN = -6.9; // log(0.0001)
-const CHI_FLOAT DX_MAX = -5.8; // log(0.1) -3.51
+const CHI_FLOAT DX_MIN = -7.1; // log(0.0001)
+const CHI_FLOAT DX_MAX = -6.7; // log(0.1) -3.51
 // Initial point is randomly shifted along each dimension by maximum 1/2 of the following amount (dimensionless):
-const CHI_FLOAT DX_RAND = 0.0003; 
+const CHI_FLOAT DX_RAND = 0.0001; 
 
 // Maximum number of clusters in minima() periodogram search
 const int NCL_MAX = 5;
@@ -285,6 +279,7 @@ struct chi2_struct {
 
 // Structure used to pass parameters to x2params (from chi2gpu)
 struct x2_struct {
+    int reopt;
     #ifdef P_BOTH
     float Pphi;
     float Pphi2;
@@ -317,7 +312,7 @@ int prepare_chi2_params(int *);
 int gpu_prepare(int, int, int, int);
 
 __global__ void setup_kernel ( curandState *, unsigned long, CHI_FLOAT *, int);
-__global__ void chi2_gpu(struct obs_data *, int, int, curandState*, CHI_FLOAT*, struct x2_struct);
+__global__ void chi2_gpu(struct obs_data *, int, int, int, curandState*, CHI_FLOAT*, struct x2_struct);
 __global__ void chi2_plot(struct obs_data *, int, int,
                           struct obs_data *, int, double *);
 #ifdef DEBUG2
