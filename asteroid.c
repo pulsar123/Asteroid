@@ -52,45 +52,53 @@ int main (int argc,char **argv)
     #endif
     
 
-    // Array describing all optimizable model parameters (initializing only the first segment - i_seg=0)    
-    // Set the Frozen value to 1 to fix (exclude from optimization) the corresponding parameters for all segments
-    // Because of the dependencies, the following order has to be followed: c_tumb -> b_tumb -> Es -> psi_0, and c_tumb -> c -> b, and Es -> L (for P_PHI, P_BOTH)
+    /* Array describing all optimizable model parameters (initializing only the first segment - i_seg=0)    
+       Set the Frozen value to 1 to fix (exclude from optimization) the corresponding parameters for all segments
+       Because of the dependencies, the following order has to be followed: c_tumb -> b_tumb -> Es -> psi_0, and c_tumb -> c -> b, and Es -> L (for P_PHI, P_BOTH)
+       P_periodic values:
+        PERIODIC: always periodic, 2*pi period
+        PERIODIC_LAM: only periodic when LAM (psi_0)
+        SOFT_BOTH: both limits are soft (total allowed extended range -infinity ... infinity in dimensionless units)
+        HARD_LEFT: left limit (0 in dimensionless units) is hard
+        HARD RIGHT: right limit (1 in dimensionless units) is hard
+        HARD_BOTH: both limits are hard (0 ... 1 in dimensionless units)
+       */
     int Property[N_PARAMS][N_COLUMNS] = {
         
 //  P_*:     type,      independent, frozen, iseg,  multi_segment, periodic
-           { T_theta_M, 1,           0,      0,     0,             0},  // theta_M
-           { T_phi_M,   1,           0,      0,     0,             1},  // phi_M
-           { T_phi_0,   1,           0,      0,     0,             1},  // phi_0
+           { T_theta_M, 1,           0,      0,     0,     HARD_BOTH},  // theta_M
+           { T_phi_M,   1,           0,      0,     0,      PERIODIC},  // phi_M
+           { T_phi_0,   1,           0,      0,     0,      PERIODIC},  // phi_0
     #ifdef TREND                                  
-           { T_A,       1,           0,      0,     1,             0},  // A
+           { T_A,       1,           0,      0,     1,     HARD_BOTH},  // A
     #endif
     #ifdef TORQUE
-           { T_Ti,      1,           0,      0,     0,             0},  // Ti
-           { T_Ts,      1,           0,      0,     0,             0},  // Ts
-           { T_Tl,      1,           0,      0,     0,             0},  // Tl
+           { T_Ti,      1,           0,      0,     0,     SOFT_BOTH},  // Ti
+           { T_Ts,      1,           0,      0,     0,     SOFT_BOTH},  // Ts
+           { T_Tl,      1,           0,      0,     0,     SOFT_BOTH},  // Tl
     #endif
     #ifdef TORQUE2
-           { T_T2i,     1,           0,      0,     0,             0},  // T2i
-           { T_T2s,     1,           0,      0,     0,             0},  // T2s
-           { T_T2l,     1,           0,      0,     0,             0},  // T2l
-           { T_Tt,      1,           0,      0,     0,             0},  // Tt
+           { T_T2i,     1,           0,      0,     0,     SOFT_BOTH},  // T2i
+           { T_T2s,     1,           0,      0,     0,     SOFT_BOTH},  // T2s
+           { T_T2l,     1,           0,      0,     0,     SOFT_BOTH},  // T2l
+           { T_Tt,      1,           0,      0,     0,     HARD_BOTH},  // Tt
     #endif
-           { T_c_tumb,  1,           0,      0,     1,             0},  // c_tumb
-           { T_b_tumb,  0,           0,      0,     1,             0},  // b_tumb
-           { T_Es,      0,           0,      0,    LE,             0},  // Es
-           { T_L,       1,           0,      0,    LE,             0},  // L / P_psi / P_phi
-           { T_psi_0,   0,           0,      0,     0,             0},  // psi_0
+           { T_c_tumb,  1,           0,      0,     1,    HARD_RIGHT},  // c_tumb
+           { T_b_tumb,  0,           0,      0,     1,     HARD_BOTH},  // b_tumb
+           { T_Es,      0,           0,      0,    LE,     HARD_BOTH},  // Es
+           { T_L,       1,           0,      0,    LE,     HARD_LEFT},  // L / P_psi / P_phi
+           { T_psi_0,   0,           0,      0,     0,  PERIODIC_LAM},  // psi_0
     #ifdef BC                                  
-           { T_c,       1,           0,      0,     1,             0},  // c
-           { T_b,       0,           0,      0,     1,             0},   // b
+           { T_c,       1,           0,      0,     1,    HARD_RIGHT},  // c
+           { T_b,       0,           0,      0,     1,     HARD_BOTH},  // b
     #endif                                  
     #ifdef ROTATE
-           { T_theta_R, 1,           0,      0,     1,             0},  // theta_R
-           { T_phi_R,   1,           0,      0,     1,             1},  // phi_R
-           { T_psi_R,   1,           0,      0,     1,             1},  // psi_R
+           { T_theta_R, 1,           0,      0,     1,     HARD_BOTH},  // theta_R
+           { T_phi_R,   1,           0,      0,     1,      PERIODIC},  // phi_R
+           { T_psi_R,   1,           0,      0,     1,      PERIODIC},  // psi_R
     #endif
     #ifdef BW_BALL                                
-           { T_kappa,   1,           0,      0,     1,             0},  // kappa
+           { T_kappa,   1,           0,      0,     1,     SOFT_BOTH},  // kappa
     #endif                                  
     
     };
@@ -382,8 +390,8 @@ int main (int argc,char **argv)
     #ifdef TREND
     //scaling parameter "A" for de-trending the brightness curve, in magnitude/radian units (to be multiplied by the phase angle alpha to get magnitude correction):
     // Physically plausible values are negative, -1.75 ... -0.5 mag/rad
-    hLimits[0][T_A] = -1.75;
-    hLimits[1][T_A] = -0.5;
+    hLimits[0][T_A] = -5;
+    hLimits[1][T_A] = 5;
     #endif        
     
     #ifdef TORQUE

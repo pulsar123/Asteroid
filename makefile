@@ -1,5 +1,6 @@
 # Macro parameters:
 
+# ACC : enable high accuracy mode (mainly for final reoptimization): makes CHI_FLOAT=double, and reduces SIZE_MIN to 1e-10
 # BC : if defined, "physical b,c" and "photometric b,c" are independent parameters; if not, they are the same thing
 # BW_BALL : simplest albedo (non-geometric) brightness model - black and white ball. Also enables ROTATE.
 # DEBUG : used with interactive (debugging) runs, reduced kernels and print time intervals
@@ -22,7 +23,6 @@
 # PROFILES : if defined, write cross-sections along all parameter dimensions to lines.dat
 # RANDOM_BC : (not working) for BC mode. If defined, initial guess for brightness b,c parameters are random (not coinciding with the kinematic b,c parameters).
 # RECT : rectangular prism simplified (phase=0) brightness model (here b, c parameters are half-lengths of the second and third shortest sides). Uses BC internally
-# RELAXED : during optimization, the free parameteres has the least possible degree of constraint.
 # ROTATE: only in BC mode; rotates the asteroid brightness frame relative to the inertia frame; two extra parameters: theta_R, phi_R
 # SEGMENT : multiple data segments (specified by T_START[] vector)
 # TIMING : time the main kernel (chi2_gpu)
@@ -39,7 +39,7 @@ ifeq ($(CLUSTER),monk)
   ARCH=sm_20
 endif  
 
-OPT=-O2 --ptxas-options=-v -arch=$(ARCH) -DGPU -DRELAXED -DP_PSI -DRECT -DTORQUE
+OPT=-g -G --ptxas-options=-v -arch=$(ARCH) -DGPU -DP_PSI -DBC -DDEBUG
 INC=-I/usr/include/cuda -I.
 
 BINARY=asteroid

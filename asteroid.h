@@ -15,7 +15,11 @@
 // Constants:
 
 // Precision for CUDA chi^2 calculations (float or double):
-#define CHI_FLOAT float
+#ifdef ACC
+  #define CHI_FLOAT double
+#else
+  #define CHI_FLOAT float
+#endif
 // Precision for observational data (structure obs_data):
 #define OBS_TYPE double
 
@@ -116,6 +120,14 @@ const int P_periodic       = 5;  // phi-like parameter (periodic, changes betwee
 // Number of the columns of the Property table:
 const int N_COLUMNS = 6;
 
+// Values for the P_periodic column:
+const int PERIODIC = 1;  // always periodic
+const int PERIODIC_LAM = 0;  // only periodic when LAM (psi_0)
+const int SOFT_BOTH = -1;  // both limits are soft
+const int HARD_LEFT = -2;  // left limit is hard
+const int HARD_RIGHT = -3;  // right limit is hard
+const int HARD_BOTH = -4;  // both limits are hard
+
 
 // Parameter type constants:
 // Using non-standard macro parameter __COUNTER__ (increments by 1 every time it's called; works under gcc and icc)
@@ -193,8 +205,13 @@ const unsigned int DT_DUMP = 30;
 const unsigned int DT_DUMP = 300; // Time in seconds between results dump (to stdout)
 #endif
 const int N_WRITE = 1; // Every N_WRITE dumps make a dump to results.dat file
-const CHI_FLOAT DX_INI = 0.001;  // Scale-free initial step
+const CHI_FLOAT DX_INI = 0.001;  // Maximum scale-free initial step
+const CHI_FLOAT D2X_INI = -1.2; // Initial step size is log-random, in the interval exp(D2X_INI)*DX_INI .. DX_INI
+#ifdef ACC
+const CHI_FLOAT SIZE_MIN = 1e-10; // Scale-free smallest simplex size (convergence criterion)
+#else
 const CHI_FLOAT SIZE_MIN = 1e-5; // Scale-free smallest simplex size (convergence criterion)
+#endif
 // Dimensionless simplex constants:
 const CHI_FLOAT ALPHA_SIM = 1.0;
 const CHI_FLOAT GAMMA_SIM = 2.0;

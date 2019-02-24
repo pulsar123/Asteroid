@@ -899,55 +899,27 @@ __device__ int x2params(CHI_FLOAT *x, double *params, CHI_FLOAT sLimits[][N_TYPE
 // RANDOM_BC is not supported yet
 {    
     // LAM (=1) or SAM (=0):
-    int LAM;
+    int LAM = 0;
     
-    // Checking if we went beyond the limits:
-    int failed = 0;
+    // Checking if we went beyond the hard limits:
     for (int i=0; i<N_PARAMS; i++)
     {
-        int param_type = sProperty[i][P_type];
-        
-        if (param_type == T_Es)
+        if (sProperty[i][P_type] == T_Es)
             LAM = x[i]>=0.5;
         
-        // Periodic parameters (all phi parameters and psi_0 - for LAM=1 only) can have any value during optimization:
-        if (sProperty[i][P_periodic]==1 || param_type==T_psi_0 && LAM)
-            continue;
+        #if defined(P_PHI) || defined(P_PSI) || defined(P_BOTH)
+        // In random search mode (reopt=0) we do not enforce L here - it will be done later
+        if (s_x2_params->reopt==0  && sProperty[i][P_type] == T_L)
+              continue;
+        #endif
         
-        #ifdef RELAXED
-        // During reoptimization we are using L explicitly:
-          if (s_x2_params->reopt  && param_type == T_L)
-              continue;
-          #if defined(P_PHI) || defined(P_PSI) || defined(P_BOTH)
-          // Relaxing only c_tumb in P_PHI / P_PSI / combined modes
-          if (param_type == T_c_tumb)
-              continue;
-          #else        
-          // Relaxing L and c_tumb: (physical values are enforced below)
-          if (param_type == T_L || param_type == T_c_tumb)
-              continue;
-          #endif
-          #ifdef BC        
-          // Relaxing c:
-          if (param_type == T_c)
-              continue;
-          #endif 
-          #ifdef TORQUE
-          if (param_type == T_Ti || param_type == T_Ts || param_type == T_Tl)
-              continue;          
-          #endif
-          #ifdef TORQUE2
-          if (param_type == T_T2i || param_type == T_T2s || param_type == T_T2l)
-              continue;          
-          #endif
-        #endif  // RELAXED
-        
-        if (x[i]<0.0 || x[i]>=1.0)
-            failed = 1;
+        if (x[i]<0.0 && (sProperty[i][P_periodic]==HARD_BOTH || sProperty[i][P_periodic]==HARD_LEFT  || LAM==0 && sProperty[i][P_periodic]==PERIODIC_LAM) ||
+            x[i]>1.0 && (sProperty[i][P_periodic]==HARD_BOTH || sProperty[i][P_periodic]==HARD_RIGHT || LAM==0 && sProperty[i][P_periodic]==PERIODIC_LAM))
+        {
+            // We stepped outside hard limits - fail:
+            return 1;
+        }        
     }
-    
-    if (failed)
-        return failed;
     
     double log_c_tumb, log_b_tumb, Is, Ii, psi_min, psi_max;
     #ifdef BC
@@ -974,7 +946,6 @@ __device__ int x2params(CHI_FLOAT *x, double *params, CHI_FLOAT sLimits[][N_TYPE
         
         else if (param_type == T_Es)
         {
-            LAM = x[i]>=0.5;
             if (LAM)
                 // LAM: Es>1.0/Ii
             {
@@ -1009,41 +980,31 @@ __device__ int x2params(CHI_FLOAT *x, double *params, CHI_FLOAT sLimits[][N_TYPE
         // Then we continue with general classes of parameters
         
         // All periodic parameters (excluding the special case of T_psi_0 && LAM - this is handled separately, above, via psi_min and psi_max)
-        else if (sProperty[i][P_periodic] == 1)
+        else if (sProperty[i][P_periodic] == PERIODIC)
         {
             params[i] = x[i] * 2.0*PI;
         }
         
         // Independent non-periodic parameters; all dependent non-periodic parameters have to be handled separately, as special cases
-        else if (sProperty[i][P_periodic] == 0 && sProperty[i][P_independent] == 1)
+        else if (sProperty[i][P_periodic] != PERIODIC && sProperty[i][P_independent] == 1)
         {
             #ifdef P_PHI
             // Only in P_PHI mode, L parameter is not computed here, but a few lines below
             // (Unless it's reoptimization)
             if (param_type != T_L || s_x2_params->reopt)
             #endif
-                // The default way to compute params[i] from x[i]:
+                // The default way to compute independent params[i] from x[i]:
                 params[i] = x[i] * (sLimits[1][param_type]-sLimits[0][param_type]) + sLimits[0][param_type];
             
             if (param_type == T_c_tumb)
             {
                 log_c_tumb = params[i];
-                #ifdef RELAXED
-                // Enforcing minimum limits on physical values of L and c:
-                if (log_c_tumb>0.0)
-                    return 1;
-                #endif
                 params[i] = exp(log_c_tumb);
             }
             #ifdef BC
             else if (param_type == T_c)
             {
                 log_c = params[i];
-                #ifdef RELAXED
-                // Minimum enforcement on c2 in relaxed mode:
-                if (log_c > 0.0)
-                    return 1;
-                #endif  
                 if (fabs(log_c-log_c_tumb) > BC_DEV_MAX)
                     return 1;
                 params[i] = exp(log_c);
@@ -1096,7 +1057,7 @@ __device__ int x2params(CHI_FLOAT *x, double *params, CHI_FLOAT sLimits[][N_TYPE
                 else
                     params[i] = 4.0*params[i]* PI/(a+g) *sqrt(Ii*Is/(params[sTypes[T_Es][iseg]]*(Is-Ii)*(Einv-1.0)));
                 #ifdef P_BOTH    
-                // In the P_BOTH mode we have to use a rejection method to prune out modesl with the wrong combination of Ppsi and Pphi
+                // In the P_BOTH mode we have to use a rejection method to prune out models with the wrong combination of Ppsi and Pphi
                 double S, S2;
                 // Here dPphi = P_phi / (2*PI)
                 if (LAM == 0)
@@ -1118,12 +1079,6 @@ __device__ int x2params(CHI_FLOAT *x, double *params, CHI_FLOAT sLimits[][N_TYPE
                 #endif  // P_PSI || P_BOTH
                 #endif  // P_BOTH      
                 
-                #else  // if any P_* mode                
-                #ifdef RELAXED
-                // Enforcing minimum limits on physical values of L:
-                if (params[sTypes[T_L][iseg]] < 0.0)
-                    return 1;
-                #endif                
                 #endif  // if any P_* mode                
             } // if (param_type == T_L)
             
@@ -1223,6 +1178,19 @@ __global__ void chi2_gpu (struct obs_data *dData, int N_data, int N_filters, int
     while (1)
     {
     #endif
+        
+        /* Startegy for placing the initial point:
+         *   - When reopt=0 (random search), we make sure that the whole simplex will fit in the dimensionless range
+         * [0,1] for all parameters, except for PERIODIC ones. That means that the initial point should be within
+         * [SMALL+DX_INI ... 1-SMALL-DX_INI], where SMALL is a small number, and DX_INI is the largest allowed initial
+         * simplex size for each parameter.
+         * 
+         *   - For reopt=1 (reoptimization of the existing model point), it's a bit trickier. We allow all soft limits
+         * to be crossed, and only for hard limits the same interval is enforced. If the hard limit is on one side
+         * only (HARD_LEFT, HARD_RIGHT), only that limit is enforced.
+         */
+        #define SMALL 1e-8  // Small offset from the hard parameter limits
+        int LAM = 0;
 
         // Setting the initial values of x[0][i] vector
         for (i=0; i<N_PARAMS; i++)
@@ -1249,24 +1217,30 @@ __global__ void chi2_gpu (struct obs_data *dData, int N_data, int N_filters, int
             #endif  // RANDOM_BC 
             #endif  // BC      
             
+            
             if (!reopt || reopt && sProperty[i][P_frozen]==-1)
+                // Points placed randomly within the full allowed interval
             {
-                // The allowed interval is 1e-8  ... 1-1e-8:
-                x[0][i] = 1e-8 + r*(1.0 - 2e-8);
+                // The allowed interval is DX_INI+SMALL  ... 1-(DX_INI-SMALL):
+                x[0][i] = DX_INI+SMALL + r*(1.0 - 2*(SMALL+DX_INI));
             }
-                        
-            if (reopt && sProperty[i][P_frozen]!=-1)
-             // P_frozen=0 parameters start close to the original values, within +-DX_RAND
+            else
+             // During reoptimization, P_frozen=0 parameters start close to the original values, within +-DX_RAND
             {
-                x[0][i] = x[0][i] + 2*(r-0.5)*DX_RAND;
-                #ifndef RELAXED  //???
-                // The allowed interval is 1e-8  ... 1-1e-8:
-                if (x[0][i] < 1e-8)
-                    x[0][i] = 1e-8;
-                if (x[0][i] > 1 - 1e-8)
-                    x[0][i] = 1 - 1e-8;
-                #endif
-            }
+                CHI_FLOAT xmin = x[0][i] - DX_RAND;
+                CHI_FLOAT xmax = x[0][i] + DX_RAND;
+                // Enforcing hard limits:
+                if (xmin<SMALL && (sProperty[i][P_periodic]==HARD_BOTH || sProperty[i][P_periodic]==HARD_LEFT || LAM==0 && sProperty[i][P_periodic]==PERIODIC_LAM))
+                    xmin = SMALL;
+                if (xmax>1.0-SMALL && (sProperty[i][P_periodic]==HARD_BOTH || sProperty[i][P_periodic]==HARD_RIGHT || LAM==0 && sProperty[i][P_periodic]==PERIODIC_LAM))
+                    xmax = 1.0 - SMALL;
+                
+                x[0][i] = xmin + r*(xmax-xmin);
+            }            
+        
+        if (sProperty[i][P_type] == T_Es)
+            // We need to know LAM to figure out whether psi_0 is periodic (LAM=1) or not (LAM=0):
+            LAM = x[0][i]>=0.5;
             
         }
 
@@ -1280,22 +1254,26 @@ __global__ void chi2_gpu (struct obs_data *dData, int N_data, int N_filters, int
             {
                 if (i == j-1)
                 {
-                    float r = curand_uniform(&localState);
-                    // Step can be both negative and positive:
-                    if (r < 0.5)
-                        x[j][i] = x[0][i] - DX_INI;
-                    else
-                        x[j][i] = x[0][i] + DX_INI;
-                    #ifndef RELAXED  //???
-                    if (sProperty[i][P_periodic] != 1)
-                    // Enforcing 0..1 interval on non-periodic parameters
+                    float d2x = curand_uniform(&localState);
+                    // Initial step size is log-random, in the interval exp(D2X_INI)*DX_INI .. DX_INI:
+                    CHI_FLOAT dx = DX_INI * exp(D2X_INI*d2x);
+                    // Step can be both negative and positiven (random choice):
+                    if (curand_uniform(&localState) < 0.5)
                     {
-                        if (x[j][i] < 0.0)
-                            x[j][i] = 0.0;
-                        if (x[j][i] > 1.0)
-                            x[j][i] = 1.0;
+                        // Changing to negative direction:
+                        dx = -dx;
+                        if (x[0][i]+dx<SMALL && (sProperty[i][P_periodic]==HARD_BOTH || sProperty[i][P_periodic]==HARD_LEFT || LAM==0 && sProperty[i][P_periodic]==PERIODIC_LAM))
+                            // Changing back to positive direction if there is no room on the left:
+                            dx = -dx;                        
                     }
-                    #endif
+                    else
+                    {
+                        if (x[0][i]+dx>1.0-SMALL && (sProperty[i][P_periodic]==HARD_BOTH || sProperty[i][P_periodic]==HARD_RIGHT || LAM==0 && sProperty[i][P_periodic]==PERIODIC_LAM))
+                            // Changing to negative direction if there is no room on the right:
+                            dx = -dx;                        
+                    }
+                    // At this point, dx has a random  but safe sign, so the point will stay within the safe (hard) limits
+                    x[j][i] = x[0][i] + dx;
                 }
                 else
                 {
@@ -1303,7 +1281,8 @@ __global__ void chi2_gpu (struct obs_data *dData, int N_data, int N_filters, int
                 }
             }
         }
-        
+        #undef SMALL
+       
         // Computing the initial function values (chi2):        
         failed = 0;
         for (j=0; j<N_PARAMS+1; j++)

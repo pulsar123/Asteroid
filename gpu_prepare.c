@@ -1,4 +1,3 @@
-#ifdef GPU
 #include "asteroid.h"
 int gpu_prepare(int N_data, int N_filters, int N_threads, int Nplot)
 {
@@ -29,4 +28,3 @@ int gpu_prepare(int N_data, int N_filters, int N_threads, int Nplot)
 
     return 0;
 }
-#endif
