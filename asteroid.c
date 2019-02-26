@@ -44,6 +44,7 @@ int main (int argc,char **argv)
     int Nplot = 0;
     unsigned long int seed = 0;
     int Ncases = -1;
+    int Nstages = 1;
     
     #ifdef ONE_LE
     int const LE = 1;
@@ -160,6 +161,7 @@ int main (int argc,char **argv)
         printf("-m param1 param2 ... paramN : input model parameters, for plotting and re-optimization\n");
         printf("     If one of the parameters has a special value of \"v\", it is allowed to vary randomly within its full range.\n");
         printf("-N number : exit after \"number\" cycles\n");
+        printf("-Nstages number : each initial optimization stage is followed by \"number-1\" reoptimization stages\n");
         printf("-o name : output (results) file name\n");        
         printf("-plot : plotting (only makes sense when -m is also used)\n");
         #if defined(P_PHI) || defined(P_BOTH)
@@ -314,6 +316,14 @@ int main (int argc,char **argv)
         if (strcmp(argv[j], "-N") == 0)
         {
             Ncases = atoi(argv[j+1]);
+            j = j + 2;
+            if (j >= argc)
+                break;
+        }
+
+        if (strcmp(argv[j], "-Nstages") == 0)
+        {
+            Nstages = atoi(argv[j+1]);
             j = j + 2;
             if (j >= argc)
                 break;
@@ -547,7 +557,7 @@ int main (int argc,char **argv)
             #endif        
             
             // The kernel (using stream 0):
-            chi2_gpu<<<N_BLOCKS, BSIZE>>>(dData, N_data, N_filters, reopt, d_states, d_f, x2_params);
+            chi2_gpu<<<N_BLOCKS, BSIZE>>>(dData, N_data, N_filters, reopt, Nstages, d_states, d_f, x2_params);
             
             #ifdef TIMING
             cudaEventRecord(stop, 0);

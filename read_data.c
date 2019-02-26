@@ -15,6 +15,13 @@ int read_data(char *data_file, int *N_data, int *N_filters, int Nplot)
  char lineE[MAX_LINE_LENGTH];
  char lineS[MAX_LINE_LENGTH];
  char ch;
+ #ifdef INTERP
+ struct obs_data_h *hhData = (obs_data_h *)malloc(MAX_DATA * sizeof(struct obs_data_h));
+ struct obs_data_h *hhPlot = (obs_data_h *)malloc(Nplot * sizeof(struct obs_data_h));
+ #else
+ #define hhData hData
+ #define hhPlot hPlot
+ #endif    
 // int N;
   
  // Number of brightness data points:
@@ -46,7 +53,7 @@ ERR(cudaMallocHost(&MJD_obs, *N_data * sizeof(double)));
 FILE *fpdump = fopen("dV.dat", "w");
 #endif
 #ifdef DUMP_RED_BLUE
-FILE *fpdump = fopen("red_blue_corr.dat", "w");
+FILE *fpdump = fopen("dump.dat", "w");
 #endif
 
 // Reading the input data file
@@ -56,6 +63,7 @@ char filter;
 int j = 0;
 int k;
 int W_filter = -1;
+int D_filter = -1;
 double sgm, MJD1, V1;
 printf("Filters:\n");
 while (fgets(line, sizeof(line), fp)) 
@@ -83,6 +91,8 @@ while (fgets(line, sizeof(line), fp))
             // A special case - Wesley et al data (time is light travel corrected, and magnitudes are geometry and color corrected)
             if (filter == 'W')
                 W_filter = j;
+            if (filter == 'D')
+                D_filter = j;
             j++;
             printf("%d: %c\n", j, filter);
         }
@@ -176,8 +186,10 @@ while (fgets(lineA, sizeof(lineA), fpA))
 //printf("AA  %20.12lf %20.12lf\n",MJD0[0],E_x0[0]);
         // Computing the delay (light time), in days:
         delay = sqrt(E_x0[l]*E_x0[l] + E_y0[l]*E_y0[l]+ E_z0[l]*E_z0[l]) / light_speed;
-        // Corresponding earth observer time:
-        MJD0[l] = JD - 2400000.5 + delay;
+        // Corresponding earth observer time - wrong, as my data is normally light travel corrected!
+//        MJD0[l] = JD - 2400000.5 + delay;
+        // Light travel corrected:
+        MJD0[l] = JD - 2400000.5;
         l++;
         if (l > 2)
         {
@@ -188,15 +200,15 @@ while (fgets(lineA, sizeof(lineA), fpA))
             {
                 // Using the quadratic Lagrange polynomial to do second degree interpolation for E and S vector components
 //                double E_x1, E_y1, E_z1, S_x1, S_y1, S_z1;
-                quadratic_interpolation(MJD_obs[i], &(hData[i].E_x), &(hData[i].E_y), &(hData[i].E_z), &(hData[i].S_x), &(hData[i].S_y), &(hData[i].S_z));
+                quadratic_interpolation(MJD_obs[i], &(hhData[i].E_x), &(hhData[i].E_y), &(hhData[i].E_z), &(hhData[i].S_x), &(hhData[i].S_y), &(hhData[i].S_z));
                 //                quadratic_interpolation(MJD_obs[i], &E_x1, &E_y1, &E_z1, &S_x1, &S_y1, &S_z1);
                 /*
-                hData[i].E_x = E_x1;
-                hData[i].E_y = E_y1;
-                hData[i].E_z = E_z1;
-                hData[i].S_x = S_x1;
-                hData[i].S_y = S_y1;
-                hData[i].S_z = S_z1;
+                hhData[i].E_x = E_x1;
+                hhData[i].E_y = E_y1;
+                hhData[i].E_z = E_z1;
+                hhData[i].S_x = S_x1;
+                hhData[i].S_y = S_y1;
+                hhData[i].S_z = S_z1;
                 */
 //printf("%20.12lf %20.12lf %20.12lf %20.12lf %20.12lf %20.12lf %20.12lf\n", (*MJD)[i], (*E_x)[i],(*E_y)[i],(*E_z)[i],(*S_x)[i],(*S_y)[i],(*S_z)[i]);                
                 // Switching to the next data point:
@@ -229,10 +241,11 @@ for (i=0; i<*N_data; i++)
     }
 #endif
 
-    E = sqrt(hData[i].E_x*hData[i].E_x + hData[i].E_y*hData[i].E_y+ hData[i].E_z*hData[i].E_z);
-    S = sqrt(hData[i].S_x*hData[i].S_x + hData[i].S_y*hData[i].S_y+ hData[i].S_z*hData[i].S_z);
+    E = sqrt(hhData[i].E_x*hhData[i].E_x + hhData[i].E_y*hhData[i].E_y+ hhData[i].E_z*hhData[i].E_z);
+    S = sqrt(hhData[i].S_x*hhData[i].S_x + hhData[i].S_y*hhData[i].S_y+ hhData[i].S_z*hhData[i].S_z);
 
     // Convertimg visual magnitudes to absolute magnitudes (at 1 au from sun and earth):
+    // W_filter data is skipped, but this does apply to all other filters, including D_filter
     if (hData[i].Filter != W_filter)
         hData[i].V = hData[i].V + 5.0*log10(1.0/E * 1.0/S);
 #ifdef DUMP_DV
@@ -242,7 +255,8 @@ for (i=0; i<*N_data; i++)
     delay = E / light_speed;
     hData[i].MJD = MJD_obs[i];
     // Converting to asteroidal time (minus light time):
-    if (hData[i].Filter != W_filter)
+    // Both W_filter and D_filter data is skipped
+    if (hData[i].Filter != W_filter && hData[i].Filter != D_filter)
         hData[i].MJD = hData[i].MJD - delay;
 #ifdef DUMP_RED_BLUE
     fprintf(fpdump, "W %12.6lf %6.3f %5.3f r\n", hData[i].MJD, hData[i].V, 1.0/sqrt(hData[i].w));
@@ -251,12 +265,12 @@ for (i=0; i<*N_data; i++)
         hMJD0 = hData[i].MJD;
     hData[i].MJD = hData[i].MJD - hMJD0;
     // Making S,E a unit vector:
-    hData[i].E_x = hData[i].E_x / E;
-    hData[i].E_y = hData[i].E_y / E;
-    hData[i].E_z = hData[i].E_z / E;
-    hData[i].S_x = hData[i].S_x / S;
-    hData[i].S_y = hData[i].S_y / S;
-    hData[i].S_z = hData[i].S_z / S;
+    hhData[i].E_x = hhData[i].E_x / E;
+    hhData[i].E_y = hhData[i].E_y / E;
+    hhData[i].E_z = hhData[i].E_z / E;
+    hhData[i].S_x = hhData[i].S_x / S;
+    hhData[i].S_y = hhData[i].S_y / S;
+    hhData[i].S_z = hhData[i].S_z / S;
     
 }
 
@@ -270,6 +284,12 @@ for (i=0; i<*N_data; i++)
     fclose(fpdump);
     exit (0);
 #endif
+    
+#ifdef INTERP
+    // Converting ephemeridal time to the same time as used on GPU:
+    for (int i=0; i<3; i++)
+        MJD0[i] = MJD0[i] - hMJD0;
+#endif    
 
 // Computing a fake data set, only for plotting
 // Explicitely assuming that ephemeride files contain three data points each    
@@ -300,27 +320,27 @@ if (Nplot > 0)
             else
                 i = *N_data - 1;
             hPlot[iplot].MJD = hData[i].MJD;
-            hPlot[iplot].E_x = hData[i].E_x;
-            hPlot[iplot].E_y = hData[i].E_y;
-            hPlot[iplot].E_z = hData[i].E_z;
-            hPlot[iplot].S_x = hData[i].S_x;
-            hPlot[iplot].S_y = hData[i].S_y;
-            hPlot[iplot].S_z = hData[i].S_z;
+            hhPlot[iplot].E_x = hhData[i].E_x;
+            hhPlot[iplot].E_y = hhData[i].E_y;
+            hhPlot[iplot].E_z = hhData[i].E_z;
+            hhPlot[iplot].S_x = hhData[i].S_x;
+            hhPlot[iplot].S_y = hhData[i].S_y;
+            hhPlot[iplot].S_z = hhData[i].S_z;
         }
         else
         {
             hPlot[iplot].MJD = tplot;
-            quadratic_interpolation(tplot, &(hPlot[iplot].E_x), &(hPlot[iplot].E_y), &(hPlot[iplot].E_z), &(hPlot[iplot].S_x), &(hPlot[iplot].S_y), &(hPlot[iplot].S_z));
+            quadratic_interpolation(tplot, &(hhPlot[iplot].E_x), &(hhPlot[iplot].E_y), &(hhPlot[iplot].E_z), &(hhPlot[iplot].S_x), &(hhPlot[iplot].S_y), &(hhPlot[iplot].S_z));
             hPlot[iplot].V = 0.0;            
 
-            E = sqrt(hPlot[iplot].E_x*hPlot[iplot].E_x + hPlot[iplot].E_y*hPlot[iplot].E_y+ hPlot[iplot].E_z*hPlot[iplot].E_z);
-            S = sqrt(hPlot[iplot].S_x*hPlot[iplot].S_x + hPlot[iplot].S_y*hPlot[iplot].S_y+ hPlot[iplot].S_z*hPlot[iplot].S_z);
-            hPlot[iplot].E_x = hPlot[iplot].E_x / E;
-            hPlot[iplot].E_y = hPlot[iplot].E_y / E;
-            hPlot[iplot].E_z = hPlot[iplot].E_z / E;
-            hPlot[iplot].S_x = hPlot[iplot].S_x / S;
-            hPlot[iplot].S_y = hPlot[iplot].S_y / S;
-            hPlot[iplot].S_z = hPlot[iplot].S_z / S;
+            E = sqrt(hhPlot[iplot].E_x*hhPlot[iplot].E_x + hhPlot[iplot].E_y*hhPlot[iplot].E_y+ hhPlot[iplot].E_z*hhPlot[iplot].E_z);
+            S = sqrt(hhPlot[iplot].S_x*hhPlot[iplot].S_x + hhPlot[iplot].S_y*hhPlot[iplot].S_y+ hhPlot[iplot].S_z*hhPlot[iplot].S_z);
+            hhPlot[iplot].E_x = hhPlot[iplot].E_x / E;
+            hhPlot[iplot].E_y = hhPlot[iplot].E_y / E;
+            hhPlot[iplot].E_z = hhPlot[iplot].E_z / E;
+            hhPlot[iplot].S_x = hhPlot[iplot].S_x / S;
+            hhPlot[iplot].S_y = hhPlot[iplot].S_y / S;
+            hhPlot[iplot].S_z = hhPlot[iplot].S_z / S;
         }
         
 #ifdef SEGMENT
@@ -335,7 +355,11 @@ if (Nplot > 0)
     }
 
 }
-    
+
+#ifdef INTERP
+free(hhData);
+free(hhPlot);
+#endif
     
 return 0;
 }

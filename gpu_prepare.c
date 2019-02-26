@@ -26,5 +26,15 @@ int gpu_prepare(int N_data, int N_filters, int N_threads, int Nplot)
     ERR(cudaMemcpyToSymbol(d_plot_start_seg, h_plot_start_seg, N_SEG * sizeof(int), 0, cudaMemcpyHostToDevice));
 #endif    
 
+#ifdef INTERP
+    ERR(cudaMemcpyToSymbol(dE_x0, E_x0, 3*sizeof(double), 0, cudaMemcpyHostToDevice));
+    ERR(cudaMemcpyToSymbol(dE_y0, E_y0, 3*sizeof(double), 0, cudaMemcpyHostToDevice));
+    ERR(cudaMemcpyToSymbol(dE_z0, E_z0, 3*sizeof(double), 0, cudaMemcpyHostToDevice));
+    ERR(cudaMemcpyToSymbol(dS_x0, S_x0, 3*sizeof(double), 0, cudaMemcpyHostToDevice));
+    ERR(cudaMemcpyToSymbol(dS_y0, S_y0, 3*sizeof(double), 0, cudaMemcpyHostToDevice));
+    ERR(cudaMemcpyToSymbol(dS_z0, S_z0, 3*sizeof(double), 0, cudaMemcpyHostToDevice));
+    ERR(cudaMemcpyToSymbol(dMJD0, MJD0, 3*sizeof(double), 0, cudaMemcpyHostToDevice));
+#endif    
+    
     return 0;
 }

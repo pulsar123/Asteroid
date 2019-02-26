@@ -171,14 +171,10 @@ const int N_TYPES =   __COUNTER__;
 //-----------------------------------------------------------------------
 
 
+// Maximum number of data points:
+const int MAX_DATA = 662; // 497, 662, 772
 // Maximum number of filters:
 const int N_FILTERS = 1;
-
-// When b and c parameters are used, maximum ln deviation from corresponding b_tumb, c_tumb during optimization:
-const float BC_DEV_MAX = 100;  //2.3
-// The same, but only during the initial value generation (when RANDOM_BC option is used):
-const float BC_DEV1 = 1.1; //1.3
-
 
 // GPU optimization parameters:
 const int BSIZE = 256;   // Threads in a block (64 ... 1024, step of 64); 256
@@ -187,76 +183,21 @@ const int N_BLOCKS = 56*1;
 #else
 const int N_BLOCKS = 56*2; // Should be proportional to the number of SMs (56 for P100); for some reason 10 results in a crash; use 5 for now
 #endif
-//const int N_SERIAL = 1; // number of serial iglob loops inside the kernel (>=1)
-//const int N_WARPS = BSIZE / 32;
 
 // ODE time step (days):
-const double TIME_STEP = 1e-2;  // 1e-2 !!!
+const double TIME_STEP = 1e-2;  // 1e-2
 
 // Simplex parameters:
+const CHI_FLOAT DX_INI = 0.001;  // Maximum scale-free initial step
+const CHI_FLOAT D2X_INI = -1.2; // Initial step size is log-random, in the interval exp(D2X_INI)*DX_INI .. DX_INI
+// Only matter for reopt option:
+// Initial point is randomly shifted along each dimension by maximum 1/2 of the following amount (dimensionless):
+const CHI_FLOAT DX_RAND = 0.0001; 
 #if defined(TIMING) || defined(DEBUG)
 const unsigned int N_STEPS = 100; 
 #else
 const unsigned int N_STEPS = 5000; // Number of simplex steps per CUDA block (per simplex run) 27,000 per hour (N=7; BS=256; NB=56*4)
 #endif
-#ifdef DEBUG
-const unsigned int DT_DUMP = 30;
-#else
-const unsigned int DT_DUMP = 300; // Time in seconds between results dump (to stdout)
-#endif
-const int N_WRITE = 1; // Every N_WRITE dumps make a dump to results.dat file
-const CHI_FLOAT DX_INI = 0.001;  // Maximum scale-free initial step
-const CHI_FLOAT D2X_INI = -1.2; // Initial step size is log-random, in the interval exp(D2X_INI)*DX_INI .. DX_INI
-#ifdef ACC
-const CHI_FLOAT SIZE_MIN = 1e-10; // Scale-free smallest simplex size (convergence criterion)
-#else
-const CHI_FLOAT SIZE_MIN = 1e-5; // Scale-free smallest simplex size (convergence criterion)
-#endif
-// Dimensionless simplex constants:
-const CHI_FLOAT ALPHA_SIM = 1.0;
-const CHI_FLOAT GAMMA_SIM = 2.0;
-const CHI_FLOAT RHO_SIM   = 0.5;
-const CHI_FLOAT SIGMA_SIM = 0.5;
-
-
-const CHI_FLOAT SIZE2_MIN = SIZE_MIN * SIZE_MIN;
-
-// Maximum number of chars in a file name:
-const int MAX_FILE_NAME = 256;
-// Maximum number of chars in one line of a data file:
-const int MAX_LINE_LENGTH = 128;
-// Maximum number of filters:
-//const int MAX_FILTERS = 100;
-// Maximum number of data points:
-const int MAX_DATA = 497;
-
-// Number of time points for plotting
-const int NPLOT = 6000; // 6000 !!!
-// Times BSIZE will give the total number of points for lines:
-const int C_POINTS = 10;
-// Maximum relative deviation for each parameter when computing lines:
-const double DELTA_MAX = 0.001;
-// Scales for the V and t axes when computing the 2D least squares distances between the data and model:
-const double V_SCALE = 1.0;  // in magnitudes
-const double T_SCALE = 0.06;  // in days
-
-// Only matter for reopt option:
-// Minimum and maximum initial simplex step:
-const CHI_FLOAT DX_MIN = -7.1; // log(0.0001)
-const CHI_FLOAT DX_MAX = -6.7; // log(0.1) -3.51
-// Initial point is randomly shifted along each dimension by maximum 1/2 of the following amount (dimensionless):
-const CHI_FLOAT DX_RAND = 0.0001; 
-
-// Maximum number of clusters in minima() periodogram search
-const int NCL_MAX = 5;
-
-
-// Speed of light (au/day):
-const double light_speed = 173.144632674;
-
-// Empirical coefficients for P_phi constraining, for LAM=0 and 1 cases:
-const double S_LAM0 = 1.1733;
-const double S_LAM1 = 1.2067;
 
 #ifdef NUDGE
 const int M_MAX = 30;  // Maximum number of model local minima
@@ -275,6 +216,52 @@ const float L_A = 1.0/(1.0-L_RC2/(1.0+L_RC2));  // Lorentzian scale parameter
 const float P_MIN2 = 1/P_MIN - 1;  // derived parameter
 #endif
 
+#ifdef ACC
+const CHI_FLOAT SIZE_MIN = 1e-10; // Scale-free smallest simplex size (convergence criterion)
+#else
+const CHI_FLOAT SIZE_MIN = 1e-5; // Scale-free smallest simplex size (convergence criterion)
+#endif
+// Dimensionless simplex constants:
+const CHI_FLOAT ALPHA_SIM = 1.0;
+const CHI_FLOAT GAMMA_SIM = 2.0;
+const CHI_FLOAT RHO_SIM   = 0.5;
+const CHI_FLOAT SIGMA_SIM = 0.5;
+
+
+const CHI_FLOAT SIZE2_MIN = SIZE_MIN * SIZE_MIN;
+
+// When b and c parameters are used, maximum ln deviation from corresponding b_tumb, c_tumb during optimization:
+const float BC_DEV_MAX = 100;  //2.3
+// The same, but only during the initial value generation (when RANDOM_BC option is used):
+const float BC_DEV1 = 1.1; //1.3
+
+
+// Maximum number of chars in a file name:
+const int MAX_FILE_NAME = 256;
+// Maximum number of chars in one line of a data file:
+const int MAX_LINE_LENGTH = 128;
+
+// Number of time points for plotting
+const int NPLOT = 6000; // 6000 !!!
+// Times BSIZE will give the total number of points for lines:
+const int C_POINTS = 10;
+// Maximum relative deviation for each parameter when computing lines:
+const double DELTA_MAX = 0.001;
+// Scales for the V and t axes when computing the 2D least squares distances between the data and model:
+const double V_SCALE = 1.0;  // in magnitudes
+const double T_SCALE = 0.06;  // in days
+
+// Maximum number of clusters in minima() periodogram search
+const int NCL_MAX = 5;
+
+
+// Speed of light (au/day):
+const double light_speed = 173.144632674;
+
+// Empirical coefficients for P_phi constraining, for LAM=0 and 1 cases:
+const double S_LAM0 = 1.1733;
+const double S_LAM1 = 1.2067;
+
 #ifdef MIN_DV
 const float PV_MIN = 0.1; // chi2 reduction factor for large enough brightness fluctuations
 const float DV_MIN1 = 2.25; // delta V at which chi2 starts decreasing (merit function goes from 1 to PV_MIN)
@@ -292,6 +279,15 @@ struct chi2_struct {
     #ifdef SEGMENT
     int start_seg[N_SEG];
     #endif
+    #ifdef INTERP
+    double E_x0[3];
+    double E_y0[3];
+    double E_z0[3];
+    double S_x0[3];
+    double S_y0[3];
+    double S_z0[3];
+    double MJD0[3];
+    #endif
 };
 
 // Structure used to pass parameters to x2params (from chi2gpu)
@@ -308,16 +304,28 @@ struct x2_struct {
 struct obs_data {
     float V;  // visual magnitude array, mag
     float w;  // 1-sgm error bar squared for V array, mag
+    #ifndef INTERP    
     OBS_TYPE E_x;  // asteroid->Earth vector in barycentric FoR array, au
     OBS_TYPE E_y;  // asteroid->Earth vector in barycentric FoR array, au
     OBS_TYPE E_z;  // asteroid->Earth vector in barycentric FoR array, au
     OBS_TYPE S_x;  // asteroid->Sun vector in barycentric FoR array, au
     OBS_TYPE S_y;  // asteroid->Sun vector in barycentric FoR array, au
     OBS_TYPE S_z;  // asteroid->Sun vector in barycentric FoR array, au
+    #endif
     OBS_TYPE MJD;  // asteroid time (without time delay)
     int Filter;  // Filter code array
 };
 
+#ifdef INTERP
+struct obs_data_h {
+    OBS_TYPE E_x;  // asteroid->Earth vector in barycentric FoR array, au
+    OBS_TYPE E_y;  // asteroid->Earth vector in barycentric FoR array, au
+    OBS_TYPE E_z;  // asteroid->Earth vector in barycentric FoR array, au
+    OBS_TYPE S_x;  // asteroid->Sun vector in barycentric FoR array, au
+    OBS_TYPE S_y;  // asteroid->Sun vector in barycentric FoR array, au
+    OBS_TYPE S_z;  // asteroid->Sun vector in barycentric FoR array, au
+};
+#endif
 
 // Function declarations
 int read_data(char *, int *, int *, int);
@@ -329,7 +337,7 @@ int prepare_chi2_params(int *);
 int gpu_prepare(int, int, int, int);
 
 __global__ void setup_kernel ( curandState *, unsigned long, CHI_FLOAT *, int);
-__global__ void chi2_gpu(struct obs_data *, int, int, int, curandState*, CHI_FLOAT*, struct x2_struct);
+__global__ void chi2_gpu(struct obs_data *, int, int, int, int, curandState*, CHI_FLOAT*, struct x2_struct);
 __global__ void chi2_plot(struct obs_data *, int, int,
                           struct obs_data *, int, double *);
 #ifdef DEBUG2
@@ -362,6 +370,9 @@ EXTERN struct obs_data *dPlot;
 EXTERN double E_x0[3],E_y0[3],E_z0[3], S_x0[3],S_y0[3],S_z0[3], MJD0[3];    
 EXTERN double *MJD_obs;  // observational time (with light delay)
 EXTERN double hMJD0;
+#ifdef INTERP
+EXTERN __device__ double dE_x0[3],dE_y0[3],dE_z0[3], dS_x0[3],dS_y0[3],dS_z0[3], dMJD0[3];    
+#endif
 
 EXTERN CHI_FLOAT * d_chi2_min;
 EXTERN CHI_FLOAT * h_chi2_min;

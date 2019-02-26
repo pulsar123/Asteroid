@@ -7,6 +7,7 @@
 # DEBUG2 : likley not functional; used for cuda code debugging
 # DUMP_DV : dumping 5.0*log10(1.0/E * 1.0/S) in read_data.c for all obs. data points
 # DUMP_RED_BLUE : dumping the converted/corrected obs. data (MJD, V, w)
+# INTERP : doing E,S vectors interpolation on GPU - slower, but can use many more data points
 # LAST : (only for TORQUE) when -plot is used, printing the final values of the model parameters (L and E)
 # LSQ : likely not functional. Computing 2D least squares distances between the data points and the model, in chi2_plot
 # MIN_DV : force certain minimum for dV (magnitudes) of the brightness curve
@@ -39,21 +40,25 @@ ifeq ($(CLUSTER),monk)
   ARCH=sm_20
 endif  
 
-OPT=-g -G --ptxas-options=-v -arch=$(ARCH) -DGPU -DP_PSI -DBC -DDEBUG
+OPT=--ptxas-options=-v -arch=$(ARCH) -DP_PSI -DTORQUE -DTIMING
 INC=-I/usr/include/cuda -I.
+DEBUG=-O2
 
 BINARY=asteroid
 
 objects = asteroid.o read_data.o misc.o cuda.o gpu_prepare.o
 
 all: $(objects)
-	nvcc $(OPT)  $(objects) -o ../$(BINARY)
+	nvcc $(OPT) $(DEBUG)  $(objects) -o ../$(BINARY)
 
-%.o: %.c
-	nvcc $(OPT) -x cu  $(INC) -dc $< -o $@
+%.o: %.c makefile asteroid.h
+	nvcc $(OPT) $(DEBUG) -x cu  $(INC) -dc $< -o $@
 
 clean:
 	rm -f *.o ../$(BINARY)
 
+debug: DEBUG = -G -g -DDEBUG
+
+debug: all
 
 # grep "^#" *.c* *.h|cut -d# -f2|awk '{print $2}'|sort |uniq |grep -v "\.h"

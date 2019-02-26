@@ -78,7 +78,7 @@ __device__ void ODE_func (double y[], double f[], double mu[])
 
 
 
-__device__ CHI_FLOAT chi2one(double *params, struct obs_data *sData, int N_data, int N_filters, CHI_FLOAT *delta_V, int Nplot, struct chi2_struct *s_chi2_params, int sTypes[][N_SEG])
+__device__ CHI_FLOAT chi2one(double *params, struct obs_data *sData, int N_data, int N_filters, CHI_FLOAT *delta_V, int Nplot, struct chi2_struct *sp, int sTypes[][N_SEG])
 // Computung chi^2 for a single model parameters combination, on GPU, by a single thread
 // NUDGE is not supported in SEGMENT mode!
 {
@@ -247,9 +247,9 @@ __device__ CHI_FLOAT chi2one(double *params, struct obs_data *sData, int N_data,
         
         int i1, i2;
         #ifdef SEGMENT
-        i1 = s_chi2_params->start_seg[iseg];
+        i1 = sp->start_seg[iseg];
         if (iseg < N_SEG-1)
-            i2 = s_chi2_params->start_seg[iseg+1];
+            i2 = sp->start_seg[iseg+1];
         else
             i2 = N_data;
         #else
@@ -467,18 +467,43 @@ __device__ CHI_FLOAT chi2one(double *params, struct obs_data *sData, int N_data,
             // Now following Muinonen & Lumme, 2015 to compute the visual brightness of the asteroid.
             // Attention! My (Samarasinha and A'Hearn 1991) frame of reference is b-c-a, but the Muinonen's frame is a-b-c
             // On 17.10.2018 the bug was fixed, and now I properly convert the Muinonen's equations to the b-c-a frame
-            
+                        
+            #ifdef INTERP
+            // Using Sun and Earth coordinates interpolated in situ
+            double rr[3];
+            double E_x1,E_y1,E_z1, S_x1,S_y1,S_z1;
+    
+            // Quadratic interpolation:
+            rr[0] = (sData[i].MJD-sp->MJD0[1]) * (sData[i].MJD-sp->MJD0[2]) / (sp->MJD0[0]-sp->MJD0[1]) / (sp->MJD0[0]-sp->MJD0[2]);
+            rr[1] = (sData[i].MJD-sp->MJD0[0]) * (sData[i].MJD-sp->MJD0[2]) / (sp->MJD0[1]-sp->MJD0[0]) / (sp->MJD0[1]-sp->MJD0[2]);
+            rr[2] = (sData[i].MJD-sp->MJD0[0]) * (sData[i].MJD-sp->MJD0[1]) / (sp->MJD0[2]-sp->MJD0[0]) / (sp->MJD0[2]-sp->MJD0[1]);
+            E_x1 = sp->E_x0[0]*rr[0] + sp->E_x0[1]*rr[1] + sp->E_x0[2]*rr[2];
+            E_y1 = sp->E_y0[0]*rr[0] + sp->E_y0[1]*rr[1] + sp->E_y0[2]*rr[2];
+            E_z1 = sp->E_z0[0]*rr[0] + sp->E_z0[1]*rr[1] + sp->E_z0[2]*rr[2];
+            S_x1 = sp->S_x0[0]*rr[0] + sp->S_x0[1]*rr[1] + sp->S_x0[2]*rr[2];
+            S_y1 = sp->S_y0[0]*rr[0] + sp->S_y0[1]*rr[1] + sp->S_y0[2]*rr[2];
+            S_z1 = sp->S_z0[0]*rr[0] + sp->S_z0[1]*rr[1] + sp->S_z0[2]*rr[2];
+            #else
+            // Using Sun and Earth coordinates interpolated previously on CPU
+            #define E_x1 sData[i].E_x
+            #define E_y1 sData[i].E_y
+            #define E_z1 sData[i].E_z
+            #define S_x1 sData[i].S_x
+            #define S_y1 sData[i].S_y
+            #define S_z1 sData[i].S_z
+            #endif
+
             // Earth vector in the new (b,c,a) basis
             // Switching from Muinonen coords (abc) to Samarasinha coords (bca)
-            Ep_x = b_x*sData[i].E_x + b_y*sData[i].E_y + b_z*sData[i].E_z;
-            Ep_y = c_x*sData[i].E_x + c_y*sData[i].E_y + c_z*sData[i].E_z;
-            Ep_z = a_x*sData[i].E_x + a_y*sData[i].E_y + a_z*sData[i].E_z;
+            Ep_x = b_x*E_x1 + b_y*E_y1 + b_z*E_z1;
+            Ep_y = c_x*E_x1 + c_y*E_y1 + c_z*E_z1;
+            Ep_z = a_x*E_x1 + a_y*E_y1 + a_z*E_z1;
             
             // Sun vector in the new (b,c,a) basis
             // Switching from Muinonen coords (abc) to Samarasinha coords (bca)
-            Sp_x = b_x*sData[i].S_x + b_y*sData[i].S_y + b_z*sData[i].S_z;
-            Sp_y = c_x*sData[i].S_x + c_y*sData[i].S_y + c_z*sData[i].S_z;
-            Sp_z = a_x*sData[i].S_x + a_y*sData[i].S_y + a_z*sData[i].S_z;
+            Sp_x = b_x*S_x1 + b_y*S_y1 + b_z*S_z1;
+            Sp_y = c_x*S_x1 + c_y*S_y1 + c_z*S_z1;
+            Sp_z = a_x*S_x1 + a_y*S_y1 + a_z*S_z1;
             
             // Now that we converted the Earth and Sun vectors to the internal asteroidal basis (a,b,c),
             // we can apply the formalism of Muinonen & Lumme, 2015 to calculate the brightness of the asteroid.
@@ -623,10 +648,10 @@ __device__ CHI_FLOAT chi2one(double *params, struct obs_data *sData, int N_data,
                     // We just found a brightness minimum (V maximum), between i-2 ... i
                 {
                     bool local=0;
-                    for (int ii=0; ii<s_chi2_params->N_obs; ii++)
-                        // If the model minimum at t_old[1] is within DT_MAX2 days from any observed minimum in s_chi2_params structure, we mark it as local.
+                    for (int ii=0; ii<sp->N_obs; ii++)
+                        // If the model minimum at t_old[1] is within DT_MAX2 days from any observed minimum in sp structure, we mark it as local.
                         // It can now contribute to the merit function calculations later in the kernel.
-                        if (fabs(t_old[1]-s_chi2_params->t_obs[ii]) < DT_MAX2)
+                        if (fabs(t_old[1]-sp->t_obs[ii]) < DT_MAX2)
                             local = 1;
                         if (local)
                             // Only memorising model minima in the vicinity of observed minima (within DT_MAX2 days) - along the time axis:
@@ -694,10 +719,10 @@ __device__ CHI_FLOAT chi2one(double *params, struct obs_data *sData, int N_data,
     for (int imod=0; imod < M; imod++)
         // Loop over all detected local model minima
     {
-        for (int iobs=0; iobs < s_chi2_params->N_obs; iobs++)
-            // Loop over all the observed minima in s_chi2_params structure
+        for (int iobs=0; iobs < sp->N_obs; iobs++)
+            // Loop over all the observed minima in sp structure
         {
-            float dt = fabs(t_mod[imod]-s_chi2_params->t_obs[iobs]);
+            float dt = fabs(t_mod[imod]-sp->t_obs[iobs]);
             if (dt < DT_MAX2)
                 // Only local model minima are processed
             {
@@ -713,7 +738,7 @@ __device__ CHI_FLOAT chi2one(double *params, struct obs_data *sData, int N_data,
                 {
                     S_M = S_M + 1.0;
                     // !!! Only works properly if N_filters=1 !!!
-                    float dV = V_mod[imod] + delta_V[0] - s_chi2_params->V_obs[iobs];
+                    float dV = V_mod[imod] + delta_V[0] - sp->V_obs[iobs];
                     #ifdef V1S
                     // One-sided treatment of dV: if model minimum is below the observed one, keep dV=0 (don't punish). Only punish when dV>0.
                     // This should promote minima which are at least as deep as the observed ones
@@ -737,7 +762,7 @@ __device__ CHI_FLOAT chi2one(double *params, struct obs_data *sData, int N_data,
             }
         }
     }
-    P_tot = powf(P_tot, 1.0/s_chi2_params->N_obs); // Normalizing the reward to the number of observed minima
+    P_tot = powf(P_tot, 1.0/sp->N_obs); // Normalizing the reward to the number of observed minima
     // P_tot is the reward factor for how close all observed minima are to model minima. It varies between P_MIN (likely a perfect match) to 1 (no match)
     if (P_tot < P_MIN)
         // This might happen if there is more than one model minimum per observed one; we don't want to encourage that:
@@ -894,7 +919,7 @@ __device__ void params2x(CHI_FLOAT *x, double *params, CHI_FLOAT sLimits[][N_TYP
 
 //+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 
-__device__ int x2params(CHI_FLOAT *x, double *params, CHI_FLOAT sLimits[][N_TYPES], struct x2_struct *s_x2_params, int sProperty[][N_COLUMNS], int sTypes[][N_SEG])
+__device__ int x2params(CHI_FLOAT *x, double *params, CHI_FLOAT sLimits[][N_TYPES], volatile struct x2_struct *s_x2_params, int sProperty[][N_COLUMNS], int sTypes[][N_SEG])
 // Conversion from dimensionless x[] parameters to the physical ones params[]
 // RANDOM_BC is not supported yet
 {    
@@ -1095,7 +1120,7 @@ __device__ int x2params(CHI_FLOAT *x, double *params, CHI_FLOAT sLimits[][N_TYPE
 
 //++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 
-__global__ void chi2_gpu (struct obs_data *dData, int N_data, int N_filters, int reopt,
+__global__ void chi2_gpu (struct obs_data *dData, int N_data, int N_filters, int reopt, int Nstages,
                           curandState* globalState, CHI_FLOAT *d_f, struct x2_struct x2_params)
 // CUDA kernel computing chi^2 on GPU
 {        
@@ -1107,18 +1132,35 @@ __global__ void chi2_gpu (struct obs_data *dData, int N_data, int N_filters, int
 //    __shared__ volatile int s_thread_id[BSIZE];
     __shared__ int sProperty[N_PARAMS][N_COLUMNS];
     __shared__ int sTypes[N_TYPES][N_SEG];
-    __shared__ struct chi2_struct s_chi2_params;
-    __shared__ struct x2_struct s_x2_params;
+    __shared__ struct chi2_struct sp;
+    __shared__ volatile struct x2_struct s_x2_params;
+    __shared__ volatile CHI_FLOAT s_x0[N_PARAMS];
+    __shared__ volatile int thread_min;
+    __shared__ volatile CHI_FLOAT smin;
     int i, j;
     double params[N_PARAMS];
     CHI_FLOAT delta_V[N_FILTERS];
+    int ind[N_PARAMS+1]; // Indexes to the sorted array (point index)
+    
     
     // Not efficient, for now:
     if (threadIdx.x == 0)
     {
         #ifndef NO_SDATA
-        for (i=0; i<N_data; i++)
-            sData[i] = dData[i];
+          for (i=0; i<N_data; i++)
+              sData[i] = dData[i];
+          #ifdef INTERP
+          for (i=0; i<3; i++)
+          {
+              sp.E_x0[i] = dE_x0[i];
+              sp.E_y0[i] = dE_y0[i];
+              sp.E_z0[i] = dE_z0[i];
+              sp.S_x0[i] = dS_x0[i];
+              sp.S_y0[i] = dS_y0[i];
+              sp.S_z0[i] = dS_z0[i];
+              sp.MJD0[i] = dMJD0[i];
+          }
+          #endif
         #endif        
         for (i=0; i<N_TYPES; i++)
         {
@@ -1132,7 +1174,7 @@ __global__ void chi2_gpu (struct obs_data *dData, int N_data, int N_filters, int
                 sProperty[i][j] = dProperty[i][j];
             #ifdef NUDGE
             // Copying the data on the observed minima from device to shared memory:
-            s_chi2_params = d_chi2_params;
+            sp = d_chi2_params;
             #endif
         #ifdef P_BOTH
         s_x2_params = x2_params;
@@ -1140,17 +1182,18 @@ __global__ void chi2_gpu (struct obs_data *dData, int N_data, int N_filters, int
         #ifdef SEGMENT
         // Copying the starting indexes for data segments to shared memory:
         for (i=0; i<N_SEG; i++)
-            s_chi2_params.start_seg[i] = d_start_seg[i];
+            sp.start_seg[i] = d_start_seg[i];
         #endif   
+        
+        s_x2_params.reopt = reopt;
     }
     
     // Downhill simplex optimization approach
     
-    __syncthreads();
-
     CHI_FLOAT x[N_PARAMS+1][N_PARAMS];  // simplex points (point index, coordinate)
+    CHI_FLOAT f[N_PARAMS+1]; // chi2 values for the simplex edges (point index)
 
-    if (reopt)
+    if (s_x2_params.reopt)
     {
         // Reading the initial point from device memory
         for (i=0; i<N_PARAMS; i++)
@@ -1164,13 +1207,20 @@ __global__ void chi2_gpu (struct obs_data *dData, int N_data, int N_filters, int
     
     // Reading the global states from device memory:
     curandState localState = globalState[id];
+
+    for (int istage=0; istage<Nstages; istage++)
+    {
+        
+    __syncthreads();
+    if (Nstages>1 && istage>0)
+    {
+        // Reading the best point obtained in the previous stage:
+        for (int i=0; i<N_PARAMS; i++)
+            x[0][i] = s_x0[i];
+    }
     
     //Simplex steps counter:
     int l = 0;
-    
-    CHI_FLOAT f[N_PARAMS+1]; // chi2 values for the simplex edges (point index)
-    
-    s_x2_params.reopt = reopt;
     
     bool failed;
     #ifdef P_BOTH
@@ -1200,7 +1250,7 @@ __global__ void chi2_gpu (struct obs_data *dData, int N_data, int N_filters, int
             
             #ifdef BC
             #ifndef RANDOM_BC
-            if (!reopt)
+            if (!s_x2_params.reopt)
             {
                 // Initial vales of c/b are equal to initial values of c_tumb/b_tumb:
                 if (sProperty[i][P_type] == T_c)
@@ -1218,7 +1268,7 @@ __global__ void chi2_gpu (struct obs_data *dData, int N_data, int N_filters, int
             #endif  // BC      
             
             
-            if (!reopt || reopt && sProperty[i][P_frozen]==-1)
+            if (!s_x2_params.reopt || s_x2_params.reopt && sProperty[i][P_frozen]==-1)
                 // Points placed randomly within the full allowed interval
             {
                 // The allowed interval is DX_INI+SMALL  ... 1-(DX_INI-SMALL):
@@ -1293,7 +1343,7 @@ __global__ void chi2_gpu (struct obs_data *dData, int N_data, int N_filters, int
                 break;
             }
 
-            f[j] = chi2one(params, sData, N_data, N_filters, delta_V, 0, &s_chi2_params, sTypes);    
+            f[j] = chi2one(params, sData, N_data, N_filters, delta_V, 0, &sp, sTypes);    
         }
         
         #ifdef P_BOTH
@@ -1301,8 +1351,6 @@ __global__ void chi2_gpu (struct obs_data *dData, int N_data, int N_filters, int
             break;
     }  // end of for loop
     #endif
-    
-    int ind[N_PARAMS+1]; // Indexes to the sorted array (point index)
     
     // The main simplex loop
     while (1)
@@ -1381,7 +1429,7 @@ __global__ void chi2_gpu (struct obs_data *dData, int N_data, int N_filters, int
         if (x2params(x_r,params,sLimits, &s_x2_params, sProperty, sTypes))
             f_r = 1e30;
         else
-            f_r = chi2one(params, sData, N_data, N_filters, delta_V, 0, &s_chi2_params, sTypes);
+            f_r = chi2one(params, sData, N_data, N_filters, delta_V, 0, &sp, sTypes);
         if (f_r >= f[ind[0]] && f_r < f[ind[N_PARAMS-1]])
         {
             // Replacing the worst point with the reflected point:
@@ -1406,7 +1454,7 @@ __global__ void chi2_gpu (struct obs_data *dData, int N_data, int N_filters, int
             if (x2params(x_e,params,sLimits, &s_x2_params, sProperty, sTypes))
                 f_e = 1e30;
             else
-                f_e = chi2one(params, sData, N_data, N_filters, delta_V, 0, &s_chi2_params, sTypes);
+                f_e = chi2one(params, sData, N_data, N_filters, delta_V, 0, &sp, sTypes);
             if (f_e < f_r)
             {
                 // Replacing the worst point with the expanded point:
@@ -1438,7 +1486,7 @@ __global__ void chi2_gpu (struct obs_data *dData, int N_data, int N_filters, int
         if (x2params(x_r,params,sLimits, &s_x2_params, sProperty, sTypes))
             f_r = 1e30;
         else
-            f_r = chi2one(params, sData, N_data, N_filters, delta_V, 0, &s_chi2_params, sTypes);
+            f_r = chi2one(params, sData, N_data, N_filters, delta_V, 0, &sp, sTypes);
         if (f_r < f[ind[N_PARAMS]])
         {
             // Replacing the worst point with the contracted point:
@@ -1462,7 +1510,7 @@ __global__ void chi2_gpu (struct obs_data *dData, int N_data, int N_filters, int
             if (x2params(x[ind[j]],params,sLimits, &s_x2_params, sProperty, sTypes))
                 bad = 1;
             else
-                f[ind[j]] = chi2one(params, sData, N_data, N_filters, delta_V, 0, &s_chi2_params, sTypes);
+                f[ind[j]] = chi2one(params, sData, N_data, N_filters, delta_V, 0, &sp, sTypes);
         }
         // We failed the optimization
         if (bad)
@@ -1506,8 +1554,6 @@ __global__ void chi2_gpu (struct obs_data *dData, int N_data, int N_filters, int
     */
     
     // Serial reduction:
-    __shared__ volatile int thread_min;
-    __shared__ volatile CHI_FLOAT smin;
     if (threadIdx.x == 0)
     {
         thread_min = 0;
@@ -1523,7 +1569,30 @@ __global__ void chi2_gpu (struct obs_data *dData, int N_data, int N_filters, int
     }
     __syncthreads();
     
-//    if (threadIdx.x == s_thread_id[0] && s_f[0] < d_f[blockIdx.x])
+    if (threadIdx.x == thread_min && Nstages>1 && istage<Nstages-1)
+        // When Nstages>1, for each block of threads the best point is used to run reoptimization
+    {
+        #if defined(P_PSI) || defined(P_PHI) || defined(P_BOTH)            
+        // Only in one of P_* modes, and after the first stage (when reopt changes from 0 to 1),
+        // we need to do the x->params->x transformation, to switch the meaning of x for L parameter
+        if (s_x2_params.reopt == 0)
+        {
+            // Converting to physical parameters (L now is physical angular momentum):
+            x2params(x[ind[0]], params, sLimits, &s_x2_params, sProperty, sTypes);
+            // Converting bacl to dimensionless x[] values. Now x(L) has the proper value:
+            params2x(x[ind[0]], params, sLimits, sProperty, sTypes);
+        }
+        #endif
+        // Memorizing the best point in this block in a shared memory vector:
+        for (int i=0; i<N_PARAMS; i++)
+            s_x0[i] = x[ind[0]][i];
+        // Enabling reoptimization:
+        s_x2_params.reopt = 1;
+    }
+    
+    } // istage loop
+
+    //    if (threadIdx.x == s_thread_id[0] && s_f[0] < d_f[blockIdx.x])
     if (threadIdx.x == thread_min && smin < d_f[blockIdx.x])
         // Keeping the current best result if it's better than the previous kernel result for the same blockID
     {
@@ -1538,6 +1607,7 @@ __global__ void chi2_gpu (struct obs_data *dData, int N_data, int N_filters, int
                 d_dV[blockIdx.x][m] = delta_V[m];
         }
     }
+    
     
 
     
@@ -1584,7 +1654,7 @@ __global__ void chi2_plot (struct obs_data *dData, int N_data, int N_filters,
 {     
     __shared__ double sd2_min[BSIZE];
     CHI_FLOAT delta_V[N_FILTERS];
-    __shared__ struct chi2_struct s_chi2_params;
+    __shared__ struct chi2_struct sp;
     __shared__ int sTypes[N_TYPES][N_SEG];
     double params[N_PARAMS];
     
@@ -1607,27 +1677,27 @@ __global__ void chi2_plot (struct obs_data *dData, int N_data, int N_filters,
         }
         #ifdef NUDGE
         // Copying the data on the observed minima from device to shared memory:
-        s_chi2_params = d_chi2_params;
+        sp = d_chi2_params;
         #endif
         #ifdef SEGMENT
         // Copying the starting indexes for data segments to shared memory:
         for (int i=0; i<N_SEG; i++)
-            s_chi2_params.start_seg[i] = d_start_seg[i];
+            sp.start_seg[i] = d_start_seg[i];
         #endif    
         // !!! Will not work in NUDGE mode - NULL
         // Step one: computing constants for each filter (delta_V[]) using chi^2 method, and the chi2 value
-        d_chi2_plot = chi2one(params, dData, N_data, N_filters, delta_V, 0,  &s_chi2_params, sTypes);
+        d_chi2_plot = chi2one(params, dData, N_data, N_filters, delta_V, 0,  &sp, sTypes);
         for (int m=0; m<N_FILTERS; m++)
             d_delta_V[m] = delta_V[m];
         
         #ifdef SEGMENT
         // Copying the starting indexes for data segments to shared memory:
         for (int i=0; i<N_SEG; i++)
-            s_chi2_params.start_seg[i] = d_plot_start_seg[i];
+            sp.start_seg[i] = d_plot_start_seg[i];
         #endif    
 
         // Step two: computing the Nplots data points using the delta_V values from above:
-        chi2one(params, dPlot, Nplot, N_filters, delta_V, Nplot,  &s_chi2_params, sTypes);
+        chi2one(params, dPlot, Nplot, N_filters, delta_V, Nplot,  &sp, sTypes);
         
     }
     
@@ -1737,7 +1807,7 @@ __global__ void chi2_plot (struct obs_data *dData, int N_data, int N_filters,
         
         // Computing the chi2 for the shifted parameter:
         // !!! Will not work in NUDGE mode - NULL
-        d_chi2_lines[iparam][id] = chi2one(params, dData, N_data, N_filters, delta_V, 0, &s_chi2_params, sTypes);
+        d_chi2_lines[iparam][id] = chi2one(params, dData, N_data, N_filters, delta_V, 0, &sp, sTypes);
     }
     #endif    
     
