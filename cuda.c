@@ -1171,6 +1171,15 @@ __global__ void chi2_gpu (struct obs_data *dData, int N_data, int N_filters, int
           }
           #endif
         #endif        
+        #ifdef NUDGE
+        // Copying the data on the observed minima from device to shared memory:
+        sp.N_obs = d_chi2_params.N_obs;
+        for (i=0; i<sp.N_obs; i++)
+        {
+            sp.t_obs[i] = d_chi2_params.t_obs[i];
+            sp.V_obs[i] = d_chi2_params.V_obs[i];
+        }
+        #endif
         for (i=0; i<N_TYPES; i++)
         {
             sLimits[0][i] = dLimits[0][i];
@@ -1181,10 +1190,6 @@ __global__ void chi2_gpu (struct obs_data *dData, int N_data, int N_filters, int
         for (i=0; i<N_PARAMS; i++)
             for (j=0; j<N_COLUMNS; j++)
                 sProperty[i][j] = dProperty[i][j];
-            #ifdef NUDGE
-            // Copying the data on the observed minima from device to shared memory:
-            sp = d_chi2_params;
-            #endif
         #ifdef P_BOTH
         s_x2_params = x2_params;
         #endif       
