@@ -37,6 +37,7 @@ int main (int argc,char **argv)
     int keep = 0;
     int best = 0;
     int reopt = 0;
+    int inp_model = 0;
     
     // Observational data:
     int N_data; // Number of data points
@@ -45,6 +46,7 @@ int main (int argc,char **argv)
     unsigned long int seed = 0;
     int Ncases = -1;
     int Nstages = 1;
+    int model = 0;
     
     #ifdef ONE_LE
     int const LE = 1;
@@ -245,6 +247,11 @@ int main (int argc,char **argv)
         {
             for (int k=0; k<N_PARAMS; k++)
             {
+                if (j+1+k == argc)
+                {
+                    printf("Not enough of model parameters in -m switch!\n");
+                    exit(1);
+                }
                 if (argv[j+1+k][0] == 'v')
                 {
                     // The special value of "-1" for P_frozen parameter means this parameter is randomly changing within its full range:
@@ -259,6 +266,7 @@ int main (int argc,char **argv)
                 }
             }
             j = j + 1 + N_PARAMS;
+            model = 1;
             if (j >= argc)
                 break;
         }
@@ -358,6 +366,16 @@ int main (int argc,char **argv)
           printf("-i parameter is missing!\n");
           exit(1);
       }
+    if ((reopt || Nplot>0) && !model)
+    {
+        printf("-reopt and -plot switches require -m switch!\n");
+        exit(1);
+    }
+    if (reopt==0 & Nplot==0 && model)
+    {
+        printf("-m can only be used together with -reopt or -plot switches!\n");
+        exit(1);
+    }
 
         // Total number of frozen parameter types:
     int N_frozen = i_frozen + 1;

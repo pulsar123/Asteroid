@@ -172,7 +172,7 @@ const int N_TYPES =   __COUNTER__;
 
 
 // Maximum number of data points:
-const int MAX_DATA = 662; // 497, 662, 772
+const int MAX_DATA = 772; // 497, 662, 772
 // Maximum number of filters:
 const int N_FILTERS = 1;
 

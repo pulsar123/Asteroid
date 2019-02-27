@@ -483,6 +483,15 @@ __device__ CHI_FLOAT chi2one(double *params, struct obs_data *sData, int N_data,
             S_x1 = sp->S_x0[0]*rr[0] + sp->S_x0[1]*rr[1] + sp->S_x0[2]*rr[2];
             S_y1 = sp->S_y0[0]*rr[0] + sp->S_y0[1]*rr[1] + sp->S_y0[2]*rr[2];
             S_z1 = sp->S_z0[0]*rr[0] + sp->S_z0[1]*rr[1] + sp->S_z0[2]*rr[2];
+            // Normalizing the vectors E and S:
+            double E = sqrt(E_x1*E_x1 + E_y1*E_y1 + E_z1*E_z1);
+            E_x1= E_x1 / E;
+            E_y1= E_y1 / E;
+            E_z1= E_z1 / E;
+            double S = sqrt(S_x1*S_x1 + S_y1*S_y1 + S_z1*S_z1);
+            S_x1= S_x1 / S;
+            S_y1= S_y1 / S;
+            S_z1= S_z1 / S;
             #else
             // Using Sun and Earth coordinates interpolated previously on CPU
             #define E_x1 sData[i].E_x
@@ -1675,6 +1684,18 @@ __global__ void chi2_plot (struct obs_data *dData, int N_data, int N_filters,
             for (int iseg=0; iseg<N_SEG; iseg++)
                 sTypes[i][iseg] = dTypes[i][iseg];
         }
+        #ifdef INTERP
+        for (int i=0; i<3; i++)
+          {
+              sp.E_x0[i] = dE_x0[i];
+              sp.E_y0[i] = dE_y0[i];
+              sp.E_z0[i] = dE_z0[i];
+              sp.S_x0[i] = dS_x0[i];
+              sp.S_y0[i] = dS_y0[i];
+              sp.S_z0[i] = dS_z0[i];
+              sp.MJD0[i] = dMJD0[i];
+          }
+        #endif
         #ifdef NUDGE
         // Copying the data on the observed minima from device to shared memory:
         sp = d_chi2_params;

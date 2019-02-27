@@ -303,9 +303,11 @@ if (Nplot > 0)
     double h = hData[*N_data-1].MJD / (Nplot - 1);
     double tplot;
     int iplot;
+    #ifndef INTERP
     // Changing the ephemeride times:
     for (l=0; l<3; l++)
         MJD0[l] = MJD0[l] - hMJD0;
+    #endif    
     
     for (iplot=0; iplot<Nplot; iplot++)
     {
