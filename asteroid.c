@@ -694,6 +694,11 @@ int main (int argc,char **argv)
         else
             NX = NX1;
         
+        #ifdef MINIMA_TEST
+        minima_test(N_data, N_filters, Nplot, params, Types);
+        exit(0);
+        #endif        
+        
         #ifdef PROFILES        
         dim3 NB(NX, N_PARAMS);
         #else        

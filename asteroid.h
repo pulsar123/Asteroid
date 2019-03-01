@@ -172,7 +172,12 @@ const int N_TYPES =   __COUNTER__;
 
 
 // Maximum number of data points:
+#ifdef INTERP
+// INTERP function results in a ~15% slower code, but allows for a few time larger datasets:
 const int MAX_DATA = 772; // 497, 662, 772
+#else
+const int MAX_DATA = 497;
+#endif
 // Maximum number of filters:
 const int N_FILTERS = 1;
 
@@ -335,6 +340,7 @@ int cmpdouble (const void * a, const void * b);
 int minima(struct obs_data * dPlot, double * Vm, int Nplot);
 int prepare_chi2_params(int *);
 int gpu_prepare(int, int, int, int);
+int minima_test(int, int, int, double*, int[][N_SEG]);
 
 __global__ void setup_kernel ( curandState *, unsigned long, CHI_FLOAT *, int);
 __global__ void chi2_gpu(struct obs_data *, int, int, int, int, curandState*, CHI_FLOAT*, struct x2_struct);

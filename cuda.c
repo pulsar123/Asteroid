@@ -1859,3 +1859,5 @@ __global__ void setup_kernel ( curandState * state, unsigned long seed, CHI_FLOA
     
     return;
 } 
+
+
