@@ -259,6 +259,12 @@ const double T_SCALE = 0.06;  // in days
 // Maximum number of clusters in minima() periodogram search
 const int NCL_MAX = 5;
 
+#ifdef MINIMA_TEST
+const int N_PHI_0 = 256; // Number of phi_0 values (also threads in the kernel); ~256
+const int N_THETA_M = 64; // Number of theta_M values (also x-dimension of the grid of blocks); should be an even number
+const int N_PHI_M = 64; // Number of phi_M values (also y-dimension of the grid of blocks)
+const int MAX_MINIMA = 30;  // Maximum number of brifhtness minima allowed during minima test
+#endif
 
 // Speed of light (au/day):
 const double light_speed = 173.144632674;
@@ -340,12 +346,14 @@ int cmpdouble (const void * a, const void * b);
 int minima(struct obs_data * dPlot, double * Vm, int Nplot);
 int prepare_chi2_params(int *);
 int gpu_prepare(int, int, int, int);
-int minima_test(int, int, int, double*, int[][N_SEG]);
+int minima_test(int, int, int, double*, int[][N_SEG], CHI_FLOAT);
 
 __global__ void setup_kernel ( curandState *, unsigned long, CHI_FLOAT *, int);
 __global__ void chi2_gpu(struct obs_data *, int, int, int, int, curandState*, CHI_FLOAT*, struct x2_struct);
-__global__ void chi2_plot(struct obs_data *, int, int,
-                          struct obs_data *, int, double *);
+__global__ void chi2_plot(struct obs_data *, int, int, struct obs_data *, int, double *);
+#ifdef MINIMA_TEST
+__global__ void chi2_minima(struct obs_data *, int, int, struct obs_data *, int, CHI_FLOAT);
+#endif
 #ifdef DEBUG2
 __global__ void debug_kernel(struct parameters_struct, struct obs_data *, int, int);
 #endif
@@ -439,7 +447,12 @@ EXTERN __device__ float dPphi, dPphi2;
 #ifdef LAST
 EXTERN __device__ double d_L_last, d_E_last;
 #endif
-
+#ifdef MINIMA_TEST
+EXTERN __device__ float d_Scores[N_THETA_M][N_PHI_M];
+EXTERN float h_Scores[N_THETA_M][N_PHI_M];
+EXTERN __device__ int d_N7all;
+EXTERN int h_N7all;
+#endif
 
 #endif
 

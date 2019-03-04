@@ -47,6 +47,10 @@ int main (int argc,char **argv)
     int Ncases = -1;
     int Nstages = 1;
     int model = 0;
+    #ifdef MINIMA_TEST
+    int has_delta_V = 0;
+    CHI_FLOAT delta_V = 0.0;
+    #endif
     
     #ifdef ONE_LE
     int const LE = 1;
@@ -156,6 +160,9 @@ int main (int argc,char **argv)
     {
         printf("\n Command line arguments:\n\n");
         printf("-best : only keep the best result\n");
+        #ifdef MINIMA_TEST
+//        printf("-delta_V value : delta_V value, only in MINIMA_TEST mode\n");
+        #endif
         printf("-f type_constant value: forces the parameter with the type_constant to be frozen during optimization at \"value\" \n");
         printf("-i name : input (data) file name\n");
         printf("-keep : keep all intermediate results, not just the best ones\n");
@@ -358,8 +365,22 @@ int main (int argc,char **argv)
             j = j + 4;
             if (j >= argc)
                 break;
+
+            
         }
-    }
+        
+        #ifdef MINIMA_TEST        
+        if (strcmp(argv[j], "-delta_V") == 0)
+        {
+            delta_V = atof(argv[j+1]);
+            has_delta_V = 1;
+            j = j + 2;
+            if (j >= argc)
+                break;
+        }
+        #endif
+        
+    }  // while argc loop
     
     if (j_input == -1)
       {
@@ -376,6 +397,15 @@ int main (int argc,char **argv)
         printf("-m can only be used together with -reopt or -plot switches!\n");
         exit(1);
     }
+    #ifdef MINIMA_TEST        
+    /*
+    if (has_delta_V == 0)
+    {
+        printf("-delta_V switch is required in MINIMA_TEST mode!\n");
+        exit(1);
+    }
+    */
+    #endif
 
         // Total number of frozen parameter types:
     int N_frozen = i_frozen + 1;
@@ -695,7 +725,7 @@ int main (int argc,char **argv)
             NX = NX1;
         
         #ifdef MINIMA_TEST
-        minima_test(N_data, N_filters, Nplot, params, Types);
+        minima_test(N_data, N_filters, Nplot, params, Types, delta_V);
         exit(0);
         #endif        
         

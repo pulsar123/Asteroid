@@ -323,103 +323,36 @@ int prepare_chi2_params(int * N_data)
 #endif
 
 
-int minima_test(int N_data, int N_filters, int Nplot, double* params, int Types[][N_SEG])
+#ifdef MINIMA_TEST
+int minima_test(int N_data, int N_filters, int Nplot, double* params, int Types[][N_SEG], CHI_FLOAT delta_V)
 /*  Counting deep minima for different theta_M, phi_M (and phi_0?) parameters. To judge how likley disk vs. cigar models are.
  */
 {
-    dim3 NB (1, 1);
-    const int MAX_MINIMA = 1000;
-    const int Nphi = 36;
-    double Vmin[MAX_MINIMA];
-    double Vbest[7];    
     
-    int score2 = 0;
-    for (int iphi=0; iphi<Nphi; iphi++)
-    {
-        // psi_0 range is 0...2*pi
-        params[Types[T_phi_0][0]] = 2.0*PI * (double)iphi / (double)Nphi;
-        
-        // Copying the model parameters to the gpu:
-        ERR(cudaMemcpyToSymbol(d_params0, params, N_PARAMS*sizeof(double), 0, cudaMemcpyHostToDevice));
-        // Running the CUDA kernel to produce the plot data from params:
-        chi2_plot<<<NB, BSIZE>>>(dData, N_data, N_filters, dPlot, Nplot, d_dlsq2);
-        ERR(cudaDeviceSynchronize());
-        // Copying the brightness curve data to the host:
-        ERR(cudaMemcpyFromSymbol(&h_Vmod, d_Vmod, Nplot*sizeof(double), 0, cudaMemcpyDeviceToHost));
-        
-        // Finding all the local brightness minima (Vmod maxima) in the model brightness profile
-        int N_minima = 0;    
-        for (int i=1; i<Nplot-1; i++)
-        {
-            double t = hMJD0+hPlot[i].MJD;
+    dim3 NB (N_THETA_M, N_PHI_M);
             
-            // Only checking time intervals (well) covered by observations:
-            if (t>=58051.044624 && t<=58051.117754 ||
-                t>=58051.977665 && t<=58052.185066 ||
-                t>=58053.078873 && t<=58053.528586 ||
-                t>=58054.093274 && t<=58054.514202 ||
-                t>=58055.234145 && t<=58055.354832 ||
-                t>=58056.181290 && t<=58056.278901)
-            {
-                // Local minimum (Vmod maximum) criterion:
-                if (h_Vmod[i]>h_Vmod[i-1] && h_Vmod[i]>=h_Vmod[i+1])
-                {
-                    N_minima++;
-                    if (N_minima > MAX_MINIMA)
-                    {
-                        printf("N_minima > MAX_MINIMA!\n");
-                        exit(1);
-                    }
-                    Vmin[N_minima-1] = h_Vmod[i];
-                }
-            }
-        }  // for i loop
+    // Copying the model parameters to the gpu:
+    ERR(cudaMemcpyToSymbol(d_params0, params, N_PARAMS*sizeof(double), 0, cudaMemcpyHostToDevice));
+    h_N7all = 0;
+    ERR(cudaMemcpyToSymbol(d_N7all, &h_N7all, sizeof(int), 0, cudaMemcpyHostToDevice));
         
-        // Finding the 7 deepest minima (largest Vmod maxima)
-        for (int j=0; j<7; j++)
-        {
-            double Vmax = -1e30;
-            int kmax = -1;
-            for (int k=0; k<N_minima; k++)
-            {
-                if (Vmin[k] > Vmax)
-                {
-                    Vmax = Vmin[k];
-                    kmax = k;
-                }
-            }  // k loop
-            if (kmax == -1)
-            {
-                printf("Problem: kmax=-1!\n");
-                exit(1);
-            }
-            Vbest[j] = Vmax;  // Memorizing the minimum
-            Vmin[kmax] = -1e30;  // Erasing the minimum we found, so we can search for the next deepest minimum
-        }  // j loop
+    // Computing the score matrix:
+    chi2_minima<<<NB, N_PHI_0>>>(dData, N_data, N_filters, dPlot, Nplot, delta_V);
         
-        // Computing the score: number of model minima which are deeper than the same ranking deepest observed minima:
-        // Full range: from 0 (worst) to 7 (best).
-        int score = 0;
-        if (Vbest[0]>=25.715)
-            score++;
-        if (Vbest[1]>=25.254)
-            score++;
-        if (Vbest[2]>=25.234)
-            score++;
-        if (Vbest[3]>=25.212)
-            score++;
-        if (Vbest[4]>=24.940)
-            score++;
-        if (Vbest[5]>=24.846)
-            score++;
-        if (Vbest[6]>=24.834)
-            score++;
-        
-        score2 = score2 + score;
-    }  // iphi loop
+    // Copying the score matrix to the host:
+    ERR(cudaMemcpyFromSymbol(&h_Scores, d_Scores, N_THETA_M*N_PHI_M*sizeof(float), 0, cudaMemcpyDeviceToHost));
+    ERR(cudaMemcpyFromSymbol(&h_N7all, d_N7all, sizeof(int), 0, cudaMemcpyDeviceToHost));
+    ERR(cudaDeviceSynchronize());
     
-    printf("Average score: %f\n", (double)score2/(double)Nphi);
+    double sum = 0.0;
+    for (int i=0; i<N_THETA_M; i++)
+        for (int j=0; j<N_PHI_M; j++)
+            sum = sum + h_Scores[i][j];
+    
+    printf("Average score: %f\n", sum/(double)N_THETA_M / (double)N_PHI_M);
+    printf("Model likelihood: %lf\n", (double)h_N7all / (N_THETA_M*N_PHI_M*N_PHI_0));
     
     return 0;
 }
+#endif
 

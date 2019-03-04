@@ -146,7 +146,13 @@ __device__ CHI_FLOAT chi2one(double *params, struct obs_data *sData, int N_data,
     float t_old[2];
     float V_old[2];
     #endif
-    
+
+    #ifdef MINIMA_TEST
+    int N_minima = 0;    
+    float Vmin[MAX_MINIMA];
+    float t_old[2];
+    float V_old[2];
+    #endif    
     
     // Loop for multiple data segments
     // (Will use one segment, for all the data, when SEGMENT is not defined)
@@ -632,7 +638,9 @@ __device__ CHI_FLOAT chi2one(double *params, struct obs_data *sData, int N_data,
             
             if (Nplot > 0)
             {
+                #ifndef MINIMA_TEST                
                 d_Vmod[i] = Vmod + delta_V[0]; //???
+                #endif                
             }
             else
             {
@@ -690,6 +698,46 @@ __device__ CHI_FLOAT chi2one(double *params, struct obs_data *sData, int N_data,
             }
             #endif
             
+            #ifdef MINIMA_TEST
+            if (Nplot > 0)  
+            {
+                // Determining if the previous time point was a local minimum
+                if (i < i1 + 2)
+                {
+                    t_old[i-i1] = sData[i].MJD;
+                    V_old[i-i1] = Vmod;
+                }
+                else
+                {
+                    if (V_old[1]>V_old[0] && V_old[1]>=Vmod) 
+                        // We just found a brightness minimum (V maximum), between i-2 ... i
+                    {                                                
+                        //!!! Assumes that the input data always starts from the same point (all_new.dat file):
+                        double t = 58051.044624 + t_old[1];
+                        
+                        // Only accepting minima within the time intervals (well) covered by observations:
+                        if (t>=58051.044624 && t<=58051.117754 ||
+                            t>=58051.977665 && t<=58052.185066 ||
+                            t>=58053.078873 && t<=58053.528586 ||
+                            t>=58054.093274 && t<=58054.514202 ||
+                            t>=58055.234145 && t<=58055.354832 ||
+                            t>=58056.181290 && t<=58056.278901)
+                        {
+                            N_minima++;
+                            if (N_minima > MAX_MINIMA)
+                                return -1;
+                            Vmin[N_minima-1] = V_old[1] + delta_V[0];
+                        }
+                    }
+                // Shifting the values:
+                t_old[0] = t_old[1];
+                V_old[0] = V_old[1];
+                t_old[1] = sData[i].MJD;
+                V_old[1] = Vmod;           
+                }
+            }
+            #endif
+            
             #ifdef MIN_DV
             if (sData[i].MJD > DV_MARGIN && sData[i].MJD < sData[N_data-1].MJD-DV_MARGIN)
                 if (Vmod > Vmax)
@@ -702,6 +750,75 @@ __device__ CHI_FLOAT chi2one(double *params, struct obs_data *sData, int N_data,
         
         
     } // for (iseg) loop
+    
+    
+    
+    #ifdef MINIMA_TEST
+    if (Nplot > 0)
+    {
+        if (N_minima == 0)
+            return 0.0;
+        float Vbest[7];
+        // Finding the 7 deepest minima (largest Vmod maxima)
+        int N_min = 7;
+        if (N_minima < N_min)
+            N_min = N_minima;
+        for (int j=0; j<N_min; j++)
+        {
+            float Vmax = -1e30;
+            int kmax = -1;
+            for (int k=0; k<N_minima; k++)
+            {
+                if (Vmin[k] > Vmax)
+                {
+                    Vmax = Vmin[k];
+                    kmax = k;
+                }
+            }  // k loop
+            if (kmax == -1)
+                return -1;
+            Vbest[j] = Vmax;  // Memorizing the minimum
+            Vmin[kmax] = -2e30;  // Erasing the minimum we found, so we can search for the next deepest minimum
+        }  // j loop
+        
+        // Computing the score: number of model minima which are deeper than the same ranking deepest observed minima:
+        // Full range: from 0 (worst) to 7 (best).
+        int score = 0;
+        if (N_minima == 0)
+            return (CHI_FLOAT)score;
+        if (Vbest[0]>=25.715)
+            score++;
+        if (N_minima == 1)
+            return (CHI_FLOAT)score;
+        if (Vbest[1]>=25.254)
+            score++;
+        if (N_minima == 2)
+            return (CHI_FLOAT)score;
+        if (Vbest[2]>=25.234)
+            score++;
+        if (N_minima == 3)
+            return (CHI_FLOAT)score;
+        if (Vbest[3]>=25.212)
+            score++;
+        if (N_minima == 4)
+            return (CHI_FLOAT)score;
+        if (Vbest[4]>=24.940)
+            score++;
+        if (N_minima == 5)
+            return (CHI_FLOAT)score;
+        if (Vbest[5]>=24.846)
+            score++;
+        if (N_minima == 6)
+            return (CHI_FLOAT)score;
+        if (Vbest[6]>=24.834)
+            score++;
+
+        // Returning score (instead of the usual chi2):
+        return (CHI_FLOAT)score;
+    }  // if Nplot>0
+    #endif // MINIMA_TEST
+    
+    
     
     if (Nplot > 0)
         return 0.0;
@@ -817,7 +934,7 @@ __device__ CHI_FLOAT chi2one(double *params, struct obs_data *sData, int N_data,
         P = PV_MIN;
     chi2a = chi2a * P;
     #endif
-    
+        
     return chi2a;
 }           
 
@@ -1861,3 +1978,89 @@ __global__ void setup_kernel ( curandState * state, unsigned long seed, CHI_FLOA
 } 
 
 
+//--------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+#ifdef MINIMA_TEST
+__global__ void chi2_minima (struct obs_data *dData, int N_data, int N_filters,
+                           struct obs_data *dPlot, int Nplot, CHI_FLOAT delta_V1)
+// CUDA kernel to run minima test in parallel
+// threadId.x: phi_0
+// blockIdx.x: theta_M
+// blockIdx.y: phi_M
+// Doesn't work in NUDGE and SEGMENT
+{     
+//    CHI_FLOAT delta_V[N_FILTERS];
+    __shared__ CHI_FLOAT delta_V[N_FILTERS];
+    __shared__ struct chi2_struct sp;
+    __shared__ int sTypes[N_TYPES][N_SEG];
+    __shared__ volatile int score[N_PHI_0];
+    double params[N_PARAMS];
+    
+    // Global thread index for points:
+    int id = threadIdx.x + blockDim.x*blockIdx.x;
+
+    // Reading the initial point from device memory
+    for (int i=0; i<N_PARAMS; i++)
+        params[i] = d_params0[i];
+    
+    if (threadIdx.x == 0)
+    {
+        for (int i=0; i<N_TYPES; i++)
+        {
+            for (int iseg=0; iseg<N_SEG; iseg++)
+                sTypes[i][iseg] = dTypes[i][iseg];
+        }
+        #ifdef INTERP
+        for (int i=0; i<3; i++)
+          {
+              sp.E_x0[i] = dE_x0[i];
+              sp.E_y0[i] = dE_y0[i];
+              sp.E_z0[i] = dE_z0[i];
+              sp.S_x0[i] = dS_x0[i];
+              sp.S_y0[i] = dS_y0[i];
+              sp.S_z0[i] = dS_z0[i];
+              sp.MJD0[i] = dMJD0[i];
+          }
+        #endif
+        
+        // Step one: computing constant delta_V using chi^2 method. 
+        // This will be fixed for all models during the second step below. (Ensuring the physical dimensions of asteroid are fixed)
+        chi2one(params, dData, N_data, N_filters, delta_V, 0,  &sp, sTypes);
+    }
+    
+    __syncthreads();
+    
+    // Each thread gets a different value of the phi_0 parameter
+    // phi_0 range is 0...2*pi  (evenly distributed)
+    params[sTypes[T_phi_0][0]] = 2.0*PI * (double)threadIdx.x / (double)blockDim.x;
+    
+    // theta_M and phi_M are chosen to correspond to centers of sphere segments of equal area (=> equal probability)
+    // gridDim.x should be an even number
+    params[sTypes[T_theta_M][0]] = acos((blockIdx.x-(gridDim.x-1)/2.0) / (gridDim.x/2.0));
+    params[sTypes[T_phi_M][0]] = blockIdx.y/(double)gridDim.y * 2*PI;
+    
+    // Computing the Nplots data points using the delta_V value provided at command line, then computing the minima score (from 0 - the worst - to 7 - the best):
+    score[threadIdx.x] = (int)chi2one(params, dPlot, Nplot, N_filters, delta_V, Nplot,  &sp, sTypes);
+    
+    __syncthreads();
+
+    // Averaging scores over all phi_0 values
+    float sum = 0.0;
+    int N7 = 0;
+    if (threadIdx.x == 0)
+    {
+        for (int i=0; i<blockDim.x; i++)
+        {
+            // Skipping bad score value (-1) and zeros:
+            if (score[i] > 0)
+                sum = sum + (float)score[i];
+            // Counting cases with the perfect score (7)
+            if (score[i] == 7)
+                N7++;
+        }
+        d_Scores[blockIdx.x][blockIdx.y] = sum / blockDim.x;
+        atomicAdd(&d_N7all, N7);
+    }
+    
+    return;
+}
+#endif
