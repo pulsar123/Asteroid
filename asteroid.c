@@ -745,7 +745,7 @@ int main (int argc,char **argv)
         ERR(cudaMemcpyFromSymbol(&h_Vmod, d_Vmod, Nplot*sizeof(double), 0, cudaMemcpyDeviceToHost));
         ERR(cudaMemcpyFromSymbol(&h_delta_V, d_delta_V, N_FILTERS*sizeof(CHI_FLOAT), 0, cudaMemcpyDeviceToHost));
         FILE * fV=fopen("delta_V","w");
-        for (int m=0; m<N_FILTERS; m++)
+        for (int m=0; m<N_filters; m++)
             fprintf(fV, "%8.4f\n", h_delta_V[m]);
         fclose(fV);
         ERR(cudaMemcpyFromSymbol(&h_chi2_plot, d_chi2_plot, sizeof(CHI_FLOAT), 0, cudaMemcpyDeviceToHost));

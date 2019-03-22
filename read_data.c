@@ -73,6 +73,11 @@ while (fgets(line, sizeof(line), fp))
     {
         sscanf(line, "%c %lf %lf %lf", &filter, &MJD1, &V1, &sgm);
         MJD_obs[i] = MJD1;
+        if (i>0 && MJD_obs[i] <= MJD_obs[i-1])
+        {
+            printf("Error: the data have to be sorted chronologically!\n");
+            exit(1);
+        }
         hData[i].V = V1;
         hData[i].w = 1.0/(sgm*sgm);
         // Finding all unique filters:

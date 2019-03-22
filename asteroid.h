@@ -174,12 +174,12 @@ const int N_TYPES =   __COUNTER__;
 // Maximum number of data points:
 #ifdef INTERP
 // INTERP function results in a ~15% slower code, but allows for a few time larger datasets:
-const int MAX_DATA = 772; // 497, 662, 772
+const int MAX_DATA = 993; // 497, 662, 772
 #else
 const int MAX_DATA = 497;
 #endif
 // Maximum number of filters:
-const int N_FILTERS = 1;
+const int N_FILTERS = 5;
 
 // GPU optimization parameters:
 const int BSIZE = 256;   // Threads in a block (64 ... 1024, step of 64); 256

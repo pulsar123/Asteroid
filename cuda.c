@@ -218,6 +218,7 @@ __device__ CHI_FLOAT chi2one(double *params, struct obs_data *sData, int N_data,
         // Initial Euler angles values:
         double phi = P_phi_0;
         // Initial value of the Euler angle theta is determined by other parameters:
+        // It's ok to use only plus sign in from of sqrt, because theta changes in [0..pi] interval
         double theta = asin(sqrt((P_Es-1.0)/(sin(P_psi_0)*sin(P_psi_0)*(Ii_inv-Is_inv)+Is_inv-1.0)));    
         double psi = P_psi_0;
         
@@ -647,7 +648,8 @@ __device__ CHI_FLOAT chi2one(double *params, struct obs_data *sData, int N_data,
                 // Filter:
                 int m = sData[i].Filter;
                 // Difference between the observational and model magnitudes:
-                double y = sData[i].V - Vmod;                    
+                double y = sData[i].V - Vmod;  
+//        printf("%f %f\n",sData[i].V ,Vmod);
                 sum_y2[m] = sum_y2[m] + y*y*sData[i].w;
                 sum_y[m] = sum_y[m] + y*sData[i].w;
                 sum_w[m] = sum_w[m] + sData[i].w;
@@ -1628,9 +1630,9 @@ __global__ void chi2_gpu (struct obs_data *dData, int N_data, int N_filters, int
             f[ind[N_PARAMS]] = f_r;
             continue;  // Going to the next simplex step
         }
+        bool bad = 0;
         
         // If all else fails - shrink
-        bool bad = 0;
         for (j=1; j<N_PARAMS+1; j++)
         {
             for (i=0; i<N_PARAMS; i++)
@@ -1830,7 +1832,7 @@ __global__ void chi2_plot (struct obs_data *dData, int N_data, int N_filters,
         // !!! Will not work in NUDGE mode - NULL
         // Step one: computing constants for each filter (delta_V[]) using chi^2 method, and the chi2 value
         d_chi2_plot = chi2one(params, dData, N_data, N_filters, delta_V, 0,  &sp, sTypes);
-        for (int m=0; m<N_FILTERS; m++)
+        for (int m=0; m<N_filters; m++)
             d_delta_V[m] = delta_V[m];
         
         #ifdef SEGMENT

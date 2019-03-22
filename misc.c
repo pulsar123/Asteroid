@@ -343,14 +343,25 @@ int minima_test(int N_data, int N_filters, int Nplot, double* params, int Types[
     ERR(cudaMemcpyFromSymbol(&h_Scores, d_Scores, N_THETA_M*N_PHI_M*sizeof(float), 0, cudaMemcpyDeviceToHost));
     ERR(cudaMemcpyFromSymbol(&h_N7all, d_N7all, sizeof(int), 0, cudaMemcpyDeviceToHost));
     ERR(cudaDeviceSynchronize());
+
+    FILE* fmap = fopen("minima_map.dat", "w");
     
     double sum = 0.0;
     for (int i=0; i<N_THETA_M; i++)
+    {
         for (int j=0; j<N_PHI_M; j++)
+        {
             sum = sum + h_Scores[i][j];
+            fprintf(fmap, "%f ", h_Scores[i][j]/7.0);
+        }
+        fprintf(fmap, "\n");
+    }
+    fclose(fmap);
     
     printf("Average score: %f\n", sum/(double)N_THETA_M / (double)N_PHI_M);
     printf("Model likelihood: %lf\n", (double)h_N7all / (N_THETA_M*N_PHI_M*N_PHI_0));
+    
+    
     
     return 0;
 }
