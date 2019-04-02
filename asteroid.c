@@ -80,9 +80,9 @@ int main (int argc,char **argv)
            { T_A,       1,           0,      0,     1,     HARD_BOTH},  // A
     #endif
     #ifdef TORQUE
-           { T_Ti,      1,           0,      0,     0,     SOFT_BOTH},  // Ti
-           { T_Ts,      1,           0,      0,     0,     SOFT_BOTH},  // Ts
-           { T_Tl,      1,           0,      0,     0,     SOFT_BOTH},  // Tl
+           { T_Ti,      1,           0,      0,     0,     SOFT_BOTH},  // Ti - Kb
+           { T_Ts,      1,           0,      0,     0,     SOFT_BOTH},  // Ts - Kc
+           { T_Tl,      1,           0,      0,     0,     SOFT_BOTH},  // Tl - Ka
     #endif
     #ifdef TORQUE2
            { T_T2i,     1,           0,      0,     0,     SOFT_BOTH},  // T2i
@@ -93,7 +93,7 @@ int main (int argc,char **argv)
            { T_c_tumb,  1,           0,      0,     1,    HARD_RIGHT},  // c_tumb
            { T_b_tumb,  0,           0,      0,     1,     HARD_BOTH},  // b_tumb
            { T_Es,      0,           0,      0,    LE,     HARD_BOTH},  // Es
-           { T_L,       1,           0,      0,    LE,     HARD_LEFT},  // L / P_psi / P_phi
+           { T_L,       1,           0,      0,    LE,     HARD_LEFT},  // L
            { T_psi_0,   0,           0,      0,     0,  PERIODIC_LAM},  // psi_0
     #ifdef BC                                  
            { T_c,       1,           0,      0,     1,    HARD_RIGHT},  // c
@@ -107,7 +107,6 @@ int main (int argc,char **argv)
     #ifdef BW_BALL                                
            { T_kappa,   1,           0,      0,     1,     SOFT_BOTH},  // kappa
     #endif                                  
-    
     };
     
 
@@ -229,8 +228,6 @@ int main (int argc,char **argv)
         {
             Pphi1 = atof(argv[j+1]);
             Pphi2 = atof(argv[j+2]);
-            hPphi = Pphi1 / 24.0 / (2*PI);
-            hPphi2 = Pphi2 / 24.0 / (2*PI);    
             j = j + 3;
             if (j >= argc)
                 break;
@@ -431,9 +428,10 @@ int main (int argc,char **argv)
     // Angular momentum L value, radians/day; if P is period in hours, L=48*pi/P
     hLimits[0][T_L] = 48.0*PI / 10; // 8.5
     hLimits[1][T_L] = 48.0*PI / 0.1; // 0.4    
+    /*
     if (!reopt)
     {
-        // In P_PHI mode has a different meaning: 48*pi/Pphi2 ... 48*pi/Pphi1 (used to generate L)
+        // In P_PHI mode storing 48*pi/Pphi2 ... 48*pi/Pphi1 (used to generate L)
         #ifdef P_PHI
         hLimits[0][T_L] = 48.0*PI / Pphi2;
         hLimits[1][T_L] = 48.0*PI / Pphi1;
@@ -444,6 +442,7 @@ int main (int argc,char **argv)
         hLimits[1][T_L] = 24.0/Ppsi1;
         #endif
     }
+    */
     
     #ifdef TREND
     //scaling parameter "A" for de-trending the brightness curve, in magnitude/radian units (to be multiplied by the phase angle alpha to get magnitude correction):
@@ -537,26 +536,28 @@ int main (int argc,char **argv)
         hLimits[0][itype] = L0[i_limits];
         hLimits[1][itype] = L1[i_limits];
     }
-    
+ 
+    struct x2_struct x2_params;
+    #ifdef P_BOTH
+    x2_params.Pphi = Pphi1 / 24.0 / (2*PI);
+      #ifdef PHI2
+      x2_params.Pphi2 = Pphi2 / 24.0 / (2*PI);
+      #endif
+    #endif
+    #if defined(P_PSI) || defined(P_BOTH)
+    x2_params.Ppsi1 = 24.0/Ppsi2;
+    x2_params.Ppsi2 = 24.0/Ppsi1;
+    #endif
+     
     ERR(cudaMemcpyToSymbol(dProperty, Property, N_COLUMNS*N_PARAMS*sizeof(int), 0, cudaMemcpyHostToDevice));                
     ERR(cudaMemcpyToSymbol(dTypes, Types, N_TYPES*N_SEG*sizeof(int), 0, cudaMemcpyHostToDevice));                
     ERR(cudaMemcpyToSymbol(dLimits, hLimits, 2*N_TYPES*sizeof(CHI_FLOAT), 0, cudaMemcpyHostToDevice));                
-    #ifdef P_BOTH
-    ERR(cudaMemcpyToSymbol(dPphi, &hPphi, sizeof(float), 0, cudaMemcpyHostToDevice));                
-    ERR(cudaMemcpyToSymbol(dPphi2, &hPphi2, sizeof(float), 0, cudaMemcpyHostToDevice));                
-    #endif    
+    ERR(cudaMemcpyToSymbol(d_x2_params, &x2_params, sizeof(struct x2_struct), 0, cudaMemcpyHostToDevice));                
     
     #ifdef NUDGE
     prepare_chi2_params(&N_data);
     #endif
-    struct x2_struct x2_params;
-    #ifdef P_BOTH
-    x2_params.Pphi = hPphi;
-    #ifdef PHI2
-    x2_params.Pphi2 = hPphi2;
-    #endif
-    #endif
-    
+   
     
     if (Nplot == 0)                
     {
@@ -604,8 +605,8 @@ int main (int argc,char **argv)
             debug_kernel<<<1, 1>>>(params, dData, N_data, N_filters);
             #endif        
             
-            // The kernel (using stream 0):
-            chi2_gpu<<<N_BLOCKS, BSIZE>>>(dData, N_data, N_filters, reopt, Nstages, d_states, d_f, x2_params);
+            // The kernel:
+            chi2_gpu<<<N_BLOCKS, BSIZE>>>(dData, N_data, N_filters, reopt, Nstages, d_states, d_f);
             
             #ifdef TIMING
             cudaEventRecord(stop, 0);
@@ -879,7 +880,8 @@ int main (int argc,char **argv)
         fp = fopen("data.dat", "w");
         for (i=0; i<N_data; i++)
             // The time here is corrected for light travel
-            fprintf(fp, "%13.7f %13.6e %13.6e w\n", hMJD0+hData[i].MJD, hData[i].V-h_delta_V[hData[i].Filter]+h_delta_V[0], 1/sqrt(hData[i].w));
+            // V is converted to the first filter
+            fprintf(fp, "%13.7f %13.6e %13.6e w\n", hMJD0+hData[i].MJD, hData[i].V - h_delta_V[hData[i].Filter] + h_delta_V[0], 1/sqrt(hData[i].w));
         fclose(fp);
         
         fp = fopen("lines.dat", "w");

@@ -149,13 +149,13 @@ const int T_T2s =      __COUNTER__;
 const int T_T2l =      __COUNTER__;
 const int T_Tt  =      __COUNTER__;
 #endif
-const int T_c_tumb =  __COUNTER__;
-const int T_b_tumb =  __COUNTER__;
+const int T_c_tumb =  __COUNTER__;  //4
+const int T_b_tumb =  __COUNTER__;  //5
 const int T_Es =      __COUNTER__;
 const int T_psi_0 =   __COUNTER__;
 #ifdef BC
-const int T_c =       __COUNTER__;
-const int T_b =       __COUNTER__;
+const int T_c =       __COUNTER__;  //8
+const int T_b =       __COUNTER__;  //9
 #endif
 #ifdef ROTATE
 const int T_theta_R = __COUNTER__;
@@ -308,6 +308,11 @@ struct x2_struct {
     float Pphi;
     float Pphi2;
     #endif    
+    // ???? Also for P_BOTH?
+    #ifdef P_PSI
+    float Ppsi1;
+    float Ppsi2;
+    #endif    
 };
 
 
@@ -349,7 +354,7 @@ int gpu_prepare(int, int, int, int);
 int minima_test(int, int, int, double*, int[][N_SEG], CHI_FLOAT);
 
 __global__ void setup_kernel ( curandState *, unsigned long, CHI_FLOAT *, int);
-__global__ void chi2_gpu(struct obs_data *, int, int, int, int, curandState*, CHI_FLOAT*, struct x2_struct);
+__global__ void chi2_gpu(struct obs_data *, int, int, int, int, curandState*, CHI_FLOAT*);
 __global__ void chi2_plot(struct obs_data *, int, int, struct obs_data *, int, double *);
 #ifdef MINIMA_TEST
 __global__ void chi2_minima(struct obs_data *, int, int, struct obs_data *, int, CHI_FLOAT);
@@ -441,9 +446,6 @@ EXTERN int h_plot_start_seg[N_SEG];
 EXTERN __device__ int d_start_seg[N_SEG];
 EXTERN __device__ int d_plot_start_seg[N_SEG];
 #endif
-#ifdef P_BOTH
-EXTERN __device__ float dPphi, dPphi2;
-#endif
 #ifdef LAST
 EXTERN __device__ double d_L_last, d_E_last;
 #endif
@@ -453,6 +455,7 @@ EXTERN float h_Scores[N_THETA_M][N_PHI_M];
 EXTERN __device__ int d_N7all;
 EXTERN int h_N7all;
 #endif
+EXTERN __device__ struct x2_struct d_x2_params;
 
 #endif
 

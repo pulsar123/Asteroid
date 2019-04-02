@@ -943,7 +943,7 @@ __device__ CHI_FLOAT chi2one(double *params, struct obs_data *sData, int N_data,
 
 //+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 
-__device__ void params2x(CHI_FLOAT *x, double *params, CHI_FLOAT sLimits[][N_TYPES], int sProperty[][N_COLUMNS], int sTypes[][N_SEG])
+__device__ void params2x(CHI_FLOAT *x, double *params, CHI_FLOAT sLimits[][N_TYPES], int sProperty[][N_COLUMNS], int sTypes[][N_SEG], volatile struct x2_struct *s_x2_params)
 // Converting from dimensional params structure to dimensionless array x. Used for plotting. 
 // P_PHI, P_PSI, P_BOTH, and RANDOM_BC are not supported ???
 // It is assumed that in the params vector there is the following order: ..., c_tumb, ..., b_tumb, ..., Es, ..., psi_0, ...
@@ -1044,7 +1044,7 @@ __device__ void params2x(CHI_FLOAT *x, double *params, CHI_FLOAT sLimits[][N_TYP
     return;
 }    
 
-
+ 
 //+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 
 __device__ int x2params(CHI_FLOAT *x, double *params, CHI_FLOAT sLimits[][N_TYPES], volatile struct x2_struct *s_x2_params, int sProperty[][N_COLUMNS], int sTypes[][N_SEG])
@@ -1059,13 +1059,15 @@ __device__ int x2params(CHI_FLOAT *x, double *params, CHI_FLOAT sLimits[][N_TYPE
     {
         if (sProperty[i][P_type] == T_Es)
             LAM = x[i]>=0.5;
-        
+
+//???
+/* s       
         #if defined(P_PHI) || defined(P_PSI) || defined(P_BOTH)
         // In random search mode (reopt=0) we do not enforce L here - it will be done later
         if (s_x2_params->reopt==0  && sProperty[i][P_type] == T_L)
               continue;
         #endif
-        
+*/        
         if (x[i]<0.0 && (sProperty[i][P_periodic]==HARD_BOTH || sProperty[i][P_periodic]==HARD_LEFT  || LAM==0 && sProperty[i][P_periodic]==PERIODIC_LAM) ||
             x[i]>1.0 && (sProperty[i][P_periodic]==HARD_BOTH || sProperty[i][P_periodic]==HARD_RIGHT || LAM==0 && sProperty[i][P_periodic]==PERIODIC_LAM))
         {
@@ -1141,14 +1143,14 @@ __device__ int x2params(CHI_FLOAT *x, double *params, CHI_FLOAT sLimits[][N_TYPE
         // Independent non-periodic parameters; all dependent non-periodic parameters have to be handled separately, as special cases
         else if (sProperty[i][P_periodic] != PERIODIC && sProperty[i][P_independent] == 1)
         {
-            #ifdef P_PHI
-            // Only in P_PHI mode, L parameter is not computed here, but a few lines below
+            #if defined(P_PSI) || defined(P_PHI) || defined(P_BOTH)                       
+            // In P_* modes, L parameter is not computed here, but a few lines below
             // (Unless it's reoptimization)
             if (param_type != T_L || s_x2_params->reopt)
             #endif
                 // The default way to compute independent params[i] from x[i]:
                 params[i] = x[i] * (sLimits[1][param_type]-sLimits[0][param_type]) + sLimits[0][param_type];
-            
+
             if (param_type == T_c_tumb)
             {
                 log_c_tumb = params[i];
@@ -1180,12 +1182,14 @@ __device__ int x2params(CHI_FLOAT *x, double *params, CHI_FLOAT sLimits[][N_TYPE
                  * When generating L, we use both the S0/1 ranges, and the given Phi1...Pphi2 range.
                  */
                 if (LAM)
-                    params[i] = (x[i] * (S_LAM0*sLimits[1][param_type]-sLimits[0][param_type]) + sLimits[0][param_type]) / params[sTypes[T_Es][0]];
+                    params[i] = (x[i] * (S_LAM0*s_x2_params->Pphi2-s_x2_params->Pphi) + s_x2_params->Pphi) / params[sTypes[T_Es][0]];
                 else
-                    params[i] = (x[i] * (S_LAM1*sLimits[1][param_type]-sLimits[0][param_type]) + sLimits[0][param_type]) * Ii;                
+                    params[i] = (x[i] * (S_LAM1*s_x2_params->Pphi2-s_x2_params->Pphi) + s_x2_params->Pphi) * Ii;                
                 #endif
                 
                 #if defined(P_PSI) || defined(P_BOTH)
+                // 1/P_psi is computed and stored in params(T_L):
+                params[i] = x[i] * (s_x2_params->Ppsi2-s_x2_params->Ppsi1) + s_x2_params->Ppsi1;
                 // In P_PSI/combined modes the actual optimization parameter is Ppsi which is stored in params.L, and L is derived from Ppsi and Is, Ii, Es
                 double Einv = 1.0/params[sTypes[T_Es][iseg]];
                 double k2;
@@ -1249,7 +1253,7 @@ __device__ int x2params(CHI_FLOAT *x, double *params, CHI_FLOAT sLimits[][N_TYPE
 //++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 
 __global__ void chi2_gpu (struct obs_data *dData, int N_data, int N_filters, int reopt, int Nstages,
-                          curandState* globalState, CHI_FLOAT *d_f, struct x2_struct x2_params)
+                          curandState* globalState, CHI_FLOAT *d_f)
 // CUDA kernel computing chi^2 on GPU
 {        
     #ifndef NO_SDATA
@@ -1309,8 +1313,13 @@ __global__ void chi2_gpu (struct obs_data *dData, int N_data, int N_filters, int
         for (i=0; i<N_PARAMS; i++)
             for (j=0; j<N_COLUMNS; j++)
                 sProperty[i][j] = dProperty[i][j];
-        #ifdef P_BOTH
-        s_x2_params = x2_params;
+        #ifdef P_PSI            
+        s_x2_params.Ppsi1 = d_x2_params.Ppsi1;
+        s_x2_params.Ppsi2 = d_x2_params.Ppsi2;
+        #endif       
+        #ifdef P_BOTH            
+        s_x2_params.Pphi =  d_x2_params.Pphi;
+        s_x2_params.Pphi2 = d_x2_params.Pphi2;
         #endif       
         #ifdef SEGMENT
         // Copying the starting indexes for data segments to shared memory:
@@ -1332,7 +1341,7 @@ __global__ void chi2_gpu (struct obs_data *dData, int N_data, int N_filters, int
         for (i=0; i<N_PARAMS; i++)
             params[i] = d_params0[i];
         // Converting from physical to dimensionless (0...1 scale) parameters:
-        params2x(x[0], params, sLimits, sProperty, sTypes);
+        params2x(x[0], params, sLimits, sProperty, sTypes, &s_x2_params);
     }
         
     // Global thread index:
@@ -1712,8 +1721,9 @@ __global__ void chi2_gpu (struct obs_data *dData, int N_data, int N_filters, int
         {
             // Converting to physical parameters (L now is physical angular momentum):
             x2params(x[ind[0]], params, sLimits, &s_x2_params, sProperty, sTypes);
-            // Converting bacl to dimensionless x[] values. Now x(L) has the proper value:
-            params2x(x[ind[0]], params, sLimits, sProperty, sTypes);
+//            s_x2_params.reopt = 1;
+            // Converting back to dimensionless x[] values. Now x(L) has the proper value:
+            params2x(x[ind[0]], params, sLimits, sProperty, sTypes, &s_x2_params);
         }
         #endif
         // Memorizing the best point in this block in a shared memory vector:
@@ -1908,7 +1918,7 @@ __global__ void chi2_plot (struct obs_data *dData, int N_data, int N_filters,
         switch (iparam)
         {
             case 0:
-                params.theta_M = params.theta_M + delta * (dLimits[1][iparam] - dLimits[0][iparam]);
+                params._M = params.theta_M + delta * (dLimits[1][iparam] - dLimits[0][iparam]);
                 break;
                 
             case 1:
