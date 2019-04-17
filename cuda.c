@@ -1331,6 +1331,8 @@ __global__ void chi2_gpu (struct obs_data *dData, int N_data, int N_filters, int
     }
     
     // Downhill simplex optimization approach
+
+    __syncthreads();
     
     CHI_FLOAT x[N_PARAMS+1][N_PARAMS];  // simplex points (point index, coordinate)
     CHI_FLOAT f[N_PARAMS+1]; // chi2 values for the simplex edges (point index)

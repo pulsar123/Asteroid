@@ -4,6 +4,7 @@
 #ifndef ASTEROID_H
 #define ASTEROID_H
 #include <stdio.h>
+#include <string.h>
 #include <cuda.h>
 #include <sys/time.h>
 #include <curand_kernel.h>
@@ -128,10 +129,15 @@ const int HARD_LEFT = -2;  // left limit is hard
 const int HARD_RIGHT = -3;  // right limit is hard
 const int HARD_BOTH = -4;  // both limits are hard
 
+//char Type_names[20]; // Up to 50 free parameter types, up to 20 characters each
 
 // Parameter type constants:
 // Using non-standard macro parameter __COUNTER__ (increments by 1 every time it's called; works under gcc and icc)
 const int T_theta_M = __COUNTER__;  
+//#define NAME1 T_theta_M
+//const int NAME1 = __COUNTER__; 
+//strcpy(Type_names, "test");
+
 const int T_phi_M =   __COUNTER__;
 const int T_phi_0 =   __COUNTER__;
 const int T_L =       __COUNTER__;
@@ -174,23 +180,23 @@ const int N_TYPES =   __COUNTER__;
 // Maximum number of data points:
 #ifdef INTERP
 // INTERP function results in a ~15% slower code, but allows for a few time larger datasets:
-const int MAX_DATA = 993; // 497, 662, 772
+const int MAX_DATA = 772; // 497, 662, 772, 993, 1914
 #else
 const int MAX_DATA = 497;
 #endif
 // Maximum number of filters:
-const int N_FILTERS = 5;
+const int N_FILTERS = 1;
 
 // GPU optimization parameters:
 const int BSIZE = 256;   // Threads in a block (64 ... 1024, step of 64); 256
 #ifdef DEBUG
 const int N_BLOCKS = 56*1;
 #else
-const int N_BLOCKS = 56*2; // Should be proportional to the number of SMs (56 for P100); for some reason 10 results in a crash; use 5 for now
+const int N_BLOCKS = 56*2; // Should be proportional to the number of SMs (56 for P100, 80 for V100)
 #endif
 
 // ODE time step (days):
-const double TIME_STEP = 1e-2;  // 1e-2
+const double TIME_STEP = 1e-2;  // 1e-2 for Oumuamua; 0.003 for TD60_All
 
 // Simplex parameters:
 const CHI_FLOAT DX_INI = 0.001;  // Maximum scale-free initial step
@@ -215,7 +221,7 @@ const float DT_MAX2 = 1.5 * DT_MAX; // Additional multipler for DT_MAX defining 
 const float P_MIN = 0.01;  // Reward strength for closeness of model minima to observed ones; 0...1; ->0 is the strongest reward
 const float CHI2_0 = 10; // Below this value of chi2a, P_tot reward is fully applied
 const float CHI2_1 = 30; // Above this value of chi2a, P_tot reward is not applied. The CHI2_0 ... CHI2_1 is the transition zone
-const float L_RC = 0.1; // Lorentzian core radius for the nudge function, range 0...1
+const float L_RC = 0.05; // Lorentzian core radius for the nudge function, range 0...1
 const float L_RC2 = L_RC * L_RC; // Derived parameter
 const float L_A = 1.0/(1.0-L_RC2/(1.0+L_RC2));  // Lorentzian scale parameter
 const float P_MIN2 = 1/P_MIN - 1;  // derived parameter
@@ -247,7 +253,7 @@ const int MAX_FILE_NAME = 256;
 const int MAX_LINE_LENGTH = 128;
 
 // Number of time points for plotting
-const int NPLOT = 6000; // 6000 !!!
+const int NPLOT = 20000; // 6000 !!!
 // Times BSIZE will give the total number of points for lines:
 const int C_POINTS = 10;
 // Maximum relative deviation for each parameter when computing lines:

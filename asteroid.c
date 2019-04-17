@@ -7,6 +7,7 @@
 #include <math.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 #include <curand_kernel.h>
 #define MAIN
 #include "asteroid.h"
@@ -90,13 +91,13 @@ int main (int argc,char **argv)
            { T_T2l,     1,           0,      0,     0,     SOFT_BOTH},  // T2l
            { T_Tt,      1,           0,      0,     0,     HARD_BOTH},  // Tt
     #endif
-           { T_c_tumb,  1,           0,      0,     1,    HARD_RIGHT},  // c_tumb
+           { T_c_tumb,  1,           0,      0,     1,    HARD_BOTH},  // c_tumb
            { T_b_tumb,  0,           0,      0,     1,     HARD_BOTH},  // b_tumb
            { T_Es,      0,           0,      0,    LE,     HARD_BOTH},  // Es
            { T_L,       1,           0,      0,    LE,     HARD_LEFT},  // L
            { T_psi_0,   0,           0,      0,     0,  PERIODIC_LAM},  // psi_0
     #ifdef BC                                  
-           { T_c,       1,           0,      0,     1,    HARD_RIGHT},  // c
+           { T_c,       1,           0,      0,     1,    HARD_BOTH},  // c
            { T_b,       0,           0,      0,     1,     HARD_BOTH},  // b
     #endif                                  
     #ifdef ROTATE
