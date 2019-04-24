@@ -1253,7 +1253,7 @@ __device__ int x2params(CHI_FLOAT *x, double *params, CHI_FLOAT sLimits[][N_TYPE
 //++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 
 __global__ void chi2_gpu (struct obs_data *dData, int N_data, int N_filters, int reopt, int Nstages,
-                          curandState* globalState, CHI_FLOAT *d_f)
+                          curandState* globalState, CHI_FLOAT *d_f, double* d_params, double* d_dV)
 // CUDA kernel computing chi^2 on GPU
 {        
     #ifndef NO_SDATA
@@ -1524,6 +1524,7 @@ __global__ void chi2_gpu (struct obs_data *dData, int N_data, int N_filters, int
             if (jmin < 0)
                 // All f[] values are NaN, so exiting the thread
             {
+                ind[0] = 0;
                 f[ind[0]] = 1e30;
                 break;
             }
@@ -1747,9 +1748,9 @@ __global__ void chi2_gpu (struct obs_data *dData, int N_data, int N_filters, int
         x2params(x[ind[0]],params,sLimits, &s_x2_params, sProperty, sTypes);
         for (int i=0; i<N_PARAMS; i++)
         {
-            d_params[blockIdx.x][i] = params[i];
+            d_params[blockIdx.x*N_PARAMS + i] = params[i];
             for (int m=0; m<N_filters; m++)
-                d_dV[blockIdx.x][m] = delta_V[m];
+                d_dV[blockIdx.x*N_FILTERS + m] = delta_V[m];
         }
     }
     

@@ -607,7 +607,7 @@ int main (int argc,char **argv)
             #endif        
             
             // The kernel:
-            chi2_gpu<<<N_BLOCKS, BSIZE>>>(dData, N_data, N_filters, reopt, Nstages, d_states, d_f);
+            chi2_gpu<<<N_BLOCKS, BSIZE>>>(dData, N_data, N_filters, reopt, Nstages, d_states, d_f, d_params, d_dV);
             
             #ifdef TIMING
             cudaEventRecord(stop, 0);
@@ -621,8 +621,10 @@ int main (int argc,char **argv)
             
             ERR(cudaDeviceSynchronize());
             
-            ERR(cudaMemcpyFromSymbol(h_params, d_params, N_BLOCKS * N_PARAMS * sizeof(double), 0, cudaMemcpyDeviceToHost));
-            ERR(cudaMemcpyFromSymbol(h_dV, d_dV, N_BLOCKS * N_FILTERS * sizeof(double), 0, cudaMemcpyDeviceToHost));
+//            ERR(cudaMemcpyFromSymbol(h_params, d_params, N_BLOCKS * N_PARAMS * sizeof(double), 0, cudaMemcpyDeviceToHost));
+            ERR(cudaMemcpy(h_params, d_params, N_BLOCKS * N_PARAMS * sizeof(double), cudaMemcpyDeviceToHost));
+//            ERR(cudaMemcpyFromSymbol(h_dV, d_dV, N_BLOCKS * N_FILTERS * sizeof(double), 0, cudaMemcpyDeviceToHost));
+            ERR(cudaMemcpy(h_dV, d_dV, N_BLOCKS * N_FILTERS * sizeof(double), cudaMemcpyDeviceToHost));
             ERR(cudaMemcpy(h_f, d_f, N_BLOCKS * sizeof(CHI_FLOAT), cudaMemcpyDeviceToHost));
             ERR(cudaDeviceSynchronize());
 
@@ -633,6 +635,7 @@ int main (int argc,char **argv)
                 chi2_tot = 1e32;
                 int Nresults = 0;
                 double iii;
+                int l = -1;
                 for (i=0; i<N_BLOCKS; i++)
                 {
                     if (h_f[i] < 1e29)
@@ -645,9 +648,10 @@ int main (int argc,char **argv)
                     // Bringing periodic parameters to the canonic range of values
                     for (j=0; j<N_PARAMS; j++)
                     {
+                        l = l++;                        
                         if (Property[j][P_periodic] == 1 || Property[j][P_type] == T_psi_0)
                             // To [0,2*pi[ range:
-                            h_params[i][j] = 2*PI * modf(h_params[i][j]/(2*PI), &iii);
+                            h_params[l] = 2*PI * modf(h_params[l]/(2*PI), &iii);
                     }
                     
                 }
@@ -656,7 +660,7 @@ int main (int argc,char **argv)
                     // In "traveling reoptimization" mode, we move the starting point to the best point found in the previous cycle
                 {
                     for (j=0; j<N_PARAMS; j++)
-                        params[j] = h_params[i_best][j];
+                        params[j] = h_params[i_best*N_PARAMS + j];
                     ERR(cudaMemcpyToSymbol(d_params0, params, N_PARAMS*sizeof(double), 0, cudaMemcpyHostToDevice));
                 }
 
@@ -664,9 +668,9 @@ int main (int argc,char **argv)
                 printf("%13.6e ",  h_f[i_best]);
                 for (j=0; j<N_PARAMS; j++)
                     if (Property[j][P_type] == T_L)
-                        printf("%15.11f ",  48*PI/h_params[i_best][j]);
+                        printf("%15.11f ",  48*PI/h_params[i_best*N_PARAMS + j]);
                     else
-                        printf("%15.11f ",  h_params[i_best][j]);
+                        printf("%15.11f ",  h_params[i_best*N_PARAMS + j]);
                     printf("\n");
                 fflush(stdout);
 
@@ -691,12 +695,12 @@ int main (int argc,char **argv)
                 {
                     fprintf(fp,"%13.6e ",  h_f[i]);
                     for (int m=0; m<N_filters; m++)
-                        fprintf(fp,"%13.6e ",  h_dV[i][m]);
+                        fprintf(fp,"%13.6e ",  h_dV[i*N_FILTERS + m]);
                     for (j=0; j<N_PARAMS; j++)
                         if (Property[j][P_type] == T_L)
-                            fprintf(fp,"%15.11f ",  48*PI/h_params[i][j]);
+                            fprintf(fp,"%15.11f ",  48*PI/h_params[i*N_PARAMS + j]);
                             else
-                            fprintf(fp,"%15.11f ",  h_params[i][j]);
+                            fprintf(fp,"%15.11f ",  h_params[i*N_PARAMS + j]);
                     fprintf(fp,"\n");
                 }
                 fclose(fp);

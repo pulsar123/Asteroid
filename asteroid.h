@@ -190,7 +190,7 @@ const int N_FILTERS = 1;
 // GPU optimization parameters:
 const int BSIZE = 256;   // Threads in a block (64 ... 1024, step of 64); 256
 #ifdef DEBUG
-const int N_BLOCKS = 56*1;
+const int N_BLOCKS = 56*2;
 #else
 const int N_BLOCKS = 56*2; // Should be proportional to the number of SMs (56 for P100, 80 for V100)
 #endif
@@ -360,7 +360,7 @@ int gpu_prepare(int, int, int, int);
 int minima_test(int, int, int, double*, int[][N_SEG], CHI_FLOAT);
 
 __global__ void setup_kernel ( curandState *, unsigned long, CHI_FLOAT *, int);
-__global__ void chi2_gpu(struct obs_data *, int, int, int, int, curandState*, CHI_FLOAT*);
+__global__ void chi2_gpu(struct obs_data *, int, int, int, int, curandState*, CHI_FLOAT*, double*, double*);
 __global__ void chi2_plot(struct obs_data *, int, int, struct obs_data *, int, double *);
 #ifdef MINIMA_TEST
 __global__ void chi2_minima(struct obs_data *, int, int, struct obs_data *, int, CHI_FLOAT);
@@ -417,10 +417,14 @@ EXTERN CHI_FLOAT *d_f;
 
 //EXTERN struct parameters_struct *d_params;
 //EXTERN __device__ struct parameters_struct d_params0;
-EXTERN double __device__ d_params[N_BLOCKS][N_PARAMS];
-EXTERN double __device__ d_dV[N_BLOCKS][N_FILTERS];
-EXTERN double h_params[N_BLOCKS][N_PARAMS];
-EXTERN double h_dV[N_BLOCKS][N_FILTERS];
+//EXTERN double __device__ d_params[N_BLOCKS][N_PARAMS];
+EXTERN double* d_params;
+//EXTERN double __device__ d_dV[N_BLOCKS][N_FILTERS];
+EXTERN double* d_dV;
+//EXTERN double h_params[N_BLOCKS][N_PARAMS];
+EXTERN double* h_params;
+//EXTERN double h_dV[N_BLOCKS][N_FILTERS];
+EXTERN double* h_dV;
 EXTERN __device__ double d_params0[N_PARAMS];
 
 EXTERN __device__ unsigned long long int d_sum;

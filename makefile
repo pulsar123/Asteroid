@@ -41,7 +41,7 @@ ifeq ($(CLUSTER),monk)
   ARCH=sm_20
 endif  
 
-OPT=--ptxas-options=-v -arch=$(ARCH) -DP_PSI -DTORQUE
+OPT=--ptxas-options=-v -arch=$(ARCH) -DP_PSI -DTORQUE -DDEBUG
 INC=-I/usr/include/cuda -I.
 DEBUG=-O2
 
