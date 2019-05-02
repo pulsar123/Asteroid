@@ -83,7 +83,7 @@ __device__ CHI_FLOAT chi2one(double *params, struct obs_data *sData, int N_data,
 // NUDGE is not supported in SEGMENT mode!
 {
     int i, m;
-    double Ep_x, Ep_y, Ep_z, Sp_x, Sp_y, Sp_z;
+    double Ep_b, Ep_c, Ep_a, Sp_b, Sp_c, Sp_a;
     CHI_FLOAT chi2a;
     double sum_y2[N_FILTERS];
     double sum_y[N_FILTERS];
@@ -430,7 +430,7 @@ __device__ CHI_FLOAT chi2one(double *params, struct obs_data *sData, int N_data,
             double c_y = a_z*b_x - a_x*b_z;
             double c_z = a_x*b_y - a_y*b_x;
             
-            #ifdef ROTATE
+            #if defined(ROTATE) || defined(BW_BALL)
             // Optional rotation of the brightness ellipsoid relative to the kinematic ellipsoid, using angles theta_R, phi_R, psi_R
             // Using the same setup, as for the main Euler rotation, above (substituting XM->b, YM->c, M->a)
             // The meaning of the vectors b,c,a is changing here. At the end these are the new (rotated) basis.
@@ -452,7 +452,9 @@ __device__ CHI_FLOAT chi2one(double *params, struct obs_data *sData, int N_data,
             a_x = a_x*cos_theta + p_x*sin_theta;
             a_y = a_y*cos_theta + p_y*sin_theta;
             a_z = a_z*cos_theta + p_z*sin_theta;
+            #endif
             
+            #ifdef ROTATE
             w_x = a_y*N_z - a_z*N_y;
             w_y = a_z*N_x - a_x*N_z;
             w_z = a_x*N_y - a_y*N_x;
@@ -511,15 +513,15 @@ __device__ CHI_FLOAT chi2one(double *params, struct obs_data *sData, int N_data,
 
             // Earth vector in the new (b,c,a) basis
             // Switching from Muinonen coords (abc) to Samarasinha coords (bca)
-            Ep_x = b_x*E_x1 + b_y*E_y1 + b_z*E_z1;
-            Ep_y = c_x*E_x1 + c_y*E_y1 + c_z*E_z1;
-            Ep_z = a_x*E_x1 + a_y*E_y1 + a_z*E_z1;
+            Ep_b = b_x*E_x1 + b_y*E_y1 + b_z*E_z1;
+            Ep_c = c_x*E_x1 + c_y*E_y1 + c_z*E_z1;
+            Ep_a = a_x*E_x1 + a_y*E_y1 + a_z*E_z1;
             
             // Sun vector in the new (b,c,a) basis
             // Switching from Muinonen coords (abc) to Samarasinha coords (bca)
-            Sp_x = b_x*S_x1 + b_y*S_y1 + b_z*S_z1;
-            Sp_y = c_x*S_x1 + c_y*S_y1 + c_z*S_z1;
-            Sp_z = a_x*S_x1 + a_y*S_y1 + a_z*S_z1;
+            Sp_b = b_x*S_x1 + b_y*S_y1 + b_z*S_z1;
+            Sp_c = c_x*S_x1 + c_y*S_y1 + c_z*S_z1;
+            Sp_a = a_x*S_x1 + a_y*S_y1 + a_z*S_z1;
             
             // Now that we converted the Earth and Sun vectors to the internal asteroidal basis (a,b,c),
             // we can apply the formalism of Muinonen & Lumme, 2015 to calculate the brightness of the asteroid.
@@ -538,12 +540,15 @@ __device__ CHI_FLOAT chi2one(double *params, struct obs_data *sData, int N_data,
             /* The simplest non-geometric brightness model - "black and white ball".
              * The "a" axis end hemisphere is dark (albedo kappa<1), the oppostire hemisphere is bright (albedo=1).
              * Assuming the phase angle = 0 (sun is behind the observer) for simplicity.
-             * This has to be used with the ROTATE option, to explore different dark spot orientations relative to the
-             * kinematic frame of reference.
              */
             
-            // Alpha is the angle between the (rotated) axis "a" and the direction to the observer (Ep)
-            double cos_alpha = a_x*Ep_x + a_y*Ep_y + a_z*Ep_z;
+            // Alpha is the angle between the rotated axis "a1" and the direction to the observer (Ep)
+            // Totally wrong!!! It's wrong to do dot product of vectors in different refernce frames:
+            // a1 is in original (inertial) frame, whereas Ep is in the asteroidal (rotated) frame!
+            // In rotated frame a1={0,0,1}, so the correct expression is cos_alpha = Ep_a;
+            // Or one can use original vector E in place of Ep: cos_alpha = a1_x*E_x1 + a1_y*E_y1 + a1_z*E_z1;
+//            double cos_alpha = a1_x*Ep_b + a1_y*Ep_c + a1_z*Ep_a;
+            double cos_alpha = Ep_a;
             // Relative bw ball brightness (1 when only the bright hemisphere is visible; kappa when only the dark one):
             Vmod = -2.5*log10(0.5*(P_kappa*(1+cos_alpha) + (1-cos_alpha)));
             
@@ -564,17 +569,17 @@ __device__ CHI_FLOAT chi2one(double *params, struct obs_data *sData, int N_data,
             c_z = c * c_z;
             
             // Projected axes (onto the plane of sky):
-            double ap_x = a_y*Ep_z - a_z*Ep_y;
-            double ap_y = a_z*Ep_x - a_x*Ep_z;
-            double ap_z = a_x*Ep_y - a_y*Ep_x;
+            double ap_x = a_y*Ep_a - a_z*Ep_c;
+            double ap_y = a_z*Ep_b - a_x*Ep_a;
+            double ap_z = a_x*Ep_c - a_y*Ep_b;
             
-            double bp_x = b_y*Ep_z - b_z*Ep_y;
-            double bp_y = b_z*Ep_x - b_x*Ep_z;
-            double bp_z = b_x*Ep_y - b_y*Ep_x;
+            double bp_x = b_y*Ep_a - b_z*Ep_c;
+            double bp_y = b_z*Ep_b - b_x*Ep_a;
+            double bp_z = b_x*Ep_c - b_y*Ep_b;
 
-            double cp_x = c_y*Ep_z - c_z*Ep_y;
-            double cp_y = c_z*Ep_x - c_x*Ep_z;
-            double cp_z = c_x*Ep_y - c_y*Ep_x;
+            double cp_x = c_y*Ep_a - c_z*Ep_c;
+            double cp_y = c_z*Ep_b - c_x*Ep_a;
+            double cp_z = c_x*Ep_c - c_y*Ep_b;
 
             // Vector products to be used in surface area of the projected prism computation:
             double ab_x = ap_y*bp_z - ap_z*bp_y;
@@ -609,12 +614,12 @@ __device__ CHI_FLOAT chi2one(double *params, struct obs_data *sData, int N_data,
             
             // The two scalars from eq.(12) of Muinonen & Lumme, 2015; assuming a=1
             // Switching from Muinonen coords (abc) to Samarasinha coords (bca)
-            scalar_Sun   = sqrt(Sp_x*Sp_x/(b*b) + Sp_y*Sp_y/(c*c) + Sp_z*Sp_z);
-            scalar_Earth = sqrt(Ep_x*Ep_x/(b*b) + Ep_y*Ep_y/(c*c) + Ep_z*Ep_z);
+            scalar_Sun   = sqrt(Sp_b*Sp_b/(b*b) + Sp_c*Sp_c/(c*c) + Sp_a*Sp_a);
+            scalar_Earth = sqrt(Ep_b*Ep_b/(b*b) + Ep_c*Ep_c/(c*c) + Ep_a*Ep_a);
             
             // From eq.(13):
             // Switching from Muinonen coords (abc) to Samarasinha coords (bca)
-            cos_alpha_p = (Sp_x*Ep_x/(b*b) + Sp_y*Ep_y/(c*c) + Sp_z*Ep_z) / (scalar_Sun * scalar_Earth);
+            cos_alpha_p = (Sp_b*Ep_b/(b*b) + Sp_c*Ep_c/(c*c) + Sp_a*Ep_a) / (scalar_Sun * scalar_Earth);
             sin_alpha_p = sqrt(1.0 - cos_alpha_p*cos_alpha_p);
             alpha_p = atan2(sin_alpha_p, cos_alpha_p);
             
@@ -632,7 +637,7 @@ __device__ CHI_FLOAT chi2one(double *params, struct obs_data *sData, int N_data,
             
             #ifdef TREND
             // Solar phase angle:
-            double alpha = acos(Sp_x*Ep_x + Sp_y*Ep_y + Sp_z*Ep_z);
+            double alpha = acos(Sp_b*Ep_b + Sp_c*Ep_c + Sp_a*Ep_a);
             // De-trending the brightness curve:
             Vmod = Vmod - P_A*alpha;
             #endif        

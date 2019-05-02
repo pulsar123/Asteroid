@@ -100,9 +100,11 @@ int main (int argc,char **argv)
            { T_c,       1,           0,      0,     1,    HARD_BOTH},  // c
            { T_b,       0,           0,      0,     1,     HARD_BOTH},  // b
     #endif                                  
+    #if defined(ROTATE) || defined(BW_BALL)
+           { T_theta_R, 1,           0,      0,     1,     HARD_BOTH},  // theta_R (polar angle theta under BW_BALL)
+           { T_phi_R,   1,           0,      0,     1,      PERIODIC},  // phi_R (azimuthal angle under BW_BALL is phi_R-90 dgr.)
+    #endif
     #ifdef ROTATE
-           { T_theta_R, 1,           0,      0,     1,     HARD_BOTH},  // theta_R
-           { T_phi_R,   1,           0,      0,     1,      PERIODIC},  // phi_R
            { T_psi_R,   1,           0,      0,     1,      PERIODIC},  // psi_R
     #endif
     #ifdef BW_BALL                                
@@ -501,7 +503,7 @@ int main (int argc,char **argv)
     hLimits[1][T_b] = 1;
     #endif
 
-    #ifdef ROTATE
+    #if defined(ROTATE) || defined(BW_BALL)
     // Theta_R (polar angle when rotating the brightness ellipsoid relative to the kinematic ellipsoid); range 0...pi
     hLimits[0][T_theta_R] = 0.001/RAD;
     hLimits[1][T_theta_R] = 179.999/RAD;

@@ -24,10 +24,6 @@
 // Precision for observational data (structure obs_data):
 #define OBS_TYPE double
 
-#ifdef BW_BALL
- #define ROTATE
-#endif
-
 #ifdef TORQUE2
  #define TORQUE
 #endif
@@ -95,7 +91,7 @@ const int DN_LE = 0;
 #endif
 
 #ifdef BW_BALL
-const int DN_BW = 1;
+const int DN_BW = 3;
 #else
 const int DN_BW = 0;
 #endif
@@ -163,9 +159,11 @@ const int T_psi_0 =   __COUNTER__;
 const int T_c =       __COUNTER__;  //8
 const int T_b =       __COUNTER__;  //9
 #endif
-#ifdef ROTATE
+#if defined(ROTATE) || defined(BW_BALL)
 const int T_theta_R = __COUNTER__;
 const int T_phi_R =   __COUNTER__;
+#endif
+#ifdef ROTATE
 const int T_psi_R =   __COUNTER__;
 #endif
 #ifdef BW_BALL
