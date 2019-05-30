@@ -542,15 +542,12 @@ __device__ CHI_FLOAT chi2one(double *params, struct obs_data *sData, int N_data,
              * Assuming the phase angle = 0 (sun is behind the observer) for simplicity.
              */
             
-            // Alpha is the angle between the rotated axis "a1" and the direction to the observer (Ep)
-            // Totally wrong!!! It's wrong to do dot product of vectors in different refernce frames:
-            // a1 is in original (inertial) frame, whereas Ep is in the asteroidal (rotated) frame!
-            // In rotated frame a1={0,0,1}, so the correct expression is cos_alpha = Ep_a;
-            // Or one can use original vector E in place of Ep: cos_alpha = a1_x*E_x1 + a1_y*E_y1 + a1_z*E_z1;
-//            double cos_alpha = a1_x*Ep_b + a1_y*Ep_c + a1_z*Ep_a;
-            double cos_alpha = Ep_a;
+            // Zeta is the angle between the rotated axis "a1" and the direction to the observer (Ep)
+            double cos_zeta = Ep_a;
             // Relative bw ball brightness (1 when only the bright hemisphere is visible; kappa when only the dark one):
-            Vmod = -2.5*log10(0.5*(P_kappa*(1+cos_alpha) + (1-cos_alpha)));
+//            Vmod = -2.5*log10(0.5*(P_kappa*(1+cos_alpha) + (1-cos_alpha)));
+            // Bug fix on May 29, 2019:
+            Vmod = -2.5*log10(0.5*(P_kappa*(1+cos_zeta) + 0.5*(1-cos_zeta)));
             
             #elif defined(RECT)
             /* Simplified (phase is fixed at 0) rectangular prism brightness model.
@@ -793,31 +790,31 @@ __device__ CHI_FLOAT chi2one(double *params, struct obs_data *sData, int N_data,
         int score = 0;
         if (N_minima == 0)
             return (CHI_FLOAT)score;
-        if (Vbest[0]>=25.715)
+        if (Vbest[0]>=25.715)  // Feature D
             score++;
         if (N_minima == 1)
             return (CHI_FLOAT)score;
-        if (Vbest[1]>=25.254)
+        if (Vbest[1]>=25.254) // Feature E
             score++;
         if (N_minima == 2)
             return (CHI_FLOAT)score;
-        if (Vbest[2]>=25.234)
+        if (Vbest[2]>=25.234) // Feature C
             score++;
         if (N_minima == 3)
             return (CHI_FLOAT)score;
-        if (Vbest[3]>=25.212)
+        if (Vbest[3]>=25.212) // Feature A
             score++;
         if (N_minima == 4)
             return (CHI_FLOAT)score;
-        if (Vbest[4]>=24.940)
+        if (Vbest[4]>=24.940) // Feature B
             score++;
         if (N_minima == 5)
             return (CHI_FLOAT)score;
-        if (Vbest[5]>=24.846)
+        if (Vbest[5]>=24.846) // Feature F
             score++;
         if (N_minima == 6)
             return (CHI_FLOAT)score;
-        if (Vbest[6]>=24.834)
+        if (Vbest[6]>=24.834) // Feature L
             score++;
 
         // Returning score (instead of the usual chi2):
@@ -2077,7 +2074,8 @@ __global__ void chi2_minima (struct obs_data *dData, int N_data, int N_filters,
             if (score[i] == 7)
                 N7++;
         }
-        d_Scores[blockIdx.x][blockIdx.y] = sum / blockDim.x;
+        d_Scores[blockIdx.x][blockIdx.y] = sum / blockDim.x;  // Average number of good minima
+        d_Prob[blockIdx.x][blockIdx.y] = (float)N7/(float)blockDim.x; // Probability
         atomicAdd(&d_N7all, N7);
     }
     

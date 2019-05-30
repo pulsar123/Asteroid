@@ -341,6 +341,7 @@ int minima_test(int N_data, int N_filters, int Nplot, double* params, int Types[
         
     // Copying the score matrix to the host:
     ERR(cudaMemcpyFromSymbol(&h_Scores, d_Scores, N_THETA_M*N_PHI_M*sizeof(float), 0, cudaMemcpyDeviceToHost));
+    ERR(cudaMemcpyFromSymbol(&h_Prob, d_Prob, N_THETA_M*N_PHI_M*sizeof(float), 0, cudaMemcpyDeviceToHost));
     ERR(cudaMemcpyFromSymbol(&h_N7all, d_N7all, sizeof(int), 0, cudaMemcpyDeviceToHost));
     ERR(cudaDeviceSynchronize());
 
@@ -352,7 +353,7 @@ int minima_test(int N_data, int N_filters, int Nplot, double* params, int Types[
         for (int j=0; j<N_PHI_M; j++)
         {
             sum = sum + h_Scores[i][j];
-            fprintf(fmap, "%f ", h_Scores[i][j]/7.0);
+            fprintf(fmap, "%f ", h_Prob[i][j]); // Writing the probability map
         }
         fprintf(fmap, "\n");
     }

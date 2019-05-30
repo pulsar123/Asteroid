@@ -188,7 +188,7 @@ const int N_FILTERS = 1;
 // GPU optimization parameters:
 const int BSIZE = 256;   // Threads in a block (64 ... 1024, step of 64); 256
 #ifdef DEBUG
-const int N_BLOCKS = 56*2;
+const int N_BLOCKS = 14;
 #else
 const int N_BLOCKS = 56*2; // Should be proportional to the number of SMs (56 for P100, 80 for V100)
 #endif
@@ -265,9 +265,9 @@ const int NCL_MAX = 5;
 
 #ifdef MINIMA_TEST
 const int N_PHI_0 = 256; // Number of phi_0 values (also threads in the kernel); ~256
-const int N_THETA_M = 64; // Number of theta_M values (also x-dimension of the grid of blocks); should be an even number
-const int N_PHI_M = 64; // Number of phi_M values (also y-dimension of the grid of blocks)
-const int MAX_MINIMA = 30;  // Maximum number of brifhtness minima allowed during minima test
+const int N_THETA_M = 256; // Number of theta_M values (also x-dimension of the grid of blocks); should be an even number
+const int N_PHI_M = 256; // Number of phi_M values (also y-dimension of the grid of blocks)
+const int MAX_MINIMA = 50;  // Maximum number of brifhtness minima allowed during minima test
 #endif
 
 // Speed of light (au/day):
@@ -460,6 +460,8 @@ EXTERN __device__ double d_L_last, d_E_last;
 #ifdef MINIMA_TEST
 EXTERN __device__ float d_Scores[N_THETA_M][N_PHI_M];
 EXTERN float h_Scores[N_THETA_M][N_PHI_M];
+EXTERN __device__ float d_Prob[N_THETA_M][N_PHI_M];
+EXTERN float h_Prob[N_THETA_M][N_PHI_M];
 EXTERN __device__ int d_N7all;
 EXTERN int h_N7all;
 #endif

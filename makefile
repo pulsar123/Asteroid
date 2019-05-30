@@ -14,6 +14,7 @@
 # MINIMA_PRINT : dumping periodogramm (fr, H) as min_profile.dat, in misc.c
 # MINIMA_SPLINE : if defined, use spline-smoothed method to compute the periodogramm (only used with MINIMA_PRINT)
 # MINIMA_TEST : (only works in -plot mode); test of how likely disk vs cigar models can produce minima as deep as observed (reshuffles theta_M, phi_M, phi_0 params)
+# MY_L : input and output L values are not L, but 48*pi/L (purely for historical reasons)
 # NO_SDATA : don't created shared memory sData array, use directly the device memory version
 # NOPRINT : if defined, do not create files model.dat, data.dat, lines.dat
 # NUDGE : nudging the model minima towards the observed minima (in 2D - t,V coordinates) during optimization (not working with SEGMENT)
@@ -33,7 +34,7 @@
 # TREND : detrending the time evolution of the brightness, via the scaling parameter a (proxy for G-parameter from HG reflectivity law) - adds one free parameter
 # TUMBLE : obsolete (now tumbling is always enabled)
 
-ARCH=sm_70
+ARCH=sm_60
 ifeq ($(HOSTNAME),syam)
   ARCH=sm_20
 endif  
@@ -41,7 +42,7 @@ ifeq ($(CLUSTER),monk)
   ARCH=sm_20
 endif  
 
-OPT=--ptxas-options=-v -arch=$(ARCH) -DP_PSI -DTORQUE -DBW_BALL -DDEBUG
+OPT=--ptxas-options=-v -arch=$(ARCH) -DMY_L -DP_PSI -DLAST -DINTERP -DTORQUE -DRECT
 INC=-I/usr/include/cuda -I.
 DEBUG=-O2
 

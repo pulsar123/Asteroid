@@ -268,8 +268,10 @@ int main (int argc,char **argv)
                 else
                 {
                     params[k] = atof(argv[j+1+k]);
+#ifdef MY_L
                     if (Property[k][P_type] == T_L)
                         params[k] = 48.0*PI/params[k];
+#endif
                 }
             }
             j = j + 1 + N_PARAMS;
@@ -669,9 +671,11 @@ int main (int argc,char **argv)
                 // Priting the best result:
                 printf("%13.6e ",  h_f[i_best]);
                 for (j=0; j<N_PARAMS; j++)
+#ifdef MY_L                    
                     if (Property[j][P_type] == T_L)
                         printf("%15.11f ",  48*PI/h_params[i_best*N_PARAMS + j]);
                     else
+#endif
                         printf("%15.11f ",  h_params[i_best*N_PARAMS + j]);
                     printf("\n");
                 fflush(stdout);
@@ -699,9 +703,11 @@ int main (int argc,char **argv)
                     for (int m=0; m<N_filters; m++)
                         fprintf(fp,"%13.6e ",  h_dV[i*N_FILTERS + m]);
                     for (j=0; j<N_PARAMS; j++)
+#ifdef MY_L                    
                         if (Property[j][P_type] == T_L)
                             fprintf(fp,"%15.11f ",  48*PI/h_params[i*N_PARAMS + j]);
                             else
+#endif
                             fprintf(fp,"%15.11f ",  h_params[i*N_PARAMS + j]);
                     fprintf(fp,"\n");
                 }
@@ -781,9 +787,15 @@ int main (int argc,char **argv)
                         if (Property[j][P_type]==T_A)
                             continue;
                         #endif
+                        #ifdef BW_BALL
+                        if (Property[j][P_type]==T_theta_R || Property[j][P_type]==T_phi_R ||Property[j][P_type]==T_kappa)
+                            continue;
+                        #endif                        
+#ifdef MY_L                    
                         if (Property[j][P_type] == T_L)
                             fprintf(fmod, "%15.11f ",  48*PI/params[j]);
                             else
+#endif                                
                             fprintf(fmod, "%15.11f ",  params[j]);
                     }
                     fprintf(fmod, "\n");
@@ -806,10 +818,16 @@ int main (int argc,char **argv)
                         if (Property[j][P_type]==T_A)
                             continue;
                         #endif
-                        if (Property[j][P_type] == T_L)
-                            fprintf(fmod, "%15.11f ",  48*PI/L_last);
-                        else if (Property[j][P_type] == T_Es)
+                        #ifdef BW_BALL
+                        if (Property[j][P_type]==T_theta_R || Property[j][P_type]==T_phi_R ||Property[j][P_type]==T_kappa)
+                            continue;
+                        #endif                        
+                        if (Property[j][P_type] == T_Es)
                             fprintf(fmod, "%15.11f ",  E_last);
+#ifdef MY_L
+                        else if (Property[j][P_type] == T_L)
+                            fprintf(fmod, "%15.11f ",  48*PI/L_last);
+#endif
                         else
                             fprintf(fmod, "%15.11f ",  params[j]);
                     }
