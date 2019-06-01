@@ -1,6 +1,9 @@
-/* Program to test the asteroid brightness calculation algorithm to be used with the ABC (Asteroid Brightness in CUDA) simulation package.
- *   The goal is to simulate the brigntess curve of the first interstellar asteroid  1I/2017 U1.   
- */
+/* CUDA code to fit physical models of a tumbing asteroid with optional torque to light curve data.
+ * 
+ * Paper:  
+ * 
+  Written by Sergey Mashchenko, 2017-2019
+*/
 
 #include <sys/time.h>
 #include <unistd.h>
@@ -81,9 +84,9 @@ int main (int argc,char **argv)
            { T_A,       1,           0,      0,     1,     HARD_BOTH},  // A
     #endif
     #ifdef TORQUE
-           { T_Ti,      1,           0,      0,     0,     SOFT_BOTH},  // Ti - Kb
-           { T_Ts,      1,           0,      0,     0,     SOFT_BOTH},  // Ts - Kc
-           { T_Tl,      1,           0,      0,     0,     SOFT_BOTH},  // Tl - Ka
+           { T_Ti,      1,           0,      0,     0,     SOFT_BOTH},  // Ti - Tb
+           { T_Ts,      1,           0,      0,     0,     SOFT_BOTH},  // Ts - Tc
+           { T_Tl,      1,           0,      0,     0,     SOFT_BOTH},  // Tl - Ta
     #endif
     #ifdef TORQUE2
            { T_T2i,     1,           0,      0,     0,     SOFT_BOTH},  // T2i

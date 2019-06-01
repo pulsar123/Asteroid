@@ -2,14 +2,12 @@
 
 # ACC : enable high accuracy mode (mainly for final reoptimization): makes CHI_FLOAT=double, and reduces SIZE_MIN to 1e-10
 # BC : if defined, "physical b,c" and "photometric b,c" are independent parameters; if not, they are the same thing
-# BW_BALL : simplest albedo (non-geometric) brightness model - black and white ball. Uses theta_R and phi_R parameters from ROTATE (polar coords are theta_R, phi_R-90)
+# BW_BALL : simplest albedo (non-geometric) brightness model - black and white ball. Three new parameters: theta_R, phi_R, (theta_h, phi_h in paper) and kappa.
 # DEBUG : used with interactive (debugging) runs, reduced kernels and print time intervals
-# DEBUG2 : likley not functional; used for cuda code debugging
 # DUMP_DV : dumping 5.0*log10(1.0/E * 1.0/S) in read_data.c for all obs. data points
 # DUMP_RED_BLUE : dumping the converted/corrected obs. data (MJD, V, w)
-# INTERP : doing E,S vectors interpolation on GPU - slower, but can use many more data points
+# INTERP : doing E,S vectors interpolation on GPU - slower, but can use many more data points (>490)
 # LAST : (only for TORQUE) when -plot is used, printing the final values of the model parameters (L and E)
-# LSQ : likely not functional. Computing 2D least squares distances between the data points and the model, in chi2_plot
 # MIN_DV : force certain minimum for dV (magnitudes) of the brightness curve
 # MINIMA_PRINT : dumping periodogramm (fr, H) as min_profile.dat, in misc.c
 # MINIMA_SPLINE : if defined, use spline-smoothed method to compute the periodogramm (only used with MINIMA_PRINT)
@@ -29,10 +27,9 @@
 # ROTATE: only in BC mode; rotates the asteroid brightness frame relative to the inertia frame; three extra parameters: theta_R, phi_R, psi_R
 # SEGMENT : multiple data segments (specified by T_START[] vector)
 # TIMING : time the main kernel (chi2_gpu)
-# TORQUE : adding a simple constant torque model, with 4 extra parameters: theta_K, phi_K, phi_F, and K. Noew we need to solve completely different ODEs - 6 of them
+# TORQUE : adding a simple constant torque model, with 3 extra parameters: Ti, Ts, Tl (same as Tb, Tc, Ta)
 # TORQUE2 (implies TORQUE): torque parameters change half-way through the data (at mid-point in time). Adds 4 more parameters (theta_K2, phi_K2, phi_F2, K2)
-# TREND : detrending the time evolution of the brightness, via the scaling parameter a (proxy for G-parameter from HG reflectivity law) - adds one free parameter
-# TUMBLE : obsolete (now tumbling is always enabled)
+# TREND : detrending the time evolution of the brightness, via the scaling parameter a (proxy for G-parameter from HG reflectivity law) - adds one free parameter A
 
 ARCH=sm_60
 ifeq ($(HOSTNAME),syam)
@@ -42,7 +39,7 @@ ifeq ($(CLUSTER),monk)
   ARCH=sm_20
 endif  
 
-OPT=--ptxas-options=-v -arch=$(ARCH) -DMY_L -DP_PSI -DLAST -DINTERP -DTORQUE -DRECT
+OPT=--ptxas-options=-v -arch=$(ARCH) -DP_PSI -DTORQUE
 INC=-I/usr/include/cuda -I.
 DEBUG=-O2
 
