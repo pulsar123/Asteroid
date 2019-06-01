@@ -2,9 +2,9 @@ Instructions for the `Oumuamua paper, Mashchenko (2019)
 
 1) The light curve file
  - Format (each line corresponds to one observation):
-
+```
 filter  MJD  V  sgm  Aux
- 
+``` 
 Here 
  - filter: identifier for a homogeneous set of observations (for example, a specific filter, or uncalibrated observations done homogeneously).
            special value W: if the light curve was already converted to absolute magnitudes and to asteroidal time (light travel corrected)
@@ -38,9 +38,9 @@ Press Generate Ephemeris, then Ctrl-S to save the text file as one of the three 
  * To do a black-and-white ball with torque, add "-DBW_BALL" in makefile.
 
  - makefile:
-
+```
  OPT=--ptxas-options=-v -arch=$(ARCH) -DP_PSI -DTORQUE
- 
+``` 
   - asteroid.h :
 ```
 const int N_FILTERS = 1;
