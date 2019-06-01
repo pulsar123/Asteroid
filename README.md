@@ -75,7 +75,7 @@ hLimits[1][T_b_tumb] = 1;
 ```
  - Stage Two (reoptimization) run ($i is the job number in the GPU farm, or another suitable unique integer number; par1 ... par11 is a model from the Stage One):
 ```
- ./asteroid -t -N 20 -reopt -best -seed $i -i light_curve_data  -o output_file  -m par1 par2 par3 ... par11
+ ./asteroid -t -N 20 -reopt -best -seed $i -i light_curve_data  -o output_file  -m par1 par2 par3 ...
 ```
  - Stage Three (fine-tuning; optional). Requires recompiling the code.
 
@@ -91,8 +91,24 @@ hLimits[1][T_b_tumb] = 1;
 
  -- Execution (par1 ... par11 is a model from Stage One or Two):
 ```
- ./asteroid -t -reopt -best -seed $i -i light_curve_data  -o output_file  -m par1 par2 par3 ... par11
+ ./asteroid -t -reopt -best -seed $i -i light_curve_data  -o output_file  -m par1 par2 par3 ...
 ``` 
  
- 
- 
+4) Format of the output file. Each line contains one model, with the following parameters:
+```
+chi^2  delta_V1  [delta_V2  ...]  par1  par2  par3 ...
+```
+
+The number of the fitting parameters delta_V is equal to the number of different filters in the light_curve_data file. The order of the free model parameters par1, par2, ...
+is the same as in the table "Property[N_PARAMS][N_COLUMNS]" (at the top of asteroid.c file), taking into account the macro parameters set in the makefile. For example,
+self-consistent LS ellipsoid model with torque will have the following 11 parameters:
+```
+theta_M  phi_M  phi_0  Tb  Tc  Ta  c  b  E'  L  psi_0
+```
+The units for the parameters are physical (where Ia=1 and a=1, time unit is a day; see paper).
+
+5) The code can be used to create a light curve plot for a given model (no need to recompile):
+```
+./asteroid  -i light_curve_data  -plot  -m par1 par2 par3 ...
+```
+This will create model.dat file with 20,000 (NPLOT in asteroid.h) model brightness points, using the delta_V1 offset parameter.
