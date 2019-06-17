@@ -1,4 +1,4 @@
-Instructions for the `Oumuamua paper, Mashchenko (2019)
+Instructions for the `Oumuamua paper, Mashchenko (2019), https://arxiv.org/abs/1906.03696
 
 1) The light curve file
  - Format (each line corresponds to one observation):
