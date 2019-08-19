@@ -24,22 +24,18 @@
 # PROFILES : if defined, write cross-sections along all parameter dimensions to lines.dat
 # RANDOM_BC : (not working) for BC mode. If defined, initial guess for brightness b,c parameters are random (not coinciding with the kinematic b,c parameters).
 # RECT : rectangular prism simplified (phase=0) brightness model (here b, c parameters are half-lengths of the second and third shortest sides). Uses BC internally
+# RMSD : confidence interval estimation using random point shifts around the input model
 # ROTATE: only in BC mode; rotates the asteroid brightness frame relative to the inertia frame; three extra parameters: theta_R, phi_R, psi_R
 # SEGMENT : multiple data segments (specified by T_START[] vector)
+# SPHERICAL_K : (only makes sense when used with RMSD) : for confidence intervals calculations, use convert torque vector to spherical coordinates: r, theta, phi
 # TIMING : time the main kernel (chi2_gpu)
 # TORQUE : adding a simple constant torque model, with 3 extra parameters: Ti, Ts, Tl (same as Tb, Tc, Ta)
 # TORQUE2 (implies TORQUE): torque parameters change half-way through the data (at mid-point in time). Adds 4 more parameters (theta_K2, phi_K2, phi_F2, K2)
 # TREND : detrending the time evolution of the brightness, via the scaling parameter a (proxy for G-parameter from HG reflectivity law) - adds one free parameter A
 
 ARCH=sm_60
-ifeq ($(HOSTNAME),syam)
-  ARCH=sm_20
-endif  
-ifeq ($(CLUSTER),monk)
-  ARCH=sm_20
-endif  
 
-OPT=--ptxas-options=-v -arch=$(ARCH) -DP_PSI -DTORQUE
+OPT=--ptxas-options=-v -arch=$(ARCH) -DP_PSI -DTORQUE -DRMSD -DSPHERICAL_K -DINTERP -DPROFILES
 INC=-I/usr/include/cuda -I.
 DEBUG=-O2
 

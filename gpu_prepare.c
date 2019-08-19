@@ -13,6 +13,13 @@ int gpu_prepare(int N_data, int N_filters, int N_threads, int Nplot)
     ERR(cudaMallocHost(&dData, N_data * sizeof(struct obs_data)));    
     ERR(cudaMemcpy(dData, hData, N_data * sizeof(struct obs_data), cudaMemcpyHostToDevice));
 
+#ifdef RMSD
+    ERR(cudaMalloc(&dpar_min, N_BLOCKS * N_PARAMS * sizeof(float)));
+    ERR(cudaMalloc(&dpar_max, N_BLOCKS * N_PARAMS * sizeof(float)));
+    ERR(cudaMallocHost(&hpar_min, N_BLOCKS * N_PARAMS * sizeof(float)));
+    ERR(cudaMallocHost(&hpar_max, N_BLOCKS * N_PARAMS * sizeof(float)));
+#endif    
+    
     if (Nplot > 0)
     {
         ERR(cudaMallocHost(&dPlot, Nplot * sizeof(struct obs_data)));    

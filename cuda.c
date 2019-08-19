@@ -827,8 +827,12 @@ __device__ CHI_FLOAT chi2one(double *params, struct obs_data *sData, int N_data,
     if (Nplot > 0)
         return 0.0;
     
+    // Computing chi^2
     CHI_FLOAT chi2m;
     chi2a=0.0;    
+    #ifdef RMSD
+    CHI_FLOAT SUM_w = 0.0;
+    #endif
     for (m=0; m<N_filters; m++)
     {
         // Chi^2 for the m-th filter:
@@ -837,9 +841,16 @@ __device__ CHI_FLOAT chi2one(double *params, struct obs_data *sData, int N_data,
         // Average difference Vdata-Vmod for each filter (used for plotting):
         // In SEGMENT mode, computation is done here, over all the segments, as the model scaling (with its size) is fixed across all the segments
         delta_V[m] = sum_y[m] / sum_w[m];
+        #ifdef RMSD
+        SUM_w = SUM_w + sum_w[m];
+        #endif
     }   
     
+    #ifdef RMSD // Computing RMSD:
+    chi2a = sqrt(chi2a / SUM_w);
+    #else  // Normal case: computing chi^2:
     chi2a = chi2a / (N_data - N_PARAMS - N_filters);
+    #endif
     
     #ifdef NUDGE
     // Here we will modify the chi2a value based on how close model minima are to the corresponding observed minima (in 2D - both t and V axes),
@@ -1332,13 +1343,11 @@ __global__ void chi2_gpu (struct obs_data *dData, int N_data, int N_filters, int
         s_x2_params.reopt = reopt;
     }
     
-    // Downhill simplex optimization approach
-
-    __syncthreads();
-    
     CHI_FLOAT x[N_PARAMS+1][N_PARAMS];  // simplex points (point index, coordinate)
     CHI_FLOAT f[N_PARAMS+1]; // chi2 values for the simplex edges (point index)
 
+    __syncthreads();
+    
     if (s_x2_params.reopt)
     {
         // Reading the initial point from device memory
@@ -1352,11 +1361,11 @@ __global__ void chi2_gpu (struct obs_data *dData, int N_data, int N_filters, int
     int id = threadIdx.x + blockDim.x*blockIdx.x;
     
     // Reading the global states from device memory:
-    curandState localState = globalState[id];
+    curandState localState = globalState[id];    
 
     for (int istage=0; istage<Nstages; istage++)
     {
-        
+     
     __syncthreads();
     if (Nstages>1 && istage>0)
     {
@@ -1439,8 +1448,7 @@ __global__ void chi2_gpu (struct obs_data *dData, int N_data, int N_filters, int
             LAM = x[0][i]>=0.5;
             
         }
-
-                
+            
         // Simplex initialization (initial values x[j][i] for all j>0)
         // Vertex loop:
         for (j=1; j<N_PARAMS+1; j++)
@@ -1491,7 +1499,7 @@ __global__ void chi2_gpu (struct obs_data *dData, int N_data, int N_filters, int
 
             f[j] = chi2one(params, sData, N_data, N_filters, delta_V, 0, &sp, sTypes);    
         }
-        
+                
         #ifdef P_BOTH
         if (failed == 0)
             break;
@@ -1797,32 +1805,46 @@ __global__ void debug_kernel(struct parameters_struct params, struct obs_data *d
 //++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 
 __global__ void chi2_plot (struct obs_data *dData, int N_data, int N_filters,
-                           struct obs_data *dPlot, int Nplot, double * d_dlsq2)
+                           struct obs_data *dPlot, int Nplot, double * d_dlsq2, float dx_rand)
 // CUDA kernel to compute plot data from input params structure
 {     
     __shared__ double sd2_min[BSIZE];
     CHI_FLOAT delta_V[N_FILTERS];
     __shared__ struct chi2_struct sp;
+    __shared__ CHI_FLOAT sLimits[2][N_TYPES];
+    __shared__ int sProperty[N_PARAMS][N_COLUMNS];
     __shared__ int sTypes[N_TYPES][N_SEG];
+    __shared__ volatile struct x2_struct s_x2_params;
+    #if defined(SPHERICAL_K) && defined(TORQUE) && defined(PROFILES)
+    __shared__ volatile double phi0, K0, theta0;
+    int iseg=0;
+    #endif
     double params[N_PARAMS];
     
     // Global thread index for points:
     int id = threadIdx.x + blockDim.x*blockIdx.x;
     
     //    if (id == 0 && blockIdx.y == 0)    
-    // Doing once per kernel
     if (threadIdx.x == 0)
     {
-        // Reading the initial point from device memory
-        for (int i=0; i<N_PARAMS; i++)
-            params[i] = d_params0[i];
+
         for (int i=0; i<N_TYPES; i++)
         {
-//            sLimits[0][i] = dLimits[0][i];
-//            sLimits[1][i] = dLimits[1][i];
+            sLimits[0][i] = dLimits[0][i];
+            sLimits[1][i] = dLimits[1][i];
             for (int iseg=0; iseg<N_SEG; iseg++)
                 sTypes[i][iseg] = dTypes[i][iseg];
         }
+        for (int i=0; i<N_PARAMS; i++)
+            for (int j=0; j<N_COLUMNS; j++)
+                sProperty[i][j] = dProperty[i][j];
+        
+        s_x2_params.reopt = 1;
+        
+        // Reading the initial point from device memory
+        for (int i=0; i<N_PARAMS; i++)
+            params[i] = d_params0[i];
+        
         #ifdef INTERP
         for (int i=0; i<3; i++)
           {
@@ -1858,6 +1880,21 @@ __global__ void chi2_plot (struct obs_data *dData, int N_data, int N_filters,
 
         // Step two: computing the Nplots data points using the delta_V values from above:
         chi2one(params, dPlot, Nplot, N_filters, delta_V, Nplot,  &sp, sTypes);
+
+        #if defined(SPHERICAL_K) && defined(TORQUE) && defined(PROFILES)
+        // Converting torque vector from Cartesian to spherical coordinates, for confidence interval estimation
+        // Shortest axis (c), largest moment of inertia:
+        double Is = (1.0 + P_b_tumb*P_b_tumb) / (P_b_tumb*P_b_tumb + P_c_tumb*P_c_tumb);
+        // Intermediate axis (b), intermediate moment of inertia:
+        double Ii = (1.0 + P_c_tumb*P_c_tumb) / (P_b_tumb*P_b_tumb + P_c_tumb*P_c_tumb);
+        // Torque vector cartesean components:
+        double Ki = Ii * P_Ti;
+        double Ks = Is * P_Ts;
+        double Kl = P_Tl;
+        K0 = sqrt(Ki*Ki + Ks*Ks + Kl*Kl);  // r
+        theta0 = acos(Kl/K0);  // theta (polar angle; 0..pi)            
+        phi0 = atan2(Ks, Ki);  // phi (azimuthal angle; 0..2*pi) for the input model
+        #endif
         
     }
     
@@ -1911,63 +1948,55 @@ __global__ void chi2_plot (struct obs_data *dData, int N_data, int N_filters,
     #endif    
     
     #ifdef PROFILES
-    if (id < Nplot)
+    if (id < C_POINTS*BSIZE)
     {
-        // Parameter index:
+        CHI_FLOAT x[N_PARAMS];
+        
+        // Reading the initial point from device memory
+        for (int i=0; i<N_PARAMS; i++)
+            params[i] = d_params0[i];
+        // Converting from physical to dimensionless (0...1 scale) parameters:
+        params2x(x, params, sLimits, sProperty, sTypes, &s_x2_params);
+        #if defined(SPHERICAL_K) && defined(TORQUE)
+        // Converting manually to x spherical torque components for the initial model:
+        x[sTypes[T_Ti][0]] = K0 / sLimits[1][T_Ti];
+        x[sTypes[T_Ts][0]] = theta0 / PI;
+        x[sTypes[T_Tl][0]] = phi0 / (2*PI);
+        #endif
+        
+    // Parameter index:
         int iparam = blockIdx.y;            
         // Changes from -DELTA_MAX to +DELTA_MAX:
         // With id+1.0 we ensure that delta=0 corresponds to one of the threads
-        double delta = 2.0 * DELTA_MAX * ((id+1.0)/blockDim.x/gridDim.x - 0.5);
+        double delta = 2.0 * dx_rand * ((id+1.0)/(blockDim.x*gridDim.x) - 0.5);
         
         // Modyfing slightly the corresponding parameter:
-        switch (iparam)
-        {
-            case 0:
-                params._M = params.theta_M + delta * (dLimits[1][iparam] - dLimits[0][iparam]);
-                break;
-                
-            case 1:
-                params.phi_M = params.phi_M + delta * (dLimits[1][iparam] - dLimits[0][iparam]);
-                break;
-                
-            case 2:
-                params.phi_0 = params.phi_0 + delta * (dLimits[1][iparam] - dLimits[0][iparam]);
-                break;
-                
-            case 3:
-                params.L = params.L + delta * (dLimits[1][iparam] - dLimits[0][iparam]);
-                break;
-                
-            case 4:
-                params.c_tumb = params.c_tumb * exp(delta * (dLimits[1][iparam] - dLimits[0][iparam]));
-                break;
-                
-            case 5:
-                //        params.b_tumb = params.b_tumb * exp(delta * (dLimits[1][4] - dLimits[0][4]));
-                params.b_tumb = params.b_tumb * exp(delta * (-log(params.c_tumb)));
-                break;
-                
-            case 6:
-                params.Es = params.Es + delta*0.5;  //??
-                break;
-                
-            case 7:
-                params.psi_0 = params.psi_0 + delta*2.0*PI;
-                break;                    
-                #ifdef BC
-            case 8:
-                params.c = params.c * exp(delta * (dLimits[1][4+DN_IND] - dLimits[0][4+DN_IND]));
-                break;
-                
-            case 9:
-                params.b = params.b * exp(delta * (dLimits[1][4+DN_IND] - dLimits[0][4+DN_IND]));
-                break;
-                #endif        
-        }
-        
+        x[iparam] = x[iparam] + delta;
+
+        // Converting back to params:
+        x2params(x, params, sLimits, &s_x2_params, sProperty, sTypes);
+        #if defined(SPHERICAL_K) && defined(TORQUE)
+        // Manual x->params conversion for spherical torque components:
+        double K = x[sTypes[T_Ti][0]] * sLimits[1][T_Ti];
+        double theta = x[sTypes[T_Ts][0]] * PI;
+        double phi = x[sTypes[T_Tl][0]] * 2*PI;
+        double Is = (1.0 + P_b_tumb*P_b_tumb) / (P_b_tumb*P_b_tumb + P_c_tumb*P_c_tumb);
+        double Ii = (1.0 + P_c_tumb*P_c_tumb) / (P_b_tumb*P_b_tumb + P_c_tumb*P_c_tumb);
+        P_Ti = K * cos(phi) * sin(theta) / Ii;
+        P_Ts = K * sin(phi) * sin(theta) / Is;
+        P_Tl = K * cos(theta);
+        #endif
         // Computing the chi2 for the shifted parameter:
         // !!! Will not work in NUDGE mode - NULL
         d_chi2_lines[iparam][id] = chi2one(params, dData, N_data, N_filters, delta_V, 0, &sp, sTypes);
+        
+        #if defined(SPHERICAL_K) && defined(TORQUE)
+        P_Ti = K;
+        P_Ts = theta;
+        P_Tl = phi;
+        #endif            
+        
+        d_param_lines[iparam][id] = params[iparam];
     }
     #endif    
     
@@ -2082,3 +2111,249 @@ __global__ void chi2_minima (struct obs_data *dData, int N_data, int N_filters,
     return;
 }
 #endif
+
+
+//--------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+
+#ifdef RMSD
+__global__ void chi2_gpu_rms (struct obs_data *dData, int N_data, int N_filters, int reopt, int Nstages,
+                          curandState* globalState, CHI_FLOAT *d_f, double* d_params, double* d_dV, float dx_rand, float* dpar_min, float* dpar_max)
+// CUDA kernel computing the confidence intervals for the input model, using RMSD method (Bartczak & Dudziński 2019)
+{        
+    #ifndef NO_SDATA
+    __shared__ struct obs_data sData[MAX_DATA];
+    #endif
+    __shared__ CHI_FLOAT sLimits[2][N_TYPES];
+    __shared__ volatile CHI_FLOAT s_f[BSIZE];
+    __shared__ int sProperty[N_PARAMS][N_COLUMNS];
+    __shared__ int sTypes[N_TYPES][N_SEG];
+    __shared__ struct chi2_struct sp;
+    __shared__ volatile struct x2_struct s_x2_params;
+    __shared__ volatile CHI_FLOAT s_x0[N_PARAMS];
+    __shared__ volatile int thread_min;
+    __shared__ volatile CHI_FLOAT smin;
+    __shared__ volatile float s_min[BSIZE], s_max[BSIZE];    
+    
+    int i, j;
+    double params[N_PARAMS];
+    CHI_FLOAT delta_V[N_FILTERS];
+    int ind[N_PARAMS+1]; // Indexes to the sorted array (point index)
+    
+    
+    if (threadIdx.x == 0)
+    {
+        #ifndef NO_SDATA
+          for (i=0; i<N_data; i++)
+              sData[i] = dData[i];
+          #ifdef INTERP
+          for (i=0; i<3; i++)
+          {
+              sp.E_x0[i] = dE_x0[i];
+              sp.E_y0[i] = dE_y0[i];
+              sp.E_z0[i] = dE_z0[i];
+              sp.S_x0[i] = dS_x0[i];
+              sp.S_y0[i] = dS_y0[i];
+              sp.S_z0[i] = dS_z0[i];
+              sp.MJD0[i] = dMJD0[i];
+          }
+          #endif
+        #endif        
+        for (i=0; i<N_TYPES; i++)
+        {
+            sLimits[0][i] = dLimits[0][i];
+            sLimits[1][i] = dLimits[1][i];
+            for (int iseg=0; iseg<N_SEG; iseg++)
+                sTypes[i][iseg] = dTypes[i][iseg];
+        }
+        for (i=0; i<N_PARAMS; i++)
+            for (j=0; j<N_COLUMNS; j++)
+                sProperty[i][j] = dProperty[i][j];
+        
+        s_x2_params.reopt = reopt;
+    }
+    
+    __syncthreads();
+    
+    CHI_FLOAT x[2][N_PARAMS];  // simplex points (point index, coordinate)
+    CHI_FLOAT par_min[N_PARAMS];
+    CHI_FLOAT par_max[N_PARAMS];
+    for (i=0; i<N_PARAMS; i++)
+    {
+        par_min[i] = 1e30;
+        par_max[i] = -1e30;
+    }
+    int Ntot = 0;
+    int Nbad = 0;
+
+    // Reading the initial point from device memory
+    for (i=0; i<N_PARAMS; i++)
+        params[i] = d_params0[i];
+    // Converting from physical to dimensionless (0...1 scale) parameters:
+    params2x(x[0], params, sLimits, sProperty, sTypes, &s_x2_params);
+
+    // RMSD value for the input model:
+    CHI_FLOAT f0 = chi2one(params, sData, N_data, N_filters, delta_V, 0, &sp, sTypes);
+    // + one sigma value for RMSD (all good models will have RMSD smaller than this value):
+    CHI_FLOAT f1 = f0 + f0/sqrt((CHI_FLOAT)(N_data - N_PARAMS - N_filters));
+    int iseg = 0;
+    double phi_M0 = P_phi_M;
+    double phi_00 = P_phi_0;
+    #if defined(SPHERICAL_K) && defined(TORQUE)
+    // Converting torque vector from Cartesian to spherical coordinates, for confidence interval estimation
+    // Shortest axis (c), largest moment of inertia:
+    double Is = (1.0 + P_b_tumb*P_b_tumb) / (P_b_tumb*P_b_tumb + P_c_tumb*P_c_tumb);
+    // Intermediate axis (b), intermediate moment of inertia:
+    double Ii = (1.0 + P_c_tumb*P_c_tumb) / (P_b_tumb*P_b_tumb + P_c_tumb*P_c_tumb);
+    // Torque vector cartesean components:
+    double Ki = Ii * P_Ti;
+    double Ks = Is * P_Ts;
+    double phi0 = atan2(Ks, Ki);  // phi (azimuthal angle; 0..2*pi) for the input model
+    #endif
+    
+    if (blockIdx.x==0 && threadIdx.x==0)
+    {
+        d_f0 = f0;
+        d_f1 = f1;
+    }
+    
+    // Global thread index:
+    int id = threadIdx.x + blockDim.x*blockIdx.x;
+    
+    // Reading the global states from device memory:
+    curandState localState = globalState[id];    
+
+//  In RMSD mode, Nstages mean number of random points generated per thread
+    for (int istage=0; istage<Nstages; istage++)
+    {
+        #define SMALL 1e-8  // Small offset from the hard parameter limits
+        int LAM = 0;
+
+        for (i=0; i<N_PARAMS; i++)
+        {
+/*
+            // Generating random number in [0..1[ interval:
+            float r = curand_uniform(&localState);
+            
+            CHI_FLOAT xmin = x[0][i] - dx_rand;
+            CHI_FLOAT xmax = x[0][i] + dx_rand;
+            // Enforcing hard limits:
+            if (xmin<SMALL && (sProperty[i][P_periodic]==HARD_BOTH || sProperty[i][P_periodic]==HARD_LEFT || LAM==0 && sProperty[i][P_periodic]==PERIODIC_LAM))
+                xmin = SMALL;
+            if (xmax>1.0-SMALL && (sProperty[i][P_periodic]==HARD_BOTH || sProperty[i][P_periodic]==HARD_RIGHT || LAM==0 && sProperty[i][P_periodic]==PERIODIC_LAM))
+                xmax = 1.0 - SMALL;
+            
+            x[1][i] = xmin + r*(xmax-xmin);
+            */
+        CHI_FLOAT xx = x[0][i] + dx_rand * curand_normal(&localState);
+            if (xx<SMALL && (sProperty[i][P_periodic]==HARD_BOTH || sProperty[i][P_periodic]==HARD_LEFT || LAM==0 && sProperty[i][P_periodic]==PERIODIC_LAM))
+                xx = SMALL;
+            else if (xx>1.0-SMALL && (sProperty[i][P_periodic]==HARD_BOTH || sProperty[i][P_periodic]==HARD_RIGHT || LAM==0 && sProperty[i][P_periodic]==PERIODIC_LAM))
+                xx = 1.0 - SMALL;
+        x[1][i] = xx;
+            
+        if (sProperty[i][P_type] == T_Es)
+            // We need to know LAM to figure out whether psi_0 is periodic (LAM=1) or not (LAM=0):
+            LAM = x[1][i]>=0.5;
+            
+        }
+
+        
+        if (x2params(x[1], params, sLimits, &s_x2_params, sProperty, sTypes))
+        {
+            continue;
+        }
+
+        // RMSD value for a randomly shifted model:
+        CHI_FLOAT f = chi2one(params, sData, N_data, N_filters, delta_V, 0, &sp, sTypes);  
+        
+        Ntot++;
+        if (f < f1)
+        // We found a good model (within one sigma from the input model, in terms of RMSD)
+        {
+            // Converting periodic angles to proper intervals, for confidence interval calculations
+            if (P_phi_M > phi_M0 + PI)
+                P_phi_M = phi_M0 - 2*PI;
+            if (P_phi_M < phi_M0 - PI)
+                P_phi_M = phi_M0 + 2*PI;
+            if (P_phi_0 > phi_00 + PI)
+                P_phi_0 = phi_00 - 2*PI;
+            if (P_phi_0 < phi_00 - PI)
+                P_phi_0 = phi_00 + 2*PI;
+            #if defined(SPHERICAL_K) && defined(TORQUE)
+            // Converting torque vector from Cartesian to spherical coordinates, for confidence interval estimation
+            // The results are stored back inside the params vector
+            // Shortest axis (c), largest moment of inertia:
+            double Is = (1.0 + P_b_tumb*P_b_tumb) / (P_b_tumb*P_b_tumb + P_c_tumb*P_c_tumb);
+            // Intermediate axis (b), intermediate moment of inertia:
+            double Ii = (1.0 + P_c_tumb*P_c_tumb) / (P_b_tumb*P_b_tumb + P_c_tumb*P_c_tumb);
+            // Torque vector cartesean components:
+            double Ki = Ii * P_Ti;
+            double Ks = Is * P_Ts;
+            double Kl = P_Tl;
+            // Torque vector spherical components (storing them back inside the params vector):
+            P_Ti = sqrt(Ki*Ki + Ks*Ks + Kl*Kl);  // r
+            P_Ts = acos(Kl/P_Ti);  // theta (polar angle; 0..pi)            
+            double phi = atan2(Ks, Ki);
+            // Converting phi to the interval phi0+-pi, for proper confidence interval calculations:
+            if (phi > phi0 + PI)
+                phi = phi - 2*PI;
+            if (phi < phi0 - PI)
+                phi = phi + 2*PI;
+            P_Tl = phi;  // phi (azimuthal angle; phi0-pi..phi0+pi)
+            #endif            
+            
+            // Searching the min/max of dimensional model parameters, for the current thread
+            for (i=0; i<N_PARAMS; i++)
+            {
+                if (params[i] < par_min[i])
+                    par_min[i] = params[i];
+                if (params[i] > par_max[i])
+                    par_max[i] = params[i];
+            }
+            
+        }
+        else
+        {
+            Nbad++;
+        }
+        
+    } // istage loop     
+    
+    atomicAdd(&d_Ntot, Ntot);
+    atomicAdd(&d_Nbad, Nbad);
+    
+    for (i=0; i<N_PARAMS; i++)
+    {
+        s_min[threadIdx.x] = par_min[i];
+        s_max[threadIdx.x] = par_max[i];
+        
+        __syncthreads();        
+        
+        // Doing serial reduction, one parameter at a time - should be fine, as we do this step very infrequently:
+        if (threadIdx.x == 0)
+        {
+            float fmin =  1e30;
+            float fmax = -1e30;
+            for (int j=0; j<blockDim.x; j++)
+            {
+                if (s_min[j] < fmin)
+                    fmin = s_min[j];
+                if (s_max[j] > fmax)
+                    fmax = s_max[j];
+            }
+            // Storing the min/max values of the i-th parameter, found in the current block, into device memory:
+            dpar_min[blockIdx.x*N_PARAMS + i] = fmin;
+            dpar_max[blockIdx.x*N_PARAMS + i] = fmax;
+        }
+
+        __syncthreads();        
+        
+    }
+        
+
+    // Writing the global states to device memory:
+    globalState[id] = localState;
+    
+    return;
+    }
+    #endif //RMSD

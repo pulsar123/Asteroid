@@ -26,6 +26,11 @@ int read_data(char *data_file, int *N_data, int *N_filters, int Nplot)
   
  // Number of brightness data points:
  fp = fopen(data_file, "r");
+ if (!fp)
+ {
+     printf("Input file %s does not exist!\n", data_file);
+     exit(1);
+ }
  *N_data = 0;
  while(!feof(fp))
 {

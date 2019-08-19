@@ -13,6 +13,8 @@
 #define PI 3.141592653589793238
 #define RAD (180.0 / PI)
 
+#define HUGE 1e30
+
 // Constants:
 
 // Precision for CUDA chi^2 calculations (float or double):
@@ -180,7 +182,7 @@ const int N_TYPES =   __COUNTER__;
 // INTERP function results in a ~15% slower code, but allows for a few time larger datasets:
 const int MAX_DATA = 772; // 497, 662, 772, 993, 1914
 #else
-const int MAX_DATA = 497;
+const int MAX_DATA = 390;
 #endif
 // Maximum number of filters:
 const int N_FILTERS = 1;
@@ -190,7 +192,7 @@ const int BSIZE = 256;   // Threads in a block (64 ... 1024, step of 64); 256
 #ifdef DEBUG
 const int N_BLOCKS = 14;
 #else
-const int N_BLOCKS = 56*2; // Should be proportional to the number of SMs (56 for P100, 80 for V100)
+const int N_BLOCKS = 56; // Should be proportional to the number of SMs (56 for P100, 80 for V100)
 #endif
 
 // ODE time step (days):
@@ -253,9 +255,9 @@ const int MAX_LINE_LENGTH = 128;
 // Number of time points for plotting
 const int NPLOT = 20000; // 6000 !!!
 // Times BSIZE will give the total number of points for lines:
-const int C_POINTS = 10;
+const int C_POINTS = 10; // 10
 // Maximum relative deviation for each parameter when computing lines:
-const double DELTA_MAX = 0.001;
+const double DELTA_MAX = 0.01;
 // Scales for the V and t axes when computing the 2D least squares distances between the data and model:
 const double V_SCALE = 1.0;  // in magnitudes
 const double T_SCALE = 0.06;  // in days
@@ -359,7 +361,10 @@ int minima_test(int, int, int, double*, int[][N_SEG], CHI_FLOAT);
 
 __global__ void setup_kernel ( curandState *, unsigned long, CHI_FLOAT *, int);
 __global__ void chi2_gpu(struct obs_data *, int, int, int, int, curandState*, CHI_FLOAT*, double*, double*);
-__global__ void chi2_plot(struct obs_data *, int, int, struct obs_data *, int, double *);
+#ifdef RMSD
+__global__ void chi2_gpu_rms(struct obs_data *, int, int, int, int, curandState*, CHI_FLOAT*, double*, double*, float, float*, float*);
+#endif
+__global__ void chi2_plot(struct obs_data *, int, int, struct obs_data *, int, double *, float);
 #ifdef MINIMA_TEST
 __global__ void chi2_minima(struct obs_data *, int, int, struct obs_data *, int, CHI_FLOAT);
 #endif
@@ -409,8 +414,12 @@ EXTERN CHI_FLOAT h_chi2_plot;
 EXTERN __device__ CHI_FLOAT dLimits[2][N_TYPES];
 EXTERN __device__ double d_Vmod[NPLOT];
 EXTERN double h_Vmod[NPLOT];
+#ifdef PROFILES
 EXTERN __device__ CHI_FLOAT d_chi2_lines[N_PARAMS][BSIZE*C_POINTS];
 EXTERN CHI_FLOAT h_chi2_lines[N_PARAMS][BSIZE*C_POINTS];
+EXTERN __device__ CHI_FLOAT d_param_lines[N_PARAMS][BSIZE*C_POINTS];
+EXTERN CHI_FLOAT h_param_lines[N_PARAMS][BSIZE*C_POINTS];
+#endif
 EXTERN CHI_FLOAT *d_f;
 
 //EXTERN struct parameters_struct *d_params;
@@ -424,6 +433,12 @@ EXTERN double* h_params;
 //EXTERN double h_dV[N_BLOCKS][N_FILTERS];
 EXTERN double* h_dV;
 EXTERN __device__ double d_params0[N_PARAMS];
+#ifdef RMSD
+EXTERN float *dpar_min, *dpar_max;
+EXTERN float *hpar_min, *hpar_max;
+EXTERN __device__ int d_Ntot, d_Nbad;
+EXTERN __device__ float d_f0, d_f1;
+#endif
 
 EXTERN __device__ unsigned long long int d_sum;
 EXTERN __device__ unsigned long long int d_sum2;

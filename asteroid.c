@@ -42,6 +42,11 @@ int main (int argc,char **argv)
     int best = 0;
     int reopt = 0;
     int inp_model = 0;
+    #ifdef PROFILES    
+    float dx_rand = DELTA_MAX;
+    #else    
+    float dx_rand = DX_RAND;
+    #endif
     
     // Observational data:
     int N_data; // Number of data points
@@ -94,13 +99,13 @@ int main (int argc,char **argv)
            { T_T2l,     1,           0,      0,     0,     SOFT_BOTH},  // T2l
            { T_Tt,      1,           0,      0,     0,     HARD_BOTH},  // Tt
     #endif
-           { T_c_tumb,  1,           0,      0,     1,    HARD_BOTH},  // c_tumb
+           { T_c_tumb,  1,           0,      0,     1,    HARD_RIGHT},  // c_tumb
            { T_b_tumb,  0,           0,      0,     1,     HARD_BOTH},  // b_tumb
            { T_Es,      0,           0,      0,    LE,     HARD_BOTH},  // Es
            { T_L,       1,           0,      0,    LE,     HARD_LEFT},  // L
            { T_psi_0,   0,           0,      0,     0,  PERIODIC_LAM},  // psi_0
     #ifdef BC                                  
-           { T_c,       1,           0,      0,     1,    HARD_BOTH},  // c
+           { T_c,       1,           0,      0,     1,    HARD_RIGHT},  // c
            { T_b,       0,           0,      0,     1,     HARD_BOTH},  // b
     #endif                                  
     #if defined(ROTATE) || defined(BW_BALL)
@@ -167,6 +172,9 @@ int main (int argc,char **argv)
         printf("-best : only keep the best result\n");
         #ifdef MINIMA_TEST
 //        printf("-delta_V value : delta_V value, only in MINIMA_TEST mode\n");
+        #endif
+        #ifdef RMSD
+        printf("-dx value : maximum shift for parameters in scale-free units (0...1)\n");
         #endif
         printf("-f type_constant value: forces the parameter with the type_constant to be frozen during optimization at \"value\" \n");
         printf("-i name : input (data) file name\n");
@@ -247,6 +255,16 @@ int main (int argc,char **argv)
             Ppsi1 = atof(argv[j+1]);
             Ppsi2 = atof(argv[j+2]);
             j = j + 3;
+            if (j >= argc)
+                break;
+        }
+        #endif
+        
+        #ifdef RMSD
+        if (strcmp(argv[j], "-dx") == 0)
+        {
+            dx_rand = atof(argv[j+1]);
+            j = j + 2;
             if (j >= argc)
                 break;
         }
@@ -596,6 +614,17 @@ int main (int argc,char **argv)
         
         int loop_counter = 0;
         
+        #ifdef RMSD
+        float PAR_min[N_PARAMS], PAR_max[N_PARAMS];
+        for (int j=0; j<N_PARAMS; j++)
+        {
+            PAR_min[j] =  1e30;
+            PAR_max[j] = -1e30;
+        }
+        printf("\n");
+        fp = fopen(argv[j_results], "w");
+        #endif
+        
         // Infinite loop
         while (1)
         {                
@@ -614,7 +643,11 @@ int main (int argc,char **argv)
             #endif        
             
             // The kernel:
+            #ifdef RMSD
+            chi2_gpu_rms<<<N_BLOCKS, BSIZE>>>(dData, N_data, N_filters, reopt, Nstages, d_states, d_f, d_params, d_dV, dx_rand, dpar_min, dpar_max);
+            #else
             chi2_gpu<<<N_BLOCKS, BSIZE>>>(dData, N_data, N_filters, reopt, Nstages, d_states, d_f, d_params, d_dV);
+            #endif
             
             #ifdef TIMING
             cudaEventRecord(stop, 0);
@@ -628,9 +661,45 @@ int main (int argc,char **argv)
             
             ERR(cudaDeviceSynchronize());
             
-//            ERR(cudaMemcpyFromSymbol(h_params, d_params, N_BLOCKS * N_PARAMS * sizeof(double), 0, cudaMemcpyDeviceToHost));
+            #ifdef RMSD  // RMSD mode (finding confidence intervals for the input model)
+
+            ERR(cudaMemcpy(hpar_min, dpar_min, N_BLOCKS * N_PARAMS * sizeof(float), cudaMemcpyDeviceToHost));
+            ERR(cudaMemcpy(hpar_max, dpar_max, N_BLOCKS * N_PARAMS * sizeof(float), cudaMemcpyDeviceToHost));
+            int h_Ntot, h_Nbad;
+            ERR(cudaMemcpyFromSymbol(&h_Ntot, d_Ntot, sizeof(int), 0, cudaMemcpyDeviceToHost));
+            ERR(cudaMemcpyFromSymbol(&h_Nbad, d_Nbad, sizeof(int), 0, cudaMemcpyDeviceToHost));
+            if (loop_counter == 1)
+            {
+                float h_f0, h_f1;            
+                ERR(cudaMemcpyFromSymbol(&h_f0, d_f0, sizeof(float), 0, cudaMemcpyDeviceToHost));
+                ERR(cudaMemcpyFromSymbol(&h_f1, d_f1, sizeof(float), 0, cudaMemcpyDeviceToHost));
+                printf("f0=%f, f1=%f\n\n", h_f0, h_f1);
+            }
+            printf("%e ", h_Nbad/(double)h_Ntot);
+
+            for (int j=0; j<N_PARAMS; j++)
+            {
+                for (int i=0; i<N_BLOCKS; i++)
+                {
+                    int k = i*N_PARAMS + j;
+                    if (hpar_min[k] < PAR_min[j])
+                        PAR_min[j] = hpar_min[k];
+                    if (hpar_max[k] > PAR_max[j])
+                        PAR_max[j] = hpar_max[k];
+                }
+                // Printing the cumulative values of the parameters' confidence intervals:
+                // Warning - MY_L is ignored here: proper L values are always printed
+                printf("%13.6e %13.6e ; ", PAR_min[j], PAR_max[j]);
+                fprintf(fp, "%13.6e %13.6e ; ", PAR_min[j], PAR_max[j]);
+            }
+            printf("\n");
+            fflush(stdout);
+            fprintf(fp, "\n");
+            fflush(fp);
+           
+            #else  // Normal mode (global optimization):
+            
             ERR(cudaMemcpy(h_params, d_params, N_BLOCKS * N_PARAMS * sizeof(double), cudaMemcpyDeviceToHost));
-//            ERR(cudaMemcpyFromSymbol(h_dV, d_dV, N_BLOCKS * N_FILTERS * sizeof(double), 0, cudaMemcpyDeviceToHost));
             ERR(cudaMemcpy(h_dV, d_dV, N_BLOCKS * N_FILTERS * sizeof(double), cudaMemcpyDeviceToHost));
             ERR(cudaMemcpy(h_f, d_f, N_BLOCKS * sizeof(CHI_FLOAT), cudaMemcpyDeviceToHost));
             ERR(cudaDeviceSynchronize());
@@ -716,16 +785,22 @@ int main (int argc,char **argv)
                 }
                 fclose(fp);
                                 
-            }
+            }  // if loop_counter > 0
             
             if (keep)
                 // If we are keeping all intermediate results, we have to reset d_f to 1e30 at the end of each loop:
                 setup_kernel <<< N_BLOCKS, BSIZE >>> ( d_states, (unsigned long)0, d_f, 0);
 
+            #endif  // RMSD
+            
             if (loop_counter == Ncases)
                 break;            
             
         }  // End of the while loop
+
+        #ifdef RMSD
+        fclose(fp);
+        #endif
         
     }  // End of Nplot=0 (simulation) module
     
@@ -747,7 +822,8 @@ int main (int argc,char **argv)
         #endif        
         
         #ifdef PROFILES        
-        dim3 NB(NX, N_PARAMS);
+//        dim3 NB(NX, N_PARAMS);
+        dim3 NB(C_POINTS, N_PARAMS);
         #else        
         //??? Not the proper way
         dim3 NB (1, 1);
@@ -756,7 +832,8 @@ int main (int argc,char **argv)
         ERR(cudaMemcpyToSymbol(d_params0, params, N_PARAMS*sizeof(double), 0, cudaMemcpyHostToDevice));
         
         // Running the CUDA kernel to produce the plot data from params:
-        chi2_plot<<<NB, BSIZE>>>(dData, N_data, N_filters, dPlot, Nplot, d_dlsq2);
+//        chi2_gpu<<<N_BLOCKS, BSIZE>>>(dData, N_data, N_filters, reopt, Nstages, d_states, d_f, d_params, d_dV);
+        chi2_plot<<<NB, BSIZE>>>(dData, N_data, N_filters, dPlot, Nplot, d_dlsq2, dx_rand);
         ERR(cudaDeviceSynchronize());
         
         ERR(cudaMemcpyFromSymbol(&h_Vmod, d_Vmod, Nplot*sizeof(double), 0, cudaMemcpyDeviceToHost));
@@ -768,6 +845,7 @@ int main (int argc,char **argv)
         ERR(cudaMemcpyFromSymbol(&h_chi2_plot, d_chi2_plot, sizeof(CHI_FLOAT), 0, cudaMemcpyDeviceToHost));
         #ifdef PROFILES        
         ERR(cudaMemcpyFromSymbol(&h_chi2_lines, d_chi2_lines, sizeof(h_chi2_lines), 0, cudaMemcpyDeviceToHost));
+        ERR(cudaMemcpyFromSymbol(&h_param_lines, d_param_lines, sizeof(h_param_lines), 0, cudaMemcpyDeviceToHost));
         #endif        
         #ifdef LSQ
         ERR(cudaMemcpy(h_dlsq2, d_dlsq2, N_data*sizeof(double), cudaMemcpyDeviceToHost));
@@ -912,21 +990,23 @@ int main (int argc,char **argv)
             fprintf(fp, "%13.7f %13.6e %13.6e w\n", hMJD0+hData[i].MJD, hData[i].V - h_delta_V[hData[i].Filter] + h_delta_V[0], 1/sqrt(hData[i].w));
         fclose(fp);
         
-        fp = fopen("lines.dat", "w");
-        for (i=0; i<C_POINTS*BSIZE; i++)
+        #ifdef PROFILES
+        char buf[80];
+        for (int iparam=0; iparam<N_PARAMS; iparam++)
         {
-            fprintf(fp, "%13.6e ", 2.0 * DELTA_MAX * ((i+1.0)/(C_POINTS*BSIZE) - 0.5));
-            for (int iparam=0; iparam<N_PARAMS; iparam++)
+            snprintf(buf, sizeof(buf), "lines_%i.dat", iparam);
+            fp = fopen(buf, "w");
+            for (i=0; i<C_POINTS*BSIZE; i++)
             {
                 CHI_FLOAT xx = h_chi2_lines[iparam][i];
                 if (isnan(xx))
                     xx=1e30;
-                fprintf(fp, "%13.6e ", xx);
+                fprintf(fp, "%16.9e %16.9e\n", h_param_lines[iparam][i], xx);
             }
-            fprintf(fp, "\n");
+            fclose(fp);
         }
-        fclose(fp);
-        #endif        
+        #endif
+        #endif  // NOPRINT
     }        
     
     
