@@ -132,6 +132,7 @@ the initial values), or unconstrained ones (varying all the free parameters at t
 ```
 The SPHERICAL_K switch is to convert the torque vector from Cartesian normalized components, T_{b,c,a} to spherical components, K, theta_K, and phi_K, 
 which are much more useful for confidence interval calculations.
+
  -- Execution:
 ```
  ./asteroid -dx $DX -plot -seed $i -i light_curve_data  -o output_file  -m par1 par2 par3 ...
