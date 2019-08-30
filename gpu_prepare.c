@@ -45,5 +45,12 @@ int gpu_prepare(int N_data, int N_filters, int N_threads, int Nplot)
     ERR(cudaMemcpyToSymbol(dMJD0, MJD0, 3*sizeof(double), 0, cudaMemcpyHostToDevice));
 #endif    
     
+#ifdef ANIMATE
+    long int size = 3 * (long int)dNPLOT * (long int)SIZE_PIX * (long int)SIZE_PIX * sizeof(unsigned char);
+    printf("d_rgb size: %f GB\n", size/1024.0/1024.0/1024.0);
+    ERR(cudaMalloc(&d_rgb, size));
+    ERR(cudaMallocHost(&h_rgb, size));
+#endif    
+    
     return 0;
 }

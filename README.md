@@ -158,3 +158,24 @@ for analysis. The two columns are the smallest and largest value of the paramete
 words, the unconstrained confidence interval for this parameter. One has to find the globally smallest/largest parameter values for each parameter, across
 files produced with different search radii ($DX).
 
+7) The code can be used to produce a sequence of PNG images visualizing the asteroid (as seen by observer on Earth), for a specific model.
+
+ -- makefile: add one more switch:
+```
+  OPT= ... -DANIMATE
+```
+
+ -- Execution:
+```
+ ./asteroid -plot -i light_curve_data  -o output_file  -m par1 par2 par3 ...
+``` 
+This will create a sequence of NPLOT (see asteroid.h) images, covering the whole simulation period, starting at index 0. One can use optional command line switches
+"-i1" and "-i2" to generate a subset of snapshots. By default it will create colored images (yellow in sunlit areas, dark blue in shadows), with a red spot corresponding
+to the end of the axis "b" (to visualize rotation around the axis of symmetry). To make scientific images (black and white, with the integrated pixel brightness
+proportional to the integrated model brightness), set parameters IMAX_R,G,B to 255, and SMIN_R,G,B and SMAX_R,G,B to 0 (in asteroid.h). To get rid of the red spot,
+set SPOT_RAD to 0.0. 
+
+To convert the sequence of PNG images to animation, one can use the ffmpeg command line tool:
+```
+ ffmpeg -r 60 -f image2 -i image_%05d.png -vcodec libx264 -crf 10 -pix_fmt yuv420p out.mp4
+```

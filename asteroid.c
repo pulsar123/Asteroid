@@ -47,6 +47,10 @@ int main (int argc,char **argv)
     #else    
     float dx_rand = DX_RAND;
     #endif
+    #ifdef ANIMATE
+    int i1_input = 0;
+    int i2_input = NPLOT;
+    #endif
     
     // Observational data:
     int N_data; // Number of data points
@@ -178,6 +182,10 @@ int main (int argc,char **argv)
         #endif
         printf("-f type_constant value: forces the parameter with the type_constant to be frozen during optimization at \"value\" \n");
         printf("-i name : input (data) file name\n");
+        #ifdef ANIMATE        
+        printf("-i1 index : index of the first snapshot\n");
+        printf("-i2 index : index of the last snapshot minus one\n");
+        #endif
         printf("-keep : keep all intermediate results, not just the best ones\n");
         printf("-l type_constant limit1 limit2 : specify range for the parameter type_constant\n");
         printf("-m param1 param2 ... paramN : input model parameters, for plotting and re-optimization\n");
@@ -264,6 +272,23 @@ int main (int argc,char **argv)
         if (strcmp(argv[j], "-dx") == 0)
         {
             dx_rand = atof(argv[j+1]);
+            j = j + 2;
+            if (j >= argc)
+                break;
+        }
+        #endif
+        
+        #ifdef ANIMATE
+        if (strcmp(argv[j], "-i1") == 0)
+        {
+            i1_input = atoi(argv[j+1]);
+            j = j + 2;
+            if (j >= argc)
+                break;
+        }
+        if (strcmp(argv[j], "-i2") == 0)
+        {
+            i2_input = atoi(argv[j+1]);
             j = j + 2;
             if (j >= argc)
                 break;
@@ -587,6 +612,7 @@ int main (int argc,char **argv)
     
     if (Nplot == 0)                
     {
+        #ifndef ANIMATE
         printf("\n*** Simplex optimization ***\n\n");
         printf("  N_threads = %d\n", N_threads);        
         
@@ -801,7 +827,7 @@ int main (int argc,char **argv)
         #ifdef RMSD
         fclose(fp);
         #endif
-        
+    #endif    // if not ANIMATE
     }  // End of Nplot=0 (simulation) module
     
     // ++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
@@ -821,21 +847,40 @@ int main (int argc,char **argv)
         exit(0);
         #endif        
         
-        #ifdef PROFILES        
-//        dim3 NB(NX, N_PARAMS);
+        #if defined PROFILES        
         dim3 NB(C_POINTS, N_PARAMS);
+        #elif defined ANIMATE
+        int Npix = SIZE_PIX*SIZE_PIX;
+        int Nblocks = Npix/BSIZE + (Npix%BSIZE>0);
+        dim3 NB (Nblocks, 1);
         #else        
-        //??? Not the proper way
         dim3 NB (1, 1);
         #endif        
 
         ERR(cudaMemcpyToSymbol(d_params0, params, N_PARAMS*sizeof(double), 0, cudaMemcpyHostToDevice));
         
-        // Running the CUDA kernel to produce the plot data from params:
-//        chi2_gpu<<<N_BLOCKS, BSIZE>>>(dData, N_data, N_filters, reopt, Nstages, d_states, d_f, d_params, d_dV);
-        chi2_plot<<<NB, BSIZE>>>(dData, N_data, N_filters, dPlot, Nplot, d_dlsq2, dx_rand);
-        ERR(cudaDeviceSynchronize());
         
+        #ifdef ANIMATE
+        int h_i1, h_i2;
+        
+        for (h_i1=i1_input; h_i1<i2_input; h_i1=h_i1+dNPLOT)
+        {
+            h_i2 = h_i1 + dNPLOT;
+            if (h_i2 > NPLOT)
+                h_i2 = NPLOT;
+            ERR(cudaMemcpyToSymbol(d_i1, &h_i1, sizeof(int), 0, cudaMemcpyHostToDevice));
+            ERR(cudaMemcpyToSymbol(d_i2, &h_i2, sizeof(int), 0, cudaMemcpyHostToDevice));
+            chi2_plot<<<NB, BSIZE>>>(dData, N_data, N_filters, dPlot, Nplot, d_dlsq2, d_rgb, dx_rand);
+            ERR(cudaMemcpy(h_rgb, d_rgb, (long int)dNPLOT * (long int)SIZE_PIX * (long int)SIZE_PIX * 3 * sizeof(unsigned char), cudaMemcpyDeviceToHost));        
+            write_PNGs(h_rgb, h_i1, h_i2);
+        }
+        return 0;
+        
+        #else
+        chi2_plot<<<NB, BSIZE>>>(dData, N_data, N_filters, dPlot, Nplot, d_dlsq2, dx_rand);        
+        #endif
+        
+        ERR(cudaDeviceSynchronize());
         ERR(cudaMemcpyFromSymbol(&h_Vmod, d_Vmod, Nplot*sizeof(double), 0, cudaMemcpyDeviceToHost));
         ERR(cudaMemcpyFromSymbol(&h_delta_V, d_delta_V, N_FILTERS*sizeof(CHI_FLOAT), 0, cudaMemcpyDeviceToHost));
         FILE * fV=fopen("delta_V","w");
@@ -847,9 +892,14 @@ int main (int argc,char **argv)
         ERR(cudaMemcpyFromSymbol(&h_chi2_lines, d_chi2_lines, sizeof(h_chi2_lines), 0, cudaMemcpyDeviceToHost));
         ERR(cudaMemcpyFromSymbol(&h_param_lines, d_param_lines, sizeof(h_param_lines), 0, cudaMemcpyDeviceToHost));
         #endif        
-        #ifdef LSQ
-        ERR(cudaMemcpy(h_dlsq2, d_dlsq2, N_data*sizeof(double), cudaMemcpyDeviceToHost));
-        #endif        
+        #ifdef PLOT_OMEGA
+            ERR(cudaMemcpyFromSymbol(&h_Omega, d_Omega, 6*Nplot*sizeof(double), 0, cudaMemcpyDeviceToHost));
+            FILE * fO=fopen("omega.dat","w");
+            for (i=0; i<Nplot; i++)
+                // K here is converted to period in hours
+                fprintf(fO, "%13.7f %16.9e %16.9f %16.9f %16.9e %16.9f %16.9f\n", hMJD0+hPlot[i].MJD, 48*PI/h_Omega[0][i], h_Omega[1][i]*RAD, h_Omega[2][i]*RAD, 48*PI/h_Omega[3][i], h_Omega[4][i]*RAD, h_Omega[5][i]*RAD);
+            fclose(fO);
+        #endif
           // Printing the initial and final (only for TORQUE) model state (for later computations of P_psi, P_phi etc)
           FILE *fmod=fopen("model_params.dat","w");
           // Initial model:

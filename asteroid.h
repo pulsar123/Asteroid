@@ -9,6 +9,9 @@
 #include <sys/time.h>
 #include <curand_kernel.h>
 #include "cuda_errors.h"
+#ifdef ANIMATE
+  #include <png.h>
+#endif
 
 #define PI 3.141592653589793238
 #define RAD (180.0 / PI)
@@ -252,8 +255,16 @@ const int MAX_FILE_NAME = 256;
 // Maximum number of chars in one line of a data file:
 const int MAX_LINE_LENGTH = 128;
 
+// Pixel size of the square image (used in ANIMATE):
+const int SIZE_PIX = 1080;
+
 // Number of time points for plotting
+#ifdef ANIMATE
+const int dNPLOT = 1500;  // Number of snapshots produced per kernel; make it smaller if d_rgb array doesn't fit in GPU memory
+const int NPLOT = 15440; // Total number of snapshots to produce ; 2700
+#else
 const int NPLOT = 20000; // 6000 !!!
+#endif
 // Times BSIZE will give the total number of points for lines:
 const int C_POINTS = 10; // 10
 // Maximum relative deviation for each parameter when computing lines:
@@ -284,6 +295,24 @@ const float PV_MIN = 0.1; // chi2 reduction factor for large enough brightness f
 const float DV_MIN1 = 2.25; // delta V at which chi2 starts decreasing (merit function goes from 1 to PV_MIN)
 const float DV_MIN2 = 2.75; // delta V at which chi2 stops decreasing (merit function reached PV_MIN)
 const float DV_MARGIN = 0.05; // Margins on both sides of the obs. data where min/max is not computed (days)
+#endif
+
+#ifdef ANIMATE
+// All RGB values should be in [0,255] interval
+// RGB values for deepest shadow:
+const float SMIN_R = 6;
+const float SMIN_G = 8;
+const float SMIN_B = 10;
+// RGB values for terminator:
+const float SMAX_R = 30;
+const float SMAX_G = 41;
+const float SMAX_B = 53;
+// RGB values for the brightest sunlit element:
+const float IMAX_R = 255;
+const float IMAX_G = 191;
+const float IMAX_B = 144;
+// Radius of the spot at the axis b end, scale-free units:
+const float SPOT_RAD = 0.04;
 #endif
 
 // Structure to bring auxilary parameters to chi2one
@@ -360,16 +389,33 @@ int gpu_prepare(int, int, int, int);
 int minima_test(int, int, int, double*, int[][N_SEG], CHI_FLOAT);
 
 __global__ void setup_kernel ( curandState *, unsigned long, CHI_FLOAT *, int);
+#ifndef ANIMATE
 __global__ void chi2_gpu(struct obs_data *, int, int, int, int, curandState*, CHI_FLOAT*, double*, double*);
 #ifdef RMSD
 __global__ void chi2_gpu_rms(struct obs_data *, int, int, int, int, curandState*, CHI_FLOAT*, double*, double*, float, float*, float*);
 #endif
-__global__ void chi2_plot(struct obs_data *, int, int, struct obs_data *, int, double *, float);
+#endif
+__global__ void chi2_plot(struct obs_data *, int, int, struct obs_data *, int, double *,
+#ifdef ANIMATE
+                          unsigned char *,
+#endif
+                          float);
 #ifdef MINIMA_TEST
 __global__ void chi2_minima(struct obs_data *, int, int, struct obs_data *, int, CHI_FLOAT);
 #endif
 #ifdef DEBUG2
 __global__ void debug_kernel(struct parameters_struct, struct obs_data *, int, int);
+#endif
+#ifdef ANIMATE
+__device__ void compute_rgb(unsigned char *, double, double, 
+                            double, double, double,
+                            double, double, double,
+                            double, double, double,
+                            double, double, double,
+                            double, double, double,
+                            double, double, double,
+                            int, int);
+int write_PNGs(unsigned char *, int, int);
 #endif
 
 
@@ -413,6 +459,10 @@ EXTERN __device__ CHI_FLOAT d_chi2_plot;
 EXTERN CHI_FLOAT h_chi2_plot;
 EXTERN __device__ CHI_FLOAT dLimits[2][N_TYPES];
 EXTERN __device__ double d_Vmod[NPLOT];
+#ifdef PLOT_OMEGA
+EXTERN __device__ double d_Omega[6][NPLOT];
+EXTERN double h_Omega[6][NPLOT];
+#endif
 EXTERN double h_Vmod[NPLOT];
 #ifdef PROFILES
 EXTERN __device__ CHI_FLOAT d_chi2_lines[N_PARAMS][BSIZE*C_POINTS];
@@ -481,6 +531,14 @@ EXTERN __device__ int d_N7all;
 EXTERN int h_N7all;
 #endif
 EXTERN __device__ struct x2_struct d_x2_params;
+
+#ifdef ANIMATE
+// Format: [rgb][snapshot][x][y]
+EXTERN __device__ unsigned char * d_rgb;
+EXTERN unsigned char * h_rgb;
+EXTERN __device__ int d_i1, d_i2;
+EXTERN int h_i1, h_i2;
+#endif
 
 #endif
 

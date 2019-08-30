@@ -78,7 +78,11 @@ __device__ void ODE_func (double y[], double f[], double mu[])
 
 
 
-__device__ CHI_FLOAT chi2one(double *params, struct obs_data *sData, int N_data, int N_filters, CHI_FLOAT *delta_V, int Nplot, struct chi2_struct *sp, int sTypes[][N_SEG])
+__device__ CHI_FLOAT chi2one(double *params, struct obs_data *sData, int N_data, int N_filters, CHI_FLOAT *delta_V, int Nplot, struct chi2_struct *sp,
+#ifdef ANIMATE
+                             unsigned char * d_rgb,
+#endif                             
+                             int sTypes[][N_SEG])
 // Computung chi^2 for a single model parameters combination, on GPU, by a single thread
 // NUDGE is not supported in SEGMENT mode!
 {
@@ -262,7 +266,12 @@ __device__ CHI_FLOAT chi2one(double *params, struct obs_data *sData, int N_data,
         #else
         i1 = 0;
         i2 = N_data;
-        #endif    
+        #endif
+        
+        #ifdef ANIMATE
+        int i1_rgb = d_i1;
+        int i2_rgb = d_i2;
+        #endif
         
         // The loop over all data points in the current segment 
         for (i=i1; i<i2; i++)
@@ -331,10 +340,17 @@ __device__ CHI_FLOAT chi2one(double *params, struct obs_data *sData, int N_data,
                 y[2] = psi;
                 #endif            
                 
+                #ifdef PLOT_OMEGA
+                double K1[N_ODE];
+                #endif
+                
                 // RK4 method for solving ODEs with a fixed time step h
                 for (int l=0; l<N_steps; l++)
                 {
-                    double K1[N_ODE], K2[N_ODE], K3[N_ODE], K4[N_ODE], f[N_ODE];
+                    double f[N_ODE], K2[N_ODE], K3[N_ODE], K4[N_ODE];
+                    #ifndef PLOT_OMEGA
+                    double K1[N_ODE];
+                    #endif
                     
                     ODE_func (y, K1, mu);
                     
@@ -364,6 +380,32 @@ __device__ CHI_FLOAT chi2one(double *params, struct obs_data *sData, int N_data,
                 phi     = y[3];
                 theta   = y[4];
                 psi     = y[5];
+                #ifdef PLOT_OMEGA
+                    if (Nplot > 0)
+                    {
+                        double phi_dot = K1[3];
+                        double theta_dot = K1[4];
+                        double psi_dot = K1[5];
+                        // Computing angular velocity vector components in inertial coordinate system XYZ
+                        double Omega_X = psi_dot*sin(theta)*sin(phi) + theta_dot*cos(phi);
+                        double Omega_Y =-psi_dot*sin(theta)*cos(phi) + theta_dot*sin(phi);
+                        double Omega_Z = psi_dot*cos(theta) + phi_dot;
+                        // Converting to spherical inertial coordinate system:
+                        // Absolute magnitude Omega:
+                        d_Omega[0][i] = sqrt(Omega_X*Omega_X + Omega_Y*Omega_Y + Omega_Z*Omega_Z);
+                        // Polar angle theta_Omega:
+                        d_Omega[1][i] = acos(Omega_Z/d_Omega[0][i]);
+                        // Azimuthal angle phi_Omega:
+                        d_Omega[2][i] = atan2(Omega_Y, Omega_X);
+                        // In comoving spherical coordinate system:
+                        // Absolute magnitude Omega:
+                        d_Omega[3][i] = sqrt(Omega_i*Omega_i + Omega_s*Omega_s + Omega_l*Omega_l);
+                        // Polar angle theta_Omega:
+                        d_Omega[4][i] = acos(Omega_l/d_Omega[3][i]);
+                        // Azimuthal angle phi_Omega:
+                        d_Omega[5][i] = atan2(Omega_s, Omega_i);
+                    }
+                #endif
                 #ifdef LAST
                 if (Nplot>0 && i==Nplot-1)
                 // Preserving the final values of L nd E:
@@ -523,9 +565,6 @@ __device__ CHI_FLOAT chi2one(double *params, struct obs_data *sData, int N_data,
             Sp_c = c_x*S_x1 + c_y*S_y1 + c_z*S_z1;
             Sp_a = a_x*S_x1 + a_y*S_y1 + a_z*S_z1;
             
-            // Now that we converted the Earth and Sun vectors to the internal asteroidal basis (a,b,c),
-            // we can apply the formalism of Muinonen & Lumme, 2015 to calculate the brightness of the asteroid.
-            
             #ifdef BC
             double b = P_b;
             double c = P_c;
@@ -533,6 +572,24 @@ __device__ CHI_FLOAT chi2one(double *params, struct obs_data *sData, int N_data,
             double b = P_b_tumb;
             double c = P_c_tumb;
             #endif        
+            
+            #ifdef ANIMATE
+            if (i>=i1_rgb && i<i2_rgb)
+                // Module to compute the image of the asteroid using all threads in this block
+                compute_rgb(d_rgb, b,  c, 
+                            E_x1,  E_y1,  E_z1,
+                            Ep_b,  Ep_c,  Ep_a,
+                            Sp_b,  Sp_c,  Sp_a,
+                            b_x,  b_y,  b_z,
+                            c_x,  c_y,  c_z,
+                            a_x,  a_y,  a_z,
+                            i, i1_rgb);
+            continue;
+            #endif
+            
+            
+            // Now that we converted the Earth and Sun vectors to the internal asteroidal basis (a,b,c),
+            // we can apply the formalism of Muinonen & Lumme, 2015 to calculate the brightness of the asteroid.
             
             double Vmod;
             
@@ -1265,6 +1322,7 @@ __device__ int x2params(CHI_FLOAT *x, double *params, CHI_FLOAT sLimits[][N_TYPE
 
 //++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 
+#ifndef ANIMATE
 __global__ void chi2_gpu (struct obs_data *dData, int N_data, int N_filters, int reopt, int Nstages,
                           curandState* globalState, CHI_FLOAT *d_f, double* d_params, double* d_dV)
 // CUDA kernel computing chi^2 on GPU
@@ -1773,7 +1831,7 @@ __global__ void chi2_gpu (struct obs_data *dData, int N_data, int N_filters, int
     return;        
     
 }
-
+#endif // not ANIMATE
 //++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 
 
@@ -1805,7 +1863,11 @@ __global__ void debug_kernel(struct parameters_struct params, struct obs_data *d
 //++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 
 __global__ void chi2_plot (struct obs_data *dData, int N_data, int N_filters,
-                           struct obs_data *dPlot, int Nplot, double * d_dlsq2, float dx_rand)
+                           struct obs_data *dPlot, int Nplot, double * d_dlsq2, 
+#ifdef ANIMATE
+                           unsigned char * d_rgb,
+#endif
+                           float dx_rand)
 // CUDA kernel to compute plot data from input params structure
 {     
     __shared__ double sd2_min[BSIZE];
@@ -1819,7 +1881,11 @@ __global__ void chi2_plot (struct obs_data *dData, int N_data, int N_filters,
     __shared__ volatile double phi0, K0, theta0;
     int iseg=0;
     #endif
+    #ifdef ANIMATE
+    __shared__ double params[N_PARAMS];
+    #else
     double params[N_PARAMS];
+    #endif
     
     // Global thread index for points:
     int id = threadIdx.x + blockDim.x*blockIdx.x;
@@ -1866,6 +1932,8 @@ __global__ void chi2_plot (struct obs_data *dData, int N_data, int N_filters,
         for (int i=0; i<N_SEG; i++)
             sp.start_seg[i] = d_start_seg[i];
         #endif    
+        
+        #ifndef ANIMATE
         // !!! Will not work in NUDGE mode - NULL
         // Step one: computing constants for each filter (delta_V[]) using chi^2 method, and the chi2 value
         d_chi2_plot = chi2one(params, dData, N_data, N_filters, delta_V, 0,  &sp, sTypes);
@@ -1895,58 +1963,20 @@ __global__ void chi2_plot (struct obs_data *dData, int N_data, int N_filters,
         theta0 = acos(Kl/K0);  // theta (polar angle; 0..pi)            
         phi0 = atan2(Ks, Ki);  // phi (azimuthal angle; 0..2*pi) for the input model
         #endif
-        
+        #endif // not ANIMATE
     }
     
     __syncthreads();
     
+    #ifdef ANIMATE
+    chi2one(params, dPlot, Nplot, N_filters, delta_V, 0,  &sp,
+            d_rgb,
+            sTypes);
+    return;
+    #endif
+    
     int blockid = blockIdx.x + gridDim.x*blockIdx.y;
-    
-    #ifdef LSQ    
-    // Computing 2D least squares distances between the data points and the model
-    // Each block processes one data point
-    // Asssuming that the number of blocks is larger or equal to the number of data points!
-    int idata = blockid;
-    if (idata < N_data)
-    {
-        double d2_min = HUGE;
-        // Spreading N_plot model points over blockDim.x threads as evenly as possible:
-        for (int imodel=threadIdx.x; imodel<Nplot; imodel=imodel+blockDim.x)
-        {
-            double dist_t = (dPlot[imodel].MJD - dData[idata].MJD) / T_SCALE;
-            // To save some time:
-            if (fabs(dist_t) < 2.0)
-            {
-                double dist_V = (d_Vmod[imodel] - dData[idata].V) / V_SCALE;
-                // 2D (in t-V axes) distance between the imodel model point and idata data point, using scales V_SCALE and T_SCALE for the two axes:
-                double d2 = dist_V*dist_V + dist_t*dist_t;
-                // Per-thread minimum of d2:
-                if (d2 < d2_min)
-                    d2_min = d2;
-            }
-        }
-        sd2_min[threadIdx.x] = d2_min;
-        __syncthreads();
-        // Binary reduction:
-        int nTotalThreads = blockDim.x;
-        while(nTotalThreads > 1)
-        {
-            int halfPoint = nTotalThreads / 2; // Number of active threads
-            if (threadIdx.x < halfPoint) {
-                int thread2 = threadIdx.x + halfPoint; // the second element index
-                double temp = sd2_min[thread2];
-                if (temp < sd2_min[threadIdx.x])
-                    sd2_min[threadIdx.x] = temp;
-            }
-            __syncthreads();
-            nTotalThreads = halfPoint; // Reducing the binary tree size by two
-        }
-        // At this point, the smallest d2 in the block is in sd2_min[0]
-        if (threadIdx.x == 0)
-            d_dlsq2[idata] = sd2_min[0];
-    }
-    #endif    
-    
+        
     #ifdef PROFILES
     if (id < C_POINTS*BSIZE)
     {
@@ -2357,3 +2387,154 @@ __global__ void chi2_gpu_rms (struct obs_data *dData, int N_data, int N_filters,
     return;
     }
     #endif //RMSD
+
+
+//--------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+
+#ifdef ANIMATE
+    __device__ void compute_rgb(unsigned char * d_rgb, double b, double c, 
+                                double E_x, double E_y, double E_z,
+                                double Ep_b, double Ep_c, double Ep_a,
+                                double Sp_b, double Sp_c, double Sp_a,
+                                double b_x, double b_y, double b_z,
+                                double c_x, double c_y, double c_z,
+                                double a_x, double a_y, double a_z,
+                                int i_snapshot, int i1
+                               )
+    /* Performs projection of asteroid onto the observer's sky plane; computes RGB values for all pixels in the image (size SIZE_PIX x SIZE_PIX)
+     * Each thread processes one pixel (described by 4 pixel lines of sight - for the 4 pixel corners)
+     */
+    {
+        __shared__ double Z1x, Z1y, Z1z, Y1x, Y1y, Y1z;
+        
+        // Global index:
+        int id = threadIdx.x + blockDim.x*blockIdx.x;
+        // Pixel coordinates:
+        int iz = id / SIZE_PIX;
+        int iy = id % SIZE_PIX;
+        
+        if (iy >= SIZE_PIX || iz >= SIZE_PIX)
+            return;
+
+        if (threadIdx.x == 0)
+        {
+            // SSB coordinates of the image coordinate system axes, where X1 axis is directed towards observer (line of sight; =E vector),
+            // and Z1=[E x y] (here y is the SSB axis y)
+            double scale = 1.0/sqrt(E_x*E_x + E_z*E_z);
+            Z1x = -E_z * scale;
+            Z1y =  0.0;
+            Z1z =  E_x * scale;
+            Y1x = -E_x*E_y * scale;
+            Y1y = (E_x*E_x + E_z*E_z) * scale;
+            Y1z = -E_y*E_z * scale;                        
+        }
+        
+        __syncthreads();        
+
+        float br[3];
+        for (int i=0; i<3; i++)
+            br[i] = 0.0;
+            
+        // Loop over four corners of a pixel:
+        for (int jz=0; jz<2; jz++)
+        {
+            // Scale-free offset for x and y in the image plane (total range -1.2...1.2, to include some margins):
+            double z1 = 2.4 * (double)(iz - SIZE_PIX/2 + jz) / (double)SIZE_PIX;
+            for (int jy=0; jy<2; jy++)
+            {
+                double y1 = 2.4 * (double)(iy - SIZE_PIX/2 + jy) / (double)SIZE_PIX;
+            
+                // SSB coordinates of the pixel corner:
+                double p_x = y1*Y1x + z1*Z1x;
+                double p_y = y1*Y1y + z1*Z1y;
+                double p_z = y1*Y1z + z1*Z1z;
+                // Same converted to bca coordinates:
+                double p_b = b_x*p_x + b_y*p_y + b_z*p_z;
+                double p_c = c_x*p_x + c_y*p_y + c_z*p_z;
+                double p_a = a_x*p_x + a_y*p_y + a_z*p_z;
+                
+                // Computing intersection of the pixel line with the triaxial ellipsoid
+                // Coefficients used in quadratic equation solution:
+                double A = Ep_b*Ep_b/(b*b) + Ep_c*Ep_c/(c*c) + Ep_a*Ep_a;
+                double B = 2.0*(p_b*Ep_b/(b*b) + p_c*Ep_c/(c*c) + p_a*Ep_a);
+                double C = p_b*p_b/(b*b) + p_c*p_c/(c*c) + p_a*p_a - 1.0;
+                // Discriminant:
+                double D = B*B - 4.0*A*C;
+                int red_spot;
+                if (D >= 0.0)
+                    // We have an intersection of the pixel line with the ellipsoid
+                {
+                    // Two solutions for lambda:
+                    double lambda = (-B-sqrt(D))/(2.0*A);
+                    double lambda1 = (-B+sqrt(D))/(2.0*A);
+                    // Choosing the larger one:
+                    if (lambda1 > lambda)
+                        lambda = lambda1;
+                    
+                    // bca coordinates of the intersection point:
+                    double ri_b = p_b + lambda*Ep_b;
+                    double ri_c = p_c + lambda*Ep_c;
+                    double ri_a = p_a + lambda*Ep_a;
+                    
+                    // Creating a red spot at the end of the axis b, to track axial rotation:
+                    if (ri_c*ri_c + ri_a*ri_a < SPOT_RAD*SPOT_RAD && ri_b>0.0)
+                        red_spot = 1;
+                    else
+                        red_spot = 0;
+                    
+                    // Normal to the surface vector at the intersection point:
+                    double ni_b = ri_b/(b*b);
+                    double ni_c = ri_c/(c*c);
+                    double ni_a = ri_a;
+                    double scale = 1.0/sqrt(ni_b*ni_b + ni_c*ni_c + ni_a*ni_a);
+                    // Normalizing the vector:
+                    ni_b = ni_b * scale;
+                    ni_c = ni_c * scale;
+                    ni_a = ni_a * scale;
+                    
+                    // Surface brightness at the intersection point (isotropic reflectance assumed); goes from -1 (deepest shadow) to 1 (solar point)
+                    double I = ni_b*Sp_b + ni_c*Sp_c + ni_a*Sp_a;
+                    if (I >= 0.0)
+                    // I>0 corresponds to sun-lit surface element
+                    {
+                        // Illuminated surface brightness (varies between SMAX and IMAX):
+                        br[0] = br[0] + SMAX_R + I*(IMAX_R-SMAX_R);
+                        if (red_spot == 0)
+                        {
+                            br[1] = br[1] + SMAX_G + I*(IMAX_G-SMAX_G);
+                            br[2] = br[2] + SMAX_B + I*(IMAX_B-SMAX_B);
+                        }
+                    }
+                    else
+                    // If I<0, we have shadow:
+                    {
+                        // Shadowed surface brightness varies between SMIN (deepest shadow) and SMAX (terminator area):
+                        br[0] = br[0] + SMAX_R + I*(SMAX_R-SMIN_R);
+                        if (red_spot == 0)
+                        {
+                            br[1] = br[1] + SMAX_G + I*(SMAX_G-SMIN_G);
+                            br[2] = br[1] + SMAX_B + I*(SMAX_B-SMIN_B);                        
+                        }
+                    }
+                    
+                    // Brightness is the sum of the constant shadow
+                }  // if D>0                        
+            } // jy loop
+        } // jx loop
+        
+        // Computing integer RGB values for the pixel (averaging over the 4 pixel corners):
+        for (int ic=0; ic<3; ic++)
+        {
+           int br_int = (int)(br[ic]/4.0);
+           if (br_int > 255)
+               br_int = 255;
+           if (br_int < 0)
+               br_int = 0;
+           // Flattened array index:
+           long int iflat = ic + 3*(iy + (long int)SIZE_PIX*(iz + (long int)SIZE_PIX*(i_snapshot-i1)));
+           d_rgb[iflat] = br_int;
+        }
+               
+        return;
+    }
+#endif

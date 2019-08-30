@@ -1,6 +1,7 @@
 # Macro parameters:
 
 # ACC : enable high accuracy mode (mainly for final reoptimization): makes CHI_FLOAT=double, and reduces SIZE_MIN to 1e-10
+# ANIMATE : produce animation of the projected atseroid rotation (a sequence of image files)
 # BC : if defined, "physical b,c" and "photometric b,c" are independent parameters; if not, they are the same thing
 # BW_BALL : simplest albedo (non-geometric) brightness model - black and white ball. Three new parameters: theta_R, phi_R, (theta_h, phi_h in paper) and kappa.
 # DEBUG : used with interactive (debugging) runs, reduced kernels and print time intervals
@@ -21,6 +22,7 @@
 # P_BOTH : combined P_psi and P_phi constraints (input args: P_psi1 P_psi2 P_phi). P_Psi is a free parameter, P_phi is a constant. A rejection method is used during optimization.
 # P_PHI : if defined, Pphi1 Pphi2 args need to be provided; L is no longer an input parameter, and is computed from P_phi using an approximate empirical relation
 # P_PSI : if defined, Ppsi1 Ppsi2 args need to be provided; L is no longer an input parameter, and is computed precisely from P_psi
+# PLOT_OMEGA : if defined and with -plot switch, will write file omega.dat with the time elvolution of Omega (angular velocity vector) in inertial spherical coordinates
 # PROFILES : if defined, write cross-sections along all parameter dimensions to lines.dat
 # RANDOM_BC : (not working) for BC mode. If defined, initial guess for brightness b,c parameters are random (not coinciding with the kinematic b,c parameters).
 # RECT : rectangular prism simplified (phase=0) brightness model (here b, c parameters are half-lengths of the second and third shortest sides). Uses BC internally
@@ -35,8 +37,9 @@
 
 ARCH=sm_60
 
-OPT=--ptxas-options=-v -arch=$(ARCH) -DP_PSI -DTORQUE -DRMSD -DSPHERICAL_K -DINTERP -DPROFILES
+OPT=--ptxas-options=-v -arch=$(ARCH) -DP_PSI -DTORQUE -DINTERP -DANIMATE
 INC=-I/usr/include/cuda -I.
+LIB=-lpng
 DEBUG=-O2
 
 BINARY=asteroid
@@ -44,7 +47,7 @@ BINARY=asteroid
 objects = asteroid.o read_data.o misc.o cuda.o gpu_prepare.o
 
 all: $(objects)
-	nvcc $(OPT) $(DEBUG)  $(objects) -o ../$(BINARY)
+	nvcc $(OPT) $(DEBUG)  $(objects) -o ../$(BINARY)  ${LIB}
 
 %.o: %.c makefile asteroid.h
 	nvcc $(OPT) $(DEBUG) -x cu  $(INC) -dc $< -o $@
